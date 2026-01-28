@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import {
   Calendar,
   AlertTriangle,
@@ -158,136 +160,7 @@ const RISKY_COMBOS = [
 ];
 
 const RAW_TRANSCRIPT_TERMS = [
-  {
-    label: 'Fall 2020',
-    status: 'Transfer',
-    courses: [
-      { code: 'CHEM 119', title: 'Fund of Chemistry I', credits: 4, grade: 'TA', transfer: true },
-      { code: 'ENGL 103', title: 'Intro to Comp & Rhet', credits: 3, grade: 'TA', transfer: true }
-    ]
-  },
-  {
-    label: 'Spring 2021',
-    status: 'Transfer',
-    courses: [
-      {
-        code: 'ENGL 104',
-        title: 'Composition & Rhetoric',
-        credits: 3,
-        grade: 'TA',
-        transfer: true
-      }
-    ]
-  },
-  {
-    label: 'Fall 2021',
-    status: 'Transfer',
-    courses: [
-      { code: 'ECON 202', title: 'Prin of Economics', credits: 3, grade: 'TA', transfer: true },
-      {
-        code: 'ENGL 231',
-        title: 'Survey of English Lit I',
-        credits: 3,
-        grade: 'TA',
-        transfer: true
-      }
-    ]
-  },
-  {
-    label: 'Spring 2022',
-    status: 'Transfer',
-    courses: [
-      {
-        code: 'ENGL 232',
-        title: 'Survey of English Lit II',
-        credits: 3,
-        grade: 'TA',
-        transfer: true
-      },
-      {
-        code: 'POLS 206',
-        title: 'Amer Natnl Govt',
-        credits: 3,
-        grade: 'TA',
-        transfer: true
-      }
-    ]
-  },
-  {
-    label: 'Fall 2022',
-    status: 'Evaluated',
-    courses: [
-      { code: 'CHEM 107', title: 'Gen Chem for Engineers', credits: 3, grade: 'A' },
-      { code: 'CHEM 117', title: 'Gen Chem for Engr Lab', credits: 1, grade: 'A' },
-      { code: 'DCED 202', title: 'Dance Appreciation', credits: 3, grade: 'A' },
-      { code: 'ENGR 102', title: 'Engr Lab I Computation', credits: 2, grade: 'A' },
-      { code: 'FYEX 101', title: 'Hullabaloo U', credits: 0, grade: 'S' },
-      { code: 'MATH 151', title: 'Engineering Math I', credits: 4, grade: 'A' },
-      { code: 'POLS 207', title: 'State & Local Govt', credits: 3, grade: 'A' }
-    ]
-  },
-  {
-    label: 'Spring 2023',
-    status: 'Evaluated',
-    courses: [
-      { code: 'MATH 152', title: 'Engineering Math II', credits: 4, grade: 'A' },
-      { code: 'PERF 201', title: 'Mus & Human Experience', credits: 3, grade: 'A' },
-      { code: 'PHYS 206', title: 'Newtonian Mechanics Engr & Sci', credits: 3, grade: 'A' },
-      { code: 'PHYS 216', title: 'Ex Phys Engr Lab II Mechanics', credits: 2, grade: 'B' }
-    ]
-  },
-  {
-    label: 'Summer 2023',
-    status: 'Transfer',
-    courses: [
-      { code: 'ANTH 210', title: 'Soc and Cult Anth', credits: 3, grade: 'TA', transfer: true },
-      { code: 'GEOG 203', title: 'Planet Earth', credits: 3, grade: 'TA', transfer: true }
-    ]
-  },
-  {
-    label: 'Fall 2023',
-    status: 'Evaluated',
-    courses: [
-      { code: 'CSCE 120', title: 'Program Design & Concepts', credits: 3, grade: 'A' },
-      { code: 'CSCE 181', title: 'Intro to Computing', credits: 1, grade: 'A' },
-      { code: 'CSCE 222', title: 'Discrete Struc Computing', credits: 3, grade: 'A' },
-      { code: 'MATH 251', title: 'Engineering Math III', credits: 3, grade: 'B' },
-      { code: 'MATH 304', title: 'Linear Algebra', credits: 3, grade: 'A' }
-    ]
-  },
-  {
-    label: 'Spring 2024',
-    status: 'Evaluated',
-    courses: [
-      { code: 'CSCE 221', title: 'Data Struc & Algorithms', credits: 4, grade: 'A' },
-      { code: 'CSCE 312', title: 'Computer Organization', credits: 4, grade: 'A' },
-      { code: 'CSCE 314', title: 'Programming Languages', credits: 3, grade: 'A' },
-      { code: 'STAT 211', title: 'Prin of Statistics I', credits: 3, grade: 'A' }
-    ]
-  },
-  {
-    label: 'Fall 2024',
-    status: 'Evaluated',
-    courses: [
-      { code: 'CSCE 313', title: 'Intro to Computer Systems', credits: 4, grade: 'B' },
-      { code: 'CSCE 331', title: 'Foundations Software Engineer', credits: 4, grade: 'A' },
-      { code: 'CSCE 481', title: 'Seminar', credits: 1, grade: 'A' },
-      { code: 'FINC 409', title: 'Survey of Finance Prin', credits: 3, grade: 'A' },
-      { code: 'GEOL 101', title: 'Principles of Geology', credits: 3, grade: 'A' },
-      { code: 'GEOL 102', title: 'Principles of Geology Lab', credits: 1, grade: 'A' }
-    ]
-  },
-  {
-    label: 'Spring 2025',
-    status: 'In Progress',
-    courses: [
-      { code: 'CSCE 310', title: 'Database Systems', credits: 3, grade: 'IP' },
-      { code: 'CSCE 411', title: 'Design Analy Algorithms', credits: 3, grade: 'IP' },
-      { code: 'CSCE 413', title: 'Software Security', credits: 3, grade: 'IP' },
-      { code: 'CSCE 448', title: 'Computational Photography', credits: 3, grade: 'IP' },
-      { code: 'MKTG 409', title: 'Principles of Marketing', credits: 3, grade: 'IP' }
-    ]
-  }
+  // Intentionally empty; populated via transcript parser.
 ];
 
 const normalizeTranscript = (terms) => {
@@ -329,35 +202,145 @@ const normalizeTranscript = (terms) => {
     });
 };
 
-const TRANSCRIPT_YEARS = normalizeTranscript(RAW_TRANSCRIPT_TERMS);
+GlobalWorkerOptions.workerSrc = pdfWorker;
+
+const TERM_REGEX = /\b(Fall|Spring|Summer|Winter)\s+(20\d{2})\b/;
+const COURSE_REGEX = /\b([A-Z]{3,4})\s?(\d{3})\b/;
+const GRADE_REGEX = /\b(A|A-|B\+|B|B-|C\+|C|C-|D\+|D|D-|F|S|U|P|W|IP)\b/;
+
+const parseTranscriptLines = (lines) => {
+  const terms = [];
+  let currentTerm = null;
+
+  lines.forEach((rawLine) => {
+    const line = rawLine.replace(/\s+/g, ' ').trim();
+    if (!line) return;
+
+    const termMatch = line.match(TERM_REGEX);
+    if (termMatch) {
+      currentTerm = {
+        label: `${termMatch[1]} ${termMatch[2]}`,
+        status: 'Evaluated',
+        courses: []
+      };
+      terms.push(currentTerm);
+      return;
+    }
+
+    const courseMatch = line.match(COURSE_REGEX);
+    if (!courseMatch || !currentTerm) return;
+
+    const code = `${courseMatch[1]} ${courseMatch[2]}`;
+    const gradeMatch = line.match(GRADE_REGEX);
+    const grade = gradeMatch?.[1] ?? '';
+    const creditsMatch = line.match(/\b(\d(?:\.\d)?)\b(?!.*\b\d\b)/);
+    const credits = creditsMatch ? Number(creditsMatch[1]) : 0;
+
+    const withoutCode = line.replace(courseMatch[0], '').trim();
+    const withoutGrade = grade ? withoutCode.replace(grade, '').trim() : withoutCode;
+    const title = credits
+      ? withoutGrade.replace(String(credits), '').trim()
+      : withoutGrade.trim();
+
+    currentTerm.courses.push({
+      code,
+      title: title || code,
+      credits: Number.isFinite(credits) ? credits : 0,
+      grade
+    });
+    if (grade === 'IP') {
+      currentTerm.status = 'In Progress';
+    }
+  });
+
+  return terms;
+};
+
+const extractPdfLines = async (file) => {
+  const data = new Uint8Array(await file.arrayBuffer());
+  const pdf = await getDocument({ data }).promise;
+  const lines = [];
+
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum += 1) {
+    const page = await pdf.getPage(pageNum);
+    const textContent = await page.getTextContent();
+    const items = textContent.items
+      .map((item) => ({
+        text: item.str,
+        x: item.transform[4],
+        y: item.transform[5]
+      }))
+      .filter((item) => item.text && item.text.trim() !== '');
+
+    items.sort((a, b) => (b.y === a.y ? a.x - b.x : b.y - a.y));
+
+    const grouped = [];
+    const threshold = 2;
+    items.forEach((item) => {
+      const group = grouped.find((g) => Math.abs(g.y - item.y) <= threshold);
+      if (group) {
+        group.items.push(item);
+      } else {
+        grouped.push({ y: item.y, items: [item] });
+      }
+    });
+
+    grouped.forEach((group) => {
+      group.items.sort((a, b) => a.x - b.x);
+      lines.push(group.items.map((i) => i.text).join(' '));
+    });
+  }
+
+  return lines;
+};
 
 const FLOWCHART_COURSES = {
-  'CSCE 120': { title: 'Program Design & Concepts', prereqs: [] },
-  'CSCE 121': { title: 'Intro to Program Design', prereqs: [] },
-  'CSCE 181': { title: 'Intro to Computing', prereqs: [] },
-  'MATH 151': { title: 'Engineering Math I', prereqs: [] },
-  'CSCE 222': { title: 'Discrete Structures', prereqs: [] },
-  'CSCE 221': { title: 'Data Structures & Algorithms', prereqs: ['CSCE 120'] },
-  'CSCE 312': { title: 'Computer Organization', prereqs: ['CSCE 221'] },
-  'CSCE 313': { title: 'Intro to Computer Systems', prereqs: ['CSCE 221', 'CSCE 312'] },
-  'CSCE 314': { title: 'Programming Languages', prereqs: ['CSCE 221'] },
-  'CSCE 315': { title: 'Programming Studio', prereqs: ['CSCE 312', 'CSCE 314', 'CSCE 313'] },
-  'CSCE 331': { title: 'Foundations of Software Eng', prereqs: ['CSCE 221'] },
-  'CSCE 411': { title: 'Design/Analysis of Algorithms', prereqs: ['CSCE 221', 'CSCE 222'] },
-  'CSCE 420': { title: 'Artificial Intelligence', prereqs: ['CSCE 411'] },
-  'MATH 304': { title: 'Linear Algebra', prereqs: ['MATH 151'] },
-  'STAT 211': { title: 'Prin of Statistics I', prereqs: [] },
-  'CSCE 421': { title: 'Machine Learning', prereqs: ['MATH 304', 'STAT 211', 'CSCE 221', 'CSCE 120'] },
-  'CSCE 431': { title: 'Software Engineering', prereqs: ['CSCE 315'] },
-  'CSCE 434': { title: 'Compiler Design', prereqs: ['CSCE 315'] },
-  'CSCE 441': { title: 'Computer Graphics', prereqs: ['CSCE 221'] },
-  'CSCE 442': { title: 'Scientific Programming', prereqs: ['CSCE 221', 'MATH 304'] },
-  'CSCE 448': { title: 'Computational Photography', prereqs: ['CSCE 315', 'MATH 304'] },
-  'CSCE 451': { title: 'Software Reverse Engineering', prereqs: ['CSCE 313'] },
-  'CSCE 463': { title: 'Networks & Distributed Processing', prereqs: ['CSCE 313'] },
-  'CSCE 465': { title: 'Computer & Network Security', prereqs: ['CSCE 315', 'CSCE 313'] },
-  'CSCE 481': { title: 'Seminar', prereqs: [] },
-  'CSCE 482': { title: 'Senior Capstone Design', prereqs: ['CSCE 411', 'CSCE 315'] }
+  'CSCE 120': { title: 'Program Design & Concepts', prereqs: [], tags: ['SWE'] },
+  'CSCE 121': { title: 'Intro to Program Design', prereqs: [], tags: ['SWE'] },
+  'CSCE 181': { title: 'Intro to Computing', prereqs: [], tags: [] },
+  'MATH 151': { title: 'Engineering Math I', prereqs: [], tags: [] },
+  'CSCE 222': { title: 'Discrete Structures', prereqs: [], tags: ['AI', 'ML'] },
+  'CSCE 221': { title: 'Data Structures & Algorithms', prereqs: ['CSCE 120'], tags: ['AI', 'ML', 'SWE'] },
+  'CSCE 312': { title: 'Computer Organization', prereqs: ['CSCE 221'], tags: ['Cyber', 'SWE'] },
+  'CSCE 313': {
+    title: 'Intro to Computer Systems',
+    prereqs: ['CSCE 221', 'CSCE 312'],
+    tags: ['Cyber', 'SWE']
+  },
+  'CSCE 314': { title: 'Programming Languages', prereqs: ['CSCE 221'], tags: ['SWE'] },
+  'CSCE 331': { title: 'Foundations of Software Eng', prereqs: ['CSCE 221'], tags: ['SWE'] },
+  'CSCE 411': {
+    title: 'Design/Analysis of Algorithms',
+    prereqs: ['CSCE 221', 'CSCE 222'],
+    tags: ['AI', 'ML']
+  },
+  'CSCE 420': { title: 'Artificial Intelligence', prereqs: ['CSCE 411'], tags: ['AI'] },
+  'MATH 304': { title: 'Linear Algebra', prereqs: ['MATH 151'], tags: ['AI', 'ML'] },
+  'STAT 211': { title: 'Prin of Statistics I', prereqs: [], tags: ['ML'] },
+  'CSCE 421': {
+    title: 'Machine Learning',
+    prereqs: ['MATH 304', 'STAT 211', 'CSCE 221', 'CSCE 120'],
+    tags: ['AI', 'ML']
+  },
+  'CSCE 431': { title: 'Software Engineering', prereqs: ['CSCE 331'], tags: ['SWE'] },
+  'CSCE 434': { title: 'Compiler Design', prereqs: ['CSCE 331'], tags: ['SWE'] },
+  'CSCE 441': { title: 'Computer Graphics', prereqs: ['CSCE 221'], tags: ['AI'] },
+  'CSCE 442': { title: 'Scientific Programming', prereqs: ['CSCE 221', 'MATH 304'], tags: ['AI'] },
+  'CSCE 448': {
+    title: 'Computational Photography',
+    prereqs: ['CSCE 331', 'MATH 304'],
+    tags: ['AI']
+  },
+  'CSCE 451': { title: 'Software Reverse Engineering', prereqs: ['CSCE 313'], tags: ['Cyber'] },
+  'CSCE 463': { title: 'Networks & Distributed Processing', prereqs: ['CSCE 313'], tags: ['Cyber'] },
+  'CSCE 465': { title: 'Computer & Network Security', prereqs: ['CSCE 331', 'CSCE 313'], tags: ['Cyber'] },
+  'CSCE 481': { title: 'Seminar', prereqs: [], tags: [] },
+  'CSCE 482': { title: 'Senior Capstone Design', prereqs: ['CSCE 411', 'CSCE 331'], tags: ['SWE'] },
+  'ENGR 102': { title: 'Engr Lab I Computation', prereqs: [], tags: [] },
+  'MATH 152': { title: 'Calculus II', prereqs: ['MATH 151'], tags: [] },
+  'MATH 251': { title: 'Engineering Math III', prereqs: ['MATH 152'], tags: [] },
+  'MATH 308': { title: 'Differential Equations', prereqs: ['MATH 152'], tags: [] },
+  'STAT 212': { title: 'Statistics II', prereqs: ['STAT 211'], tags: [] }
 };
 
 const buildTranscriptIndex = (terms) => {
@@ -408,6 +391,23 @@ function App() {
     return semesters;
   };
 
+  const getCurrentTermLabel = (date = new Date()) => {
+    const month = date.getMonth() + 1;
+    const year = date.getFullYear();
+    if (month === 12) return `Winter ${year}`;
+    if (month === 1) return `Winter ${year - 1}`;
+    if (month >= 8 && month <= 11) return `Fall ${year}`;
+    if (month >= 6 && month <= 7) return `Summer ${year}`;
+    return `Spring ${year}`;
+  };
+
+  const getAcademicYearStart = (termLabel) => {
+    const [term, yearStr] = termLabel.split(' ');
+    const year = Number(yearStr);
+    if (term === 'Fall' || term === 'Winter') return year;
+    return year - 1;
+  };
+
   const getAcademicYearForTerm = (termLabel) => {
     const [term, yearStr] = termLabel.split(' ');
     const year = Number(yearStr);
@@ -428,11 +428,18 @@ function App() {
     ];
   };
 
-  const semesterOrder = useMemo(
-    () => buildSemesterRange(2022, 'Fall', 2028, 'Spring'),
-    []
-  );
-  const transcriptIndex = useMemo(() => buildTranscriptIndex(RAW_TRANSCRIPT_TERMS), []);
+  const semesterOrder = useMemo(() => {
+    const currentTerm = getCurrentTermLabel();
+    const currentAcademicStart = getAcademicYearStart(currentTerm);
+    const startYear = currentAcademicStart - 4;
+    const endYear = currentAcademicStart + 4;
+    return buildSemesterRange(startYear, 'Fall', endYear + 1, 'Summer');
+  }, []);
+  const [transcriptTerms, setTranscriptTerms] = useState([]);
+  const [transcriptError, setTranscriptError] = useState('');
+  const [transcriptLoading, setTranscriptLoading] = useState(false);
+  const transcriptYears = useMemo(() => normalizeTranscript(transcriptTerms), [transcriptTerms]);
+  const transcriptIndex = useMemo(() => buildTranscriptIndex(transcriptTerms), [transcriptTerms]);
   const semesterIndex = useMemo(() => {
     const map = new Map();
     semesterOrder.forEach((sem, idx) => map.set(sem, idx));
@@ -460,7 +467,42 @@ function App() {
   const [showCourseModal, setShowCourseModal] = useState(false);
   const [planError, setPlanError] = useState('');
   const [selectedPlanYear, setSelectedPlanYear] = useState('2024-2025');
-  const [selectedTranscriptYear, setSelectedTranscriptYear] = useState('2024-2025');
+  const [selectedTranscriptYear, setSelectedTranscriptYear] = useState('');
+
+  useEffect(() => {
+    if (transcriptYears.length === 0) {
+      if (selectedTranscriptYear) setSelectedTranscriptYear('');
+      return;
+    }
+    const exists = transcriptYears.some((year) => year.year === selectedTranscriptYear);
+    if (!exists) {
+      setSelectedTranscriptYear(transcriptYears[transcriptYears.length - 1].year);
+    }
+  }, [transcriptYears, selectedTranscriptYear]);
+
+  const handleTranscriptFile = async (file) => {
+    if (!file) return;
+    setTranscriptLoading(true);
+    setTranscriptError('');
+    try {
+      const lines = await extractPdfLines(file);
+      const parsed = parseTranscriptLines(lines);
+      if (parsed.length === 0) {
+        setTranscriptTerms([]);
+        setTranscriptError('No terms detected. Please upload a text-based transcript PDF.');
+        return;
+      }
+      setTranscriptTerms(parsed);
+      const normalized = normalizeTranscript(parsed);
+      if (normalized.length > 0) {
+        setSelectedTranscriptYear(normalized[normalized.length - 1].year);
+      }
+    } catch (err) {
+      setTranscriptError('Unable to read this PDF. Please try a different transcript file.');
+    } finally {
+      setTranscriptLoading(false);
+    }
+  };
 
   const isCoursePlannedInEarlierSemester = (courseCode, semester) => {
     const targetIndex = semesterIndex.get(semester);
@@ -493,7 +535,7 @@ function App() {
     }
     setSemesterPlans((prev) => ({
       ...prev,
-      [semester]: [...prev[semester], courseCode]
+      [semester]: [...(prev[semester] ?? []), courseCode]
     }));
     setPlanError('');
     setShowCourseModal(false);
@@ -502,12 +544,12 @@ function App() {
   const removeCourseFromSemester = (courseCode, semester) => {
     setSemesterPlans((prev) => ({
       ...prev,
-      [semester]: prev[semester].filter((c) => c !== courseCode)
+      [semester]: (prev[semester] ?? []).filter((c) => c !== courseCode)
     }));
   };
 
   const validateSemester = (semester) => {
-    const courses = semesterPlans[semester];
+    const courses = semesterPlans[semester] ?? [];
     const warnings = [];
     const errors = [];
 
@@ -678,31 +720,44 @@ function App() {
       return years;
     }, [semesterOrder]);
     const currentDate = new Date();
-    const currentYear = currentDate.getFullYear();
     const getTermStartDate = (termLabel) => {
       const [season, yearStr] = termLabel.split(' ');
       const year = Number(yearStr);
       const startMonth = {
-        Spring: 1,
+        Spring: 2,
         Summer: 6,
-        Fall: 9,
+        Fall: 8,
         Winter: 12
       }[season] ?? 1;
       return new Date(year, startMonth - 1, 1);
     };
-    const getCurrentTermLabel = () => {
-      const month = currentDate.getMonth() + 1;
-      if (month === 12) return `Winter ${currentYear}`;
-      if (month >= 9) return `Fall ${currentYear}`;
-      if (month >= 6) return `Summer ${currentYear}`;
-      return `Spring ${currentYear}`;
+    const getTermEndDate = (termLabel) => {
+      const [season, yearStr] = termLabel.split(' ');
+      const year = Number(yearStr);
+      const endMonth = {
+        Spring: 5,
+        Summer: 7,
+        Fall: 11,
+        Winter: 1
+      }[season] ?? 12;
+      const endYear = season === 'Winter' ? year + 1 : year;
+      return new Date(endYear, endMonth, 0);
     };
-    const currentTermLabel = getCurrentTermLabel();
+    const getGraceEndDate = (termLabel) => {
+      const [season, yearStr] = termLabel.split(' ');
+      const year = Number(yearStr);
+      if (season === 'Winter') return new Date(year + 1, 2, 0);
+      if (season === 'Summer') return new Date(year, 9, 0);
+      return getTermEndDate(termLabel);
+    };
+    const currentTermLabel = getCurrentTermLabel(currentDate);
     const getTermState = (termLabel) => {
       const termDate = getTermStartDate(termLabel);
-      const currentTermDate = getTermStartDate(currentTermLabel);
-      if (termDate < currentTermDate) return 'past';
-      if (termDate > currentTermDate) return 'future';
+      const termEnd = getTermEndDate(termLabel);
+      const graceEnd = getGraceEndDate(termLabel);
+      if (currentDate < termDate) return 'future';
+      if (currentDate > graceEnd) return 'past';
+      if (currentDate > termEnd) return 'recent';
       return 'current';
     };
     const isPlanYearSelectable = (yearLabel) => {
@@ -715,9 +770,8 @@ function App() {
       : firstSelectableYear || planYears[0];
     const planTerms = activePlanYear ? getTermsForAcademicYear(activePlanYear) : [];
     const transcriptYear =
-      TRANSCRIPT_YEARS.find((year) => year.year === selectedTranscriptYear) ||
-      TRANSCRIPT_YEARS[0];
-    const transcriptYears = TRANSCRIPT_YEARS.map((year) => year.year);
+      transcriptYears.find((year) => year.year === selectedTranscriptYear) ||
+      transcriptYears[0];
     const statusStyles = {
       Evaluated: 'bg-green-100 text-green-700',
       'In Progress': 'bg-blue-100 text-blue-700',
@@ -826,8 +880,8 @@ function App() {
               const courses = semesterPlans[term] || [];
               const termValidation = validateSemester(term);
               const termState = getTermState(term);
-              const isEditable = termState === 'future';
-              const isViewOnly = termState === 'current';
+              const isEditable = termState !== 'past';
+              const isViewOnly = false;
               return (
                 <div key={term} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
                   <div className="flex items-center justify-between mb-3">
@@ -837,8 +891,10 @@ function App() {
                         {termValidation.totalCredits} credits • Difficulty:{' '}
                         {termValidation.totalDifficulty}/25
                       </p>
-                      {isViewOnly && (
-                        <p className="text-xs text-blue-600 mt-1">Current term (view only)</p>
+                      {isViewOnly && termState === 'recent' && (
+                        <p className="text-xs text-blue-600 mt-1">
+                          Recent term (credit transfer window)
+                        </p>
                       )}
                       {!isEditable && !isViewOnly && (
                         <p className="text-xs text-gray-500 mt-1">Past term (locked)</p>
@@ -942,86 +998,111 @@ function App() {
               <p className="text-sm text-gray-600">Transcript-aligned terms with grades</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <label className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-100 cursor-pointer">
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  className="hidden"
+                  onChange={(e) => handleTranscriptFile(e.target.files?.[0])}
+                />
+                Upload Transcript PDF
+              </label>
+              {transcriptLoading && (
+                <span className="text-sm text-gray-500">Parsing...</span>
+              )}
+              {transcriptError && (
+                <span className="text-sm text-red-600">{transcriptError}</span>
+              )}
               {transcriptYears.map((year) => (
                 <button
-                  key={year}
-                  onClick={() => setSelectedTranscriptYear(year)}
+                  key={year.year}
+                  onClick={() => setSelectedTranscriptYear(year.year)}
                   className={`px-3 py-2 rounded-lg text-sm font-medium border ${
-                    selectedTranscriptYear === year
+                    selectedTranscriptYear === year.year
                       ? 'text-white'
                       : 'text-gray-700 border-gray-200 hover:bg-gray-100'
                   }`}
-                  style={selectedTranscriptYear === year ? { backgroundColor: '#500000' } : {}}
+                  style={
+                    selectedTranscriptYear === year.year ? { backgroundColor: '#500000' } : {}
+                  }
                 >
-                  {year}
+                  {year.year}
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {transcriptYear.terms
-              .filter((term) => term.courses.length > 0)
-              .map((term) => {
-                const termCredits = term.courses.reduce((sum, c) => sum + c.credits, 0);
-                return (
-                  <div
-                    key={term.label}
-                    className="border border-gray-200 rounded-lg p-4 bg-gray-50"
-                  >
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <h4 className="font-semibold text-gray-900">{term.label}</h4>
-                        <p className="text-xs text-gray-600">{termCredits} credits</p>
-                      </div>
-                      <span
-                        className={`text-xs px-2 py-1 rounded-full ${
-                          statusStyles[term.status] || 'bg-gray-200 text-gray-700'
-                        }`}
-                      >
-                        {term.status}
-                      </span>
-                    </div>
-                    <div className="space-y-2">
-                      {term.courses.map((course) => (
-                        <div
-                          key={`${term.label}-${course.code}`}
-                          className="rounded-md bg-white border border-gray-100 px-3 py-2"
-                        >
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <p className="text-sm font-semibold text-gray-900">{course.code}</p>
-                              <p className="text-xs text-gray-600">{course.title}</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-sm font-semibold text-gray-900">
-                                {course.grade}
-                              </p>
-                              <p className="text-xs text-gray-500">{course.credits} cr</p>
-                            </div>
-                          </div>
-                          {(course.transfer || course.honors) && (
-                            <div className="mt-2 flex items-center justify-end gap-2">
-                              {course.honors && (
-                                <span className="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-700">
-                                  Honors
-                                </span>
-                              )}
-                              {course.transfer && (
-                                <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 flex items-center gap-1">
-                                  <CheckCircle className="w-3 h-3" />
-                                  Transfer
-                                </span>
-                              )}
-                            </div>
-                          )}
+          {transcriptYears.length === 0 || !transcriptYear ? (
+            <div className="border border-dashed border-gray-300 rounded-lg p-8 text-center text-gray-500">
+              Upload a transcript PDF to populate your academic record.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {transcriptYear.terms
+                .filter((term) => term.courses.length > 0)
+                .map((term) => {
+                  const termCredits = term.courses.reduce((sum, c) => sum + c.credits, 0);
+                  return (
+                    <div
+                      key={term.label}
+                      className="border border-gray-200 rounded-lg p-4 bg-gray-50"
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <h4 className="font-semibold text-gray-900">{term.label}</h4>
+                          <p className="text-xs text-gray-600">{termCredits} credits</p>
                         </div>
-                      ))}
+                        <span
+                          className={`text-xs px-2 py-1 rounded-full ${
+                            statusStyles[term.status] || 'bg-gray-200 text-gray-700'
+                          }`}
+                        >
+                          {term.status}
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        {term.courses.map((course) => (
+                          <div
+                            key={`${term.label}-${course.code}`}
+                            className="rounded-md bg-white border border-gray-100 px-3 py-2"
+                          >
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <p className="text-sm font-semibold text-gray-900">
+                                  {course.code}
+                                </p>
+                                <p className="text-xs text-gray-600">{course.title}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-sm font-semibold text-gray-900">
+                                  {course.grade}
+                                </p>
+                                <p className="text-xs text-gray-500">{course.credits} cr</p>
+                              </div>
+                            </div>
+                            {(course.transfer || course.honors) && (
+                              <div className="mt-2 flex items-center justify-end gap-2">
+                                {course.honors && (
+                                  <span className="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-700">
+                                    Honors
+                                  </span>
+                                )}
+                                {course.transfer && (
+                                  <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 flex items-center gap-1">
+                                    <CheckCircle className="w-3 h-3" />
+                                    Transfer
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-          </div>
+                  );
+                })}
+            </div>
+          )}
         </div>
 
         {showCourseModal && (
@@ -1060,7 +1141,7 @@ function App() {
                 <div className="space-y-2">
                   {filteredCourses.map(([code, course]) => {
                     const isLocked = course.status === 'locked';
-                    const alreadyPlanned = semesterPlans[selectedSemester].includes(code);
+                    const alreadyPlanned = (semesterPlans[selectedSemester] ?? []).includes(code);
                     const alreadyTaken = isCourseCompleted(code);
                     const inProgress = isCourseInProgress(code);
                     const alreadyPlannedEarlier = isCoursePlannedInEarlierSemester(
@@ -1148,39 +1229,45 @@ function App() {
   };
 
   const PrerequisiteTab = () => {
+    const trackTags = ['All', 'Cyber', 'AI', 'ML', 'SWE'];
+    const [selectedTrack, setSelectedTrack] = useState('All');
+    const [hoveredCourse, setHoveredCourse] = useState(null);
     const flowNodes = [
-      { id: 'CSCE 120', x: 20, y: 20 },
-      { id: 'CSCE 121', x: 20, y: 100 },
-      { id: 'CSCE 181', x: 20, y: 180 },
-      { id: 'MATH 151', x: 20, y: 260 },
-      { id: 'CSCE 221', x: 240, y: 60 },
-      { id: 'CSCE 222', x: 240, y: 140 },
-      { id: 'MATH 304', x: 240, y: 220 },
-      { id: 'STAT 211', x: 240, y: 300 },
-      { id: 'CSCE 312', x: 460, y: 20 },
-      { id: 'CSCE 313', x: 460, y: 90 },
-      { id: 'CSCE 314', x: 460, y: 160 },
-      { id: 'CSCE 331', x: 460, y: 230 },
-      { id: 'CSCE 481', x: 460, y: 300 },
-      { id: 'CSCE 411', x: 680, y: 20 },
-      { id: 'CSCE 420', x: 680, y: 90 },
-      { id: 'CSCE 421', x: 680, y: 160 },
-      { id: 'CSCE 463', x: 680, y: 230 },
-      { id: 'CSCE 465', x: 680, y: 300 },
-      { id: 'CSCE 315', x: 900, y: 20 },
-      { id: 'CSCE 431', x: 900, y: 90 },
-      { id: 'CSCE 434', x: 900, y: 160 },
-      { id: 'CSCE 441', x: 900, y: 230 },
-      { id: 'CSCE 448', x: 900, y: 300 },
-      { id: 'CSCE 451', x: 1120, y: 90 },
-      { id: 'CSCE 482', x: 1120, y: 170 },
-      { id: 'CSCE 442', x: 1120, y: 250 }
+      { id: 'MATH 151', x: 100, y: 40 },
+      { id: 'ENGR 102', x: 100, y: 150 },
+      { id: 'MATH 152', x: 100, y: 260 },
+      { id: 'CSCE 181', x: 100, y: 370 },
+      { id: 'CSCE 120', x: 420, y: 40 },
+      { id: 'CSCE 222', x: 420, y: 150 },
+      { id: 'MATH 304', x: 420, y: 260 },
+      { id: 'STAT 211', x: 420, y: 370 },
+      { id: 'CSCE 221', x: 740, y: 40 },
+      { id: 'CSCE 312', x: 740, y: 150 },
+      { id: 'CSCE 314', x: 740, y: 260 },
+      { id: 'STAT 212', x: 740, y: 370 },
+      { id: 'MATH 251', x: 740, y: 480 },
+      { id: 'MATH 308', x: 740, y: 590 },
+      { id: 'CSCE 313', x: 1060, y: 40 },
+      { id: 'CSCE 331', x: 1060, y: 150 },
+      { id: 'CSCE 411', x: 1060, y: 260 },
+      { id: 'CSCE 420', x: 1380, y: 40 },
+      { id: 'CSCE 421', x: 1380, y: 150 },
+      { id: 'CSCE 463', x: 1380, y: 260 },
+      { id: 'CSCE 465', x: 1380, y: 370 },
+      { id: 'CSCE 431', x: 1380, y: 480 },
+      { id: 'CSCE 434', x: 1380, y: 590 },
+      { id: 'CSCE 441', x: 1380, y: 700 },
+      { id: 'CSCE 442', x: 1380, y: 810 },
+      { id: 'CSCE 448', x: 1380, y: 920 },
+      { id: 'CSCE 451', x: 1380, y: 1030 },
+      { id: 'CSCE 481', x: 1380, y: 1140 },
+      { id: 'CSCE 482', x: 1380, y: 1250 }
     ];
     const flowEdges = Object.entries(FLOWCHART_COURSES).flatMap(([code, course]) =>
       course.prereqs.map((prereq) => ({ from: prereq, to: code }))
     );
-    const nodeWidth = 180;
-    const nodeHeight = 56;
+    const nodeWidth = 210;
+    const nodeHeight = 58;
     const nodeMap = useMemo(() => {
       const map = new Map();
       flowNodes.forEach((node) => map.set(node.id, node));
@@ -1192,6 +1279,22 @@ function App() {
       available: 'fill-[#fef9c3] stroke-[#ca8a04]',
       locked: 'fill-[#f3f4f6] stroke-[#9ca3af]'
     };
+    const isPrereqMet = (code) => isCourseCompleted(code) || isCourseInProgress(code);
+    const getCourseData = (code) => FLOWCHART_COURSES[code] || COURSES[code];
+    const getUnmetPrereqs = (code, visited = new Set()) => {
+      if (!code || visited.has(code)) return new Set();
+      visited.add(code);
+      const course = getCourseData(code);
+      if (!course || !course.prereqs || course.prereqs.length === 0) return new Set();
+      const unmet = new Set();
+      course.prereqs.forEach((prereq) => {
+        if (!isPrereqMet(prereq)) {
+          unmet.add(prereq);
+          getUnmetPrereqs(prereq, visited).forEach((item) => unmet.add(item));
+        }
+      });
+      return unmet;
+    };
     const getStatus = (code) => {
       if (isCourseCompleted(code)) return 'completed';
       if (isCourseInProgress(code)) return 'in-progress';
@@ -1201,6 +1304,10 @@ function App() {
         course.prereqs.length === 0 || course.prereqs.every((p) => isCourseCompleted(p));
       return prereqsMet ? 'available' : 'locked';
     };
+    const hoveredUnmet = useMemo(
+      () => (hoveredCourse ? getUnmetPrereqs(hoveredCourse) : new Set()),
+      [hoveredCourse]
+    );
 
     return (
       <div className="space-y-4">
@@ -1211,9 +1318,25 @@ function App() {
           </p>
 
           <div className="border border-gray-200 rounded-lg bg-gray-50 p-4 overflow-x-auto">
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              {trackTags.map((tag) => (
+                <button
+                  key={tag}
+                  onClick={() => setSelectedTrack(tag)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
+                    selectedTrack === tag
+                      ? 'text-white'
+                      : 'text-gray-700 border-gray-200 hover:bg-gray-100'
+                  }`}
+                  style={selectedTrack === tag ? { backgroundColor: '#500000' } : {}}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
             <svg
-              viewBox="0 0 1540 380"
-              className="w-[1540px] h-auto"
+              viewBox="0 0 1700 1380"
+              className="w-[1700px] h-auto"
               role="img"
               aria-label="Course prerequisite flowchart"
             >
@@ -1238,15 +1361,25 @@ function App() {
                 const startY = from.y + nodeHeight / 2;
                 const endX = to.x;
                 const endY = to.y + nodeHeight / 2;
+                const midX = (startX + endX) / 2;
+                const fromTags = FLOWCHART_COURSES[edge.from]?.tags || [];
+                const toTags = FLOWCHART_COURSES[edge.to]?.tags || [];
+                const edgeActive =
+                  selectedTrack === 'All' ||
+                  fromTags.includes(selectedTrack) ||
+                  toTags.includes(selectedTrack);
+                const edgeHighlighted =
+                  hoveredCourse &&
+                  ((edge.to === hoveredCourse && hoveredUnmet.has(edge.from)) ||
+                    (hoveredUnmet.has(edge.to) && hoveredUnmet.has(edge.from)));
                 return (
-                  <line
+                  <path
                     key={`${edge.from}-${edge.to}`}
-                    x1={startX}
-                    y1={startY}
-                    x2={endX}
-                    y2={endY}
-                    stroke="#9ca3af"
-                    strokeWidth="2"
+                    d={`M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`}
+                    fill="none"
+                    stroke={edgeHighlighted ? '#dc2626' : '#9ca3af'}
+                    strokeWidth={edgeHighlighted ? '2.2' : edgeActive ? '1.6' : '1'}
+                    strokeOpacity={edgeHighlighted ? '0.9' : edgeActive ? '0.7' : '0.25'}
                     markerEnd="url(#arrow)"
                   />
                 );
@@ -1256,8 +1389,19 @@ function App() {
                 const course = FLOWCHART_COURSES[node.id] || COURSES[node.id];
                 if (!course) return null;
                 const status = getStatus(node.id);
+                const tags = FLOWCHART_COURSES[node.id]?.tags || [];
+                const isTagged = selectedTrack === 'All' || tags.includes(selectedTrack);
+                const isHighlighted = hoveredUnmet.has(node.id);
+                const nodeOpacity = isHighlighted ? 1 : isTagged ? 1 : 0.35;
                 return (
-                  <g key={node.id}>
+                  <g
+                    key={node.id}
+                    opacity={nodeOpacity}
+                    onMouseEnter={() => {
+                      if (status === 'locked') setHoveredCourse(node.id);
+                    }}
+                    onMouseLeave={() => setHoveredCourse(null)}
+                  >
                     <rect
                       x={node.x}
                       y={node.y}
@@ -1265,6 +1409,8 @@ function App() {
                       height={nodeHeight}
                       rx="8"
                       className={`${statusStyles[status]} stroke-2`}
+                      stroke={isHighlighted ? '#dc2626' : isTagged ? '#500000' : undefined}
+                      strokeWidth={isHighlighted ? 3 : undefined}
                     />
                     <text x={node.x + 12} y={node.y + 20} fontSize="12" fill="#111827">
                       <tspan fontWeight="600">{node.id}</tspan>
