@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import tamuLogo from './assets/tamu-logo.svg';
 import {
   Calendar,
   AlertTriangle,
@@ -389,20 +390,32 @@ const EMPHASIS_TRACKS = {
 
 function App() {
   const buildSemesterRange = (startYear, startTerm, endYear, endTerm) => {
-    const terms = ['Fall', 'Winter', 'Spring', 'Summer'];
-    const startIndex = terms.indexOf(startTerm);
-    const endIndex = terms.indexOf(endTerm);
     const semesters = [];
-
-    for (let year = startYear; year <= endYear; year += 1) {
-      for (let t = 0; t < terms.length; t += 1) {
-        const term = terms[t];
-        const isStartYear = year === startYear;
-        const isEndYear = year === endYear;
-        if (isStartYear && t < startIndex) continue;
-        if (isEndYear && t > endIndex) continue;
-        semesters.push(`${term} ${year}`);
+    const advanceTerm = (term, year) => {
+      switch (term) {
+        case 'Fall':
+          return { term: 'Winter', year };
+        case 'Winter':
+          return { term: 'Spring', year: year + 1 };
+        case 'Spring':
+          return { term: 'Summer', year };
+        case 'Summer':
+        default:
+          return { term: 'Fall', year: year + 1 };
       }
+    };
+
+    let term = startTerm;
+    let year = startYear;
+    const guardLimit = 200;
+    let guard = 0;
+    while (guard < guardLimit) {
+      semesters.push(`${term} ${year}`);
+      if (term === endTerm && year === endYear) break;
+      const next = advanceTerm(term, year);
+      term = next.term;
+      year = next.year;
+      guard += 1;
     }
 
     return semesters;
@@ -428,8 +441,11 @@ function App() {
     ];
   };
 
+  const PLAN_START_YEAR = 2022;
+  const PLAN_END_YEAR = 2026;
+  const SEMESTER_START_YEAR = 2021;
   const semesterOrder = useMemo(
-    () => buildSemesterRange(2022, 'Fall', 2028, 'Spring'),
+    () => buildSemesterRange(SEMESTER_START_YEAR, 'Fall', PLAN_END_YEAR + 1, 'Summer'),
     []
   );
   const transcriptIndex = useMemo(() => buildTranscriptIndex(RAW_TRANSCRIPT_TERMS), []);
@@ -462,12 +478,57 @@ function App() {
   const [selectedPlanYear, setSelectedPlanYear] = useState('2024-2025');
   const [selectedTranscriptYear, setSelectedTranscriptYear] = useState('2024-2025');
 
+  const transcriptTermMap = useMemo(() => {
+    const map = new Map();
+    RAW_TRANSCRIPT_TERMS.forEach((term) => {
+      if (!term?.label) return;
+      map.set(term.label, term);
+    });
+    return map;
+  }, []);
+
+  const isCourseInTranscriptTerm = (courseCode, termLabel) =>
+    transcriptTermMap
+      .get(termLabel)
+      ?.courses?.some((course) => course.code === courseCode);
+
+  const getPriorTermWithCourse = (courseCode, semester) => {
+    const targetIndex = semesterIndex.get(semester);
+    if (targetIndex === undefined) return null;
+    const priorTerms = semesterOrder.filter((_, idx) => idx < targetIndex);
+    for (let i = priorTerms.length - 1; i >= 0; i -= 1) {
+      const term = priorTerms[i];
+      if (
+        semesterPlans[term]?.includes(courseCode) ||
+        isCourseInTranscriptTerm(courseCode, term)
+      ) {
+        return term;
+      }
+    }
+    return null;
+  };
+
   const isCoursePlannedInEarlierSemester = (courseCode, semester) => {
     const targetIndex = semesterIndex.get(semester);
     if (targetIndex === undefined) return false;
     return semesterOrder.some((sem, idx) => {
       if (idx >= targetIndex) return false;
-      return semesterPlans[sem]?.includes(courseCode);
+      return (
+        semesterPlans[sem]?.includes(courseCode) ||
+        isCourseInTranscriptTerm(courseCode, sem)
+      );
+    });
+  };
+
+  const isCourseSelectedInOtherSemester = (courseCode, semester) => {
+    const plannedInOther = Object.entries(semesterPlans).some(([term, courses]) => {
+      if (term === semester) return false;
+      return courses?.includes(courseCode);
+    });
+    if (plannedInOther) return true;
+    return RAW_TRANSCRIPT_TERMS.some((term) => {
+      if (term.label === semester) return false;
+      return term.courses?.some((course) => course.code === courseCode);
     });
   };
 
@@ -487,13 +548,13 @@ function App() {
       setPlanError(`${courseCode} is currently in progress.`);
       return;
     }
-    if (isCoursePlannedInEarlierSemester(courseCode, semester)) {
-      setPlanError(`${courseCode} has already been planned in a prior semester.`);
+    if (isCourseSelectedInOtherSemester(courseCode, semester)) {
+      setPlanError(`${courseCode} is already selected in another term.`);
       return;
     }
     setSemesterPlans((prev) => ({
       ...prev,
-      [semester]: [...prev[semester], courseCode]
+      [semester]: [...(prev[semester] || []), courseCode]
     }));
     setPlanError('');
     setShowCourseModal(false);
@@ -502,12 +563,12 @@ function App() {
   const removeCourseFromSemester = (courseCode, semester) => {
     setSemesterPlans((prev) => ({
       ...prev,
-      [semester]: prev[semester].filter((c) => c !== courseCode)
+      [semester]: (prev[semester] || []).filter((c) => c !== courseCode)
     }));
   };
 
   const validateSemester = (semester) => {
-    const courses = semesterPlans[semester];
+    const courses = semesterPlans[semester] || [];
     const warnings = [];
     const errors = [];
 
@@ -669,14 +730,11 @@ function App() {
     const validation = validateSemester(selectedSemester);
     const planYears = useMemo(() => {
       const years = [];
-      semesterOrder.forEach((term) => {
-        const label = getAcademicYearForTerm(term);
-        if (!years.includes(label)) {
-          years.push(label);
-        }
-      });
+      for (let year = SEMESTER_START_YEAR; year <= PLAN_END_YEAR; year += 1) {
+        years.push(`${year}-${year + 1}`);
+      }
       return years;
-    }, [semesterOrder]);
+    }, []);
     const currentDate = new Date();
     const currentYear = currentDate.getFullYear();
     const getTermStartDate = (termLabel) => {
@@ -698,6 +756,7 @@ function App() {
       return `Spring ${currentYear}`;
     };
     const currentTermLabel = getCurrentTermLabel();
+    const filteredPlanYears = planYears;
     const getTermState = (termLabel) => {
       const termDate = getTermStartDate(termLabel);
       const currentTermDate = getTermStartDate(currentTermLabel);
@@ -705,14 +764,10 @@ function App() {
       if (termDate > currentTermDate) return 'future';
       return 'current';
     };
-    const isPlanYearSelectable = (yearLabel) => {
-      const terms = getTermsForAcademicYear(yearLabel);
-      return terms.some((term) => getTermState(term) !== 'past');
-    };
-    const firstSelectableYear = planYears.find((year) => isPlanYearSelectable(year));
-    const activePlanYear = planYears.includes(selectedPlanYear)
+    const isPlanYearSelectable = () => true;
+    const activePlanYear = filteredPlanYears.includes(selectedPlanYear)
       ? selectedPlanYear
-      : firstSelectableYear || planYears[0];
+      : filteredPlanYears[0];
     const planTerms = activePlanYear ? getTermsForAcademicYear(activePlanYear) : [];
     const transcriptYear =
       TRANSCRIPT_YEARS.find((year) => year.year === selectedTranscriptYear) ||
@@ -745,7 +800,7 @@ function App() {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {planYears.map((year) => {
+              {filteredPlanYears.map((year) => {
                 const selectable = isPlanYearSelectable(year);
                 return (
                   <button
@@ -761,9 +816,8 @@ function App() {
                       selectedPlanYear === year
                         ? 'text-white'
                         : 'text-gray-700 border-gray-200 hover:bg-gray-100'
-                    } ${selectable ? '' : 'opacity-40 cursor-not-allowed'}`}
+                    }`}
                     style={selectedPlanYear === year ? { backgroundColor: '#500000' } : {}}
-                    disabled={!selectable}
                   >
                     {year}
                   </button>
@@ -771,12 +825,6 @@ function App() {
               })}
             </div>
           </div>
-
-          {!isPlanYearSelectable(selectedPlanYear) && (
-            <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
-              Planning is disabled for past academic years. You can view the current term ({currentTermLabel}) but cannot edit it.
-            </div>
-          )}
 
           {(planError || validation.errors.length > 0) && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
@@ -823,10 +871,30 @@ function App() {
 
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
             {planTerms.map((term) => {
-              const courses = semesterPlans[term] || [];
+              const transcriptTerm = transcriptTermMap.get(term);
+              const transcriptCourses = transcriptTerm?.courses || [];
+              const plannedCourses = semesterPlans[term] || [];
+              const displayCourses = [
+                ...transcriptCourses.map((course) => ({
+                  type: 'transcript',
+                  code: course.code,
+                  title: course.title,
+                  credits: course.credits,
+                  grade: course.grade,
+                  status: transcriptTerm?.status
+                })),
+                ...plannedCourses
+                  .filter((code) => !transcriptCourses.some((c) => c.code === code))
+                  .map((code) => ({
+                    type: 'planned',
+                    code,
+                    title: COURSES[code]?.title,
+                    credits: COURSES[code]?.credits ?? 0
+                  }))
+              ];
               const termValidation = validateSemester(term);
               const termState = getTermState(term);
-              const isEditable = termState === 'future';
+              const isEditable = true;
               const isViewOnly = termState === 'current';
               return (
                 <div key={term} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
@@ -838,10 +906,10 @@ function App() {
                         {termValidation.totalDifficulty}/25
                       </p>
                       {isViewOnly && (
-                        <p className="text-xs text-blue-600 mt-1">Current term (view only)</p>
+                        <p className="text-xs text-blue-600 mt-1">Current term</p>
                       )}
-                      {!isEditable && !isViewOnly && (
-                        <p className="text-xs text-gray-500 mt-1">Past term (locked)</p>
+                      {termState === 'past' && (
+                        <p className="text-xs text-gray-500 mt-1">Past term</p>
                       )}
                     </div>
                     <button
@@ -875,19 +943,21 @@ function App() {
                   </div>
 
                   <div className="space-y-2">
-                    {courses.length === 0 ? (
+                    {displayCourses.length === 0 ? (
                       <div className="text-center py-6 text-gray-500 text-sm">
                         <Calendar className="w-8 h-8 mx-auto mb-2 opacity-50" />
                         <p>No courses planned</p>
                       </div>
                     ) : (
-                      courses.map((code) => {
-                        const course = COURSES[code];
-                        const hasPrereqIssue = course.prereqs.some((p) => !isCourseCompleted(p));
+                      displayCourses.map((course) => {
+                        const courseMeta = COURSES[course.code];
+                        const hasPrereqIssue =
+                          course.type === 'planned' &&
+                          courseMeta?.prereqs?.some((p) => !isCourseCompleted(p));
 
                         return (
                           <div
-                            key={code}
+                            key={`${term}-${course.code}-${course.type}`}
                             className={`p-3 rounded-lg border ${
                               hasPrereqIssue
                                 ? 'border-red-300 bg-red-50'
@@ -897,32 +967,45 @@ function App() {
                             <div className="flex justify-between items-start">
                               <div className="flex-1">
                                 <div className="flex items-center gap-2">
-                                  <h4 className="font-semibold text-gray-900">{code}</h4>
+                                  <h4 className="font-semibold text-gray-900">{course.code}</h4>
                                   <span className="text-xs bg-gray-200 px-2 py-1 rounded">
                                     {course.credits} cr
                                   </span>
+                                  {course.type === 'transcript' && (
+                                    <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
+                                      {course.status || 'Recorded'}
+                                    </span>
+                                  )}
                                 </div>
-                                <p className="text-xs text-gray-600 mt-1">{course.title}</p>
+                                <p className="text-xs text-gray-600 mt-1">
+                                  {course.title || courseMeta?.title}
+                                </p>
                                 {hasPrereqIssue && (
                                   <p className="text-xs text-red-600 mt-2 flex items-center gap-1">
                                     <AlertTriangle className="w-3 h-3" />
                                     Missing prerequisites:{' '}
-                                    {course.prereqs.filter((p) => !isCourseCompleted(p)).join(', ')}
+                                    {courseMeta.prereqs
+                                      .filter((p) => !isCourseCompleted(p))
+                                      .join(', ')}
                                   </p>
                                 )}
                               </div>
-                              <button
-                                onClick={() => {
-                                  if (!isEditable) return;
-                                  removeCourseFromSemester(code, term);
-                                }}
-                                className={`text-gray-400 ${
-                                  isEditable ? 'hover:text-red-600' : 'cursor-not-allowed opacity-50'
-                                }`}
-                                disabled={!isEditable}
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
+                              {course.type === 'planned' && (
+                                <button
+                                  onClick={() => {
+                                    if (!isEditable) return;
+                                    removeCourseFromSemester(course.code, term);
+                                  }}
+                                  className={`text-gray-400 ${
+                                    isEditable
+                                      ? 'hover:text-red-600'
+                                      : 'cursor-not-allowed opacity-50'
+                                  }`}
+                                  disabled={!isEditable}
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              )}
                             </div>
                           </div>
                         );
@@ -1060,15 +1143,28 @@ function App() {
                 <div className="space-y-2">
                   {filteredCourses.map(([code, course]) => {
                     const isLocked = course.status === 'locked';
-                    const alreadyPlanned = semesterPlans[selectedSemester].includes(code);
+                    const plannedForSelectedSemester =
+                      semesterPlans[selectedSemester] || [];
+                    const alreadyPlanned = plannedForSelectedSemester.includes(code);
                     const alreadyTaken = isCourseCompleted(code);
                     const inProgress = isCourseInProgress(code);
                     const alreadyPlannedEarlier = isCoursePlannedInEarlierSemester(
                       code,
                       selectedSemester
                     );
+                    const alreadySelectedOtherTerm =
+                      !alreadyPlannedEarlier &&
+                      isCourseSelectedInOtherSemester(code, selectedSemester);
+                    const priorTermLabel =
+                      (alreadyPlannedEarlier || alreadySelectedOtherTerm) &&
+                      getPriorTermWithCourse(code, selectedSemester);
                     const isDisabled =
-                      isLocked || alreadyPlanned || alreadyTaken || inProgress || alreadyPlannedEarlier;
+                      isLocked ||
+                      alreadyPlanned ||
+                      alreadyTaken ||
+                      inProgress ||
+                      alreadyPlannedEarlier ||
+                      alreadySelectedOtherTerm;
 
                     return (
                       <div
@@ -1100,7 +1196,7 @@ function App() {
                               setPlanError(`${code} is currently in progress.`);
                             } else if (alreadyPlannedEarlier) {
                               setPlanError(
-                                `${code} has already been planned in a prior semester.`
+                                `${code} is already selected in a prior term.`
                               );
                             }
                             return;
@@ -1130,8 +1226,10 @@ function App() {
                           {inProgress && (
                             <span className="text-xs text-blue-600">In progress</span>
                           )}
-                          {alreadyPlannedEarlier && (
-                            <span className="text-xs text-red-600">Already planned</span>
+                          {(alreadyPlannedEarlier || alreadySelectedOtherTerm) && (
+                            <span className="text-xs text-red-600">
+                              Already selected{priorTermLabel ? ` (${priorTermLabel})` : ''}
+                            </span>
                           )}
                           {alreadyPlanned && <CheckCircle className="w-5 h-5 text-green-600" />}
                         </div>
@@ -1304,24 +1402,124 @@ function App() {
     );
   };
 
+  const LoginPage = () => {
+    return (
+      <div className="min-h-[70vh] flex items-center justify-center">
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl p-8">
+          <div className="flex items-center gap-3 mb-6">
+            <img
+              src={tamuLogo}
+              alt="TAMU logo"
+              className="w-12 h-12 rounded-full bg-gray-100 p-2"
+            />
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">Sign in to TAMU Planner</h2>
+              <p className="text-sm text-gray-600">Access your degree plan in seconds</p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="w-full flex items-center justify-center gap-3 border border-gray-300 rounded-lg py-3 text-sm font-semibold text-gray-800 hover:bg-gray-50"
+          >
+            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-white border border-gray-200 text-sm font-bold">
+              G
+            </span>
+            Continue with Google
+          </button>
+
+          <div className="flex items-center gap-3 my-6">
+            <div className="flex-1 h-px bg-gray-200"></div>
+            <span className="text-xs uppercase text-gray-400">or</span>
+            <div className="flex-1 h-px bg-gray-200"></div>
+          </div>
+
+          <form className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">NetID</label>
+              <input
+                type="text"
+                placeholder="netid123"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#500000]/30"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+              <input
+                type="password"
+                placeholder="••••••••"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#500000]/30"
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                className="text-sm text-[#500000] font-semibold hover:underline"
+              >
+                Forgot password?
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 rounded-lg text-white text-sm font-semibold"
+                style={{ backgroundColor: '#500000' }}
+              >
+                Sign in with NetID
+              </button>
+            </div>
+          </form>
+
+          <div className="mt-6 text-sm text-gray-600 flex items-center justify-between">
+            <span>New here? Use Google to sign up.</span>
+            <button
+              type="button"
+              onClick={() => setActiveTab('planner')}
+              className="text-[#500000] font-semibold hover:underline"
+            >
+              Back to planner
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gray-100">
       <header className="shadow-lg" style={{ backgroundColor: '#500000' }}>
         <div className="max-w-7xl mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <GraduationCap className="w-8 h-8 text-white" />
+            <button
+              type="button"
+              onClick={() => setActiveTab('dashboard')}
+              className="flex items-center gap-3 text-left"
+              aria-label="Go to dashboard"
+            >
+              <img
+                src={tamuLogo}
+                alt="TAMU logo"
+                className="w-10 h-10 rounded-full bg-white p-1"
+              />
               <div>
                 <h1 className="text-2xl font-bold text-white">TAMU Academic Planner</h1>
                 <p className="text-sm" style={{ color: '#f0e5d8' }}>
                   Enhanced Planning Tool
                 </p>
               </div>
-            </div>
+            </button>
             <div className="flex gap-2">
-              <button className="flex items-center gap-2 bg-white px-4 py-2 rounded-lg hover:bg-gray-100" style={{ color: '#500000' }}>
+              <button
+                className="flex items-center gap-2 bg-white px-4 py-2 rounded-lg hover:bg-gray-100"
+                style={{ color: '#500000' }}
+              >
                 <Save className="w-4 h-4" />
                 Save Plan
+              </button>
+              <button
+                className="flex items-center gap-2 border border-white/60 px-4 py-2 rounded-lg text-white hover:bg-white/10"
+                type="button"
+                onClick={() => setActiveTab('login')}
+              >
+                Login
               </button>
             </div>
           </div>
@@ -1353,6 +1551,7 @@ function App() {
         {activeTab === 'dashboard' && <DashboardTab />}
         {activeTab === 'planner' && <PlannerTab />}
         {activeTab === 'prerequisites' && <PrerequisiteTab />}
+        {activeTab === 'login' && <LoginPage />}
       </main>
     </div>
   );
