@@ -533,6 +533,9 @@ function App() {
   const [transcriptError, setTranscriptError] = useState('');
   const [transcriptLoading, setTranscriptLoading] = useState(false);
   const [transcriptLoadingMessage, setTranscriptLoadingMessage] = useState('');
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatInput, setChatInput] = useState('');
+  const [chatMessages, setChatMessages] = useState([]);
   const transcriptYears = useMemo(() => normalizeTranscript(transcriptTerms), [transcriptTerms]);
   const transcriptIndex = useMemo(() => buildTranscriptIndex(transcriptTerms), [transcriptTerms]);
 
@@ -2066,6 +2069,92 @@ function App() {
         )}
         {activeTab === 'login' && <LoginPage />}
       </main>
+
+      {!isFlowFullscreen && (
+        <div className="fixed right-0 bottom-6 z-50 flex items-end">
+          <div
+            className={`mr-3 w-80 rounded-2xl border border-gray-200 bg-white shadow-xl transition-all duration-300 ease-out ${
+              isChatOpen
+                ? 'opacity-100 translate-x-0 pointer-events-auto'
+                : 'opacity-0 translate-x-6 pointer-events-none'
+            }`}
+          >
+              <div className="flex items-center justify-between border-b px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">DegreeFlow Assistant</p>
+                  <p className="text-xs text-gray-500">Ask anything about your plan</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsChatOpen(false)}
+                  className="text-xs text-gray-500 hover:text-gray-800"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="h-56 px-4 py-3 text-xs text-gray-600 space-y-2 overflow-y-auto">
+                {chatMessages.length === 0 ? (
+                  <div className="text-gray-400">Messages will appear here.</div>
+                ) : (
+                  chatMessages.map((message) => (
+                    <div key={message.id} className="flex justify-end">
+                      <span className="max-w-[85%] rounded-lg bg-[#500000]/10 px-3 py-2 text-xs text-gray-800">
+                        {message.text}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="border-t px-3 py-3">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Type your question..."
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const trimmed = chatInput.trim();
+                        if (!trimmed) return;
+                        setChatMessages((prev) => [
+                          ...prev,
+                          { id: `${Date.now()}-${prev.length}`, text: trimmed }
+                        ]);
+                        setChatInput('');
+                      }
+                    }}
+                    className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#500000]/20"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const trimmed = chatInput.trim();
+                      if (!trimmed) return;
+                      setChatMessages((prev) => [
+                        ...prev,
+                        { id: `${Date.now()}-${prev.length}`, text: trimmed }
+                      ]);
+                      setChatInput('');
+                    }}
+                    className="rounded-full bg-[#500000] px-3 py-2 text-xs font-semibold text-white hover:bg-[#3d0000]"
+                  >
+                    Send
+                  </button>
+                </div>
+              </div>
+            </div>
+
+          <button
+            type="button"
+            onClick={() => setIsChatOpen((prev) => !prev)}
+            className="flex items-center justify-center h-14 w-7 rounded-l-full bg-[#500000] text-white shadow-lg hover:bg-[#3d0000]"
+            aria-label="Toggle chat assistant"
+          >
+            {isChatOpen ? '‹' : '›'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
