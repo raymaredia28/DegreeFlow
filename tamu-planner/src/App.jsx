@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import tamuLogo from './assets/tamu-logo.svg';
@@ -280,35 +280,40 @@ const parseTranscriptLines = (lines) => {
     const line = rawLine.replace(/\s+/g, ' ').trim();
     if (!line) return;
 
-    if (/courses in progress/i.test(line)) {
-      currentTerm = {
-        label: 'In Progress',
-        status: 'In Progress',
-        courses: []
-      };
-      terms.push(currentTerm);
+    const termMatch = line.match(TERM_REGEX);
+    if (termMatch) {
+      console.log('[transcript] Term match:', { line, termMatch });
+      const label = `${termMatch[1]} ${termMatch[2]}`;
+      const existing = terms.find((term) => term.label === label);
+      if (existing) {
+        currentTerm = existing;
+      } else {
+        currentTerm = {
+          label,
+          status: 'Evaluated',
+          courses: []
+        };
+        terms.push(currentTerm);
+      }
       return;
     }
 
-    const termMatch = line.match(TERM_REGEX);
-    if (termMatch) {
-      currentTerm = {
-        label: `${termMatch[1]} ${termMatch[2]}`,
-        status: 'Evaluated',
-        courses: []
-      };
-      terms.push(currentTerm);
+    if (/courses in progress/i.test(line)) {
+      console.log('[transcript] Skipping "courses in progress" marker:', line);
       return;
     }
 
     if (!currentTerm) return;
 
-    if (/^semester$/i.test(line) || /term totals/i.test(line)) return;
+    if (/^semester$/i.test(line) || /term totals/i.test(line) || /overall totals/i.test(line)) {
+      return;
+    }
 
     const courseLineMatch = line.match(
       /^([A-Z]{2,4})\s+(\d{3})\s+(.+?)\s+(\d+\.\d{3})\s+([A-Z][+\-]?|IP|TA|S|U|P|W)\b/
     );
     if (courseLineMatch) {
+      console.log('[transcript] Course line match:', { line, courseLineMatch });
       const [, subj, num, title, creditsStr, gradeRaw] = courseLineMatch;
       const code = `${subj} ${num}`;
       const credits = Number(creditsStr);
@@ -328,10 +333,18 @@ const parseTranscriptLines = (lines) => {
 
     const courseMatch = line.match(COURSE_REGEX);
     if (!courseMatch) return;
+    if (!line.startsWith(courseMatch[0])) return;
+    console.log('[transcript] Course code match:', { line, courseMatch });
     const code = `${courseMatch[1]} ${courseMatch[2]}`;
     const gradeMatch = line.match(GRADE_REGEX);
+    if (gradeMatch) {
+      console.log('[transcript] Grade match:', { line, gradeMatch });
+    }
     const grade = gradeMatch?.[1] ?? '';
     const creditsMatch = line.match(/\b(\d+\.\d{3}|\d+)\b(?!.*\b\d\b)/);
+    if (creditsMatch) {
+      console.log('[transcript] Credits match:', { line, creditsMatch });
+    }
     const credits = creditsMatch ? Number(creditsMatch[1]) : 0;
     const withoutCode = line.replace(courseMatch[0], '').trim();
     const withoutGrade = grade ? withoutCode.replace(grade, '').trim() : withoutCode;
@@ -522,6 +535,19 @@ function App() {
   const [transcriptTerms, setTranscriptTerms] = useState([]);
   const [transcriptPdfName, setTranscriptPdfName] = useState('');
   const [transcriptTotals, setTranscriptTotals] = useState(null);
+  const [showTranscriptReview, setShowTranscriptReview] = useState(false);
+  const [reviewTerms, setReviewTerms] = useState([]);
+  const [reviewTotals, setReviewTotals] = useState(null);
+  const [draggedReviewCourse, setDraggedReviewCourse] = useState(null);
+  const [dragOverTermLabel, setDragOverTermLabel] = useState(null);
+  const reviewScrollRef = useRef(null);
+  const [reviewContextMenu, setReviewContextMenu] = useState({
+    open: false,
+    x: 0,
+    y: 0,
+    courseCode: '',
+    fromTermLabel: ''
+  });
   const [selectedSemester, setSelectedSemester] = useState('Fall 2024');
   const [isFlowFullscreen, setIsFlowFullscreen] = useState(false);
   const [semesterPlans, setSemesterPlans] = useState(() => initSemesterPlans({}));
@@ -698,6 +724,71 @@ function App() {
     transcriptIndex.get(courseCode)?.status === 'in-progress' ||
     COURSES[courseCode]?.status === 'in-progress';
 
+  const moveReviewedCourse = (courseCode, fromTermLabel, toTermLabel) => {
+    if (!courseCode || !fromTermLabel || !toTermLabel) return;
+    if (fromTermLabel === toTermLabel) return;
+    setReviewTerms((prev) => {
+      const next = prev.map((term) => ({
+        ...term,
+        courses: [...(term.courses || [])]
+      }));
+      const fromTerm = next.find((term) => term.label === fromTermLabel);
+      const toTerm = next.find((term) => term.label === toTermLabel);
+      if (!fromTerm || !toTerm) return prev;
+      const courseIndex = fromTerm.courses.findIndex((course) => course.code === courseCode);
+      if (courseIndex === -1) return prev;
+      if (toTerm.courses.some((course) => course.code === courseCode)) return prev;
+      const [course] = fromTerm.courses.splice(courseIndex, 1);
+      toTerm.courses.push(course);
+      return next;
+    });
+  };
+
+  const applyReviewedTranscript = () => {
+    setTranscriptTerms(reviewTerms);
+    setTranscriptTotals(reviewTotals);
+    const normalized = normalizeTranscript(reviewTerms);
+    if (normalized.length > 0) {
+      setSelectedTranscriptYear(normalized[normalized.length - 1].year);
+    }
+    setShowTranscriptReview(false);
+    setDraggedReviewCourse(null);
+    setDragOverTermLabel(null);
+    setReviewContextMenu((prev) => ({ ...prev, open: false }));
+  };
+
+  const handleReviewDragOver = (event) => {
+    event.preventDefault();
+    const container = reviewScrollRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const edge = 60;
+    const scrollSpeed = 18;
+    if (event.clientY < rect.top + edge) {
+      container.scrollTop -= scrollSpeed;
+    } else if (event.clientY > rect.bottom - edge) {
+      container.scrollTop += scrollSpeed;
+    }
+  };
+
+  useEffect(() => {
+    if (!reviewContextMenu.open) return undefined;
+    const handleClose = () => {
+      setReviewContextMenu((prev) => ({ ...prev, open: false }));
+    };
+    const handleKey = (event) => {
+      if (event.key === 'Escape') {
+        setReviewContextMenu((prev) => ({ ...prev, open: false }));
+      }
+    };
+    window.addEventListener('click', handleClose);
+    window.addEventListener('keydown', handleKey);
+    return () => {
+      window.removeEventListener('click', handleClose);
+      window.removeEventListener('keydown', handleKey);
+    };
+  }, [reviewContextMenu.open]);
+
   const handleTranscriptPdf = async (file) => {
     if (!file) return;
     setTranscriptPdfName(file.name);
@@ -705,14 +796,21 @@ function App() {
     setTranscriptLoading(true);
     setTranscriptLoadingMessage('Extracting text…');
     try {
+      console.log('[transcript] Starting parse for file:', file.name);
       const lines = await extractPdfLines(file);
+      console.log('[transcript] Extracted text lines:', lines.length);
+      console.log('[transcript] Extracted text lines (all):\n' + lines.join('\n'));
       let parsedTerms = parseTranscriptLines(lines);
       let totals = parseTranscriptTotals(lines);
+      console.log('[transcript] Parsed terms (text):', parsedTerms.length);
       if (!parsedTerms.length || !hasTermInLines(lines)) {
         setTranscriptLoadingMessage('No text detected. Running OCR…');
         const ocrLines = await extractPdfOcrLines(file, setTranscriptLoadingMessage);
+        console.log('[transcript] OCR lines:', ocrLines.length);
+        console.log('[transcript] OCR lines (all):\n' + ocrLines.join('\n'));
         parsedTerms = parseTranscriptLines(ocrLines);
         totals = parseTranscriptTotals(ocrLines);
+        console.log('[transcript] Parsed terms (OCR):', parsedTerms.length);
       }
       if (parsedTerms.length === 0) {
         setTranscriptError(
@@ -720,12 +818,9 @@ function App() {
         );
         return;
       }
-      setTranscriptTotals(totals);
-      setTranscriptTerms(parsedTerms);
-      const normalized = normalizeTranscript(parsedTerms);
-      if (normalized.length > 0) {
-        setSelectedTranscriptYear(normalized[normalized.length - 1].year);
-      }
+      setReviewTerms(parsedTerms);
+      setReviewTotals(totals);
+      setShowTranscriptReview(true);
     } catch (err) {
       setTranscriptError('Unable to read this PDF. Please try a different transcript file.');
     } finally {
@@ -2066,6 +2161,179 @@ function App() {
         )}
         {activeTab === 'login' && <LoginPage />}
       </main>
+
+      {showTranscriptReview && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+            <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Review Transcript Terms</h3>
+                <p className="text-sm text-gray-600">
+                  Drag courses to the correct semester, then apply changes.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTranscriptReview(false)}
+                className="px-3 py-1.5 rounded-full text-xs font-semibold border border-gray-200 text-gray-700 hover:bg-gray-100"
+              >
+                Close
+              </button>
+            </div>
+
+            <div
+              ref={reviewScrollRef}
+              className="p-6 overflow-auto"
+              onDragOver={handleReviewDragOver}
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {reviewTerms.map((term) => {
+                  const isDragOver = dragOverTermLabel === term.label;
+                  return (
+                  <div
+                    key={term.label}
+                    className={`border rounded-lg p-3 min-h-[220px] transition ${
+                      isDragOver
+                        ? 'border-amber-400 bg-amber-50 shadow-sm'
+                        : 'border-gray-200 bg-gray-50'
+                    }`}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDragEnter={() => setDragOverTermLabel(term.label)}
+                    onDragLeave={() =>
+                      setDragOverTermLabel((prev) => (prev === term.label ? null : prev))
+                    }
+                    onDrop={() => {
+                      if (!draggedReviewCourse) return;
+                      moveReviewedCourse(
+                        draggedReviewCourse.code,
+                        draggedReviewCourse.fromTermLabel,
+                        term.label
+                      );
+                      setDraggedReviewCourse(null);
+                      setDragOverTermLabel(null);
+                    }}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-semibold text-gray-900">{term.label}</h4>
+                      <span className="text-xs text-gray-500">
+                        {(term.courses || []).length} courses
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {(term.courses || []).map((course) => (
+                        <div
+                          key={`${term.label}-${course.code}`}
+                          draggable
+                          onDragStart={() =>
+                            setDraggedReviewCourse({
+                              code: course.code,
+                              fromTermLabel: term.label
+                            })
+                          }
+                          onDragEnd={() => {
+                            setDraggedReviewCourse(null);
+                            setDragOverTermLabel(null);
+                          }}
+                          onDragEnter={() => setDragOverTermLabel(term.label)}
+                          onDragOver={(event) => {
+                            event.preventDefault();
+                            setDragOverTermLabel(term.label);
+                          }}
+                          onContextMenu={(event) => {
+                            event.preventDefault();
+                            setReviewContextMenu({
+                              open: true,
+                              x: event.clientX,
+                              y: event.clientY,
+                              courseCode: course.code,
+                              fromTermLabel: term.label
+                            });
+                          }}
+                          className="rounded-md bg-white border border-gray-100 px-3 py-2 cursor-move"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900">
+                                {course.code}
+                              </p>
+                              <p className="text-xs text-gray-600">{course.title}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm font-semibold text-gray-900">
+                                {course.grade}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {course.credits} cr
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      {(term.courses || []).length === 0 && (
+                        <div className="text-xs text-gray-500 border border-dashed border-gray-300 rounded-md px-3 py-4 text-center">
+                          Drop courses here
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )})}
+              </div>
+            </div>
+
+            <div className="border-t border-gray-200 px-6 py-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowTranscriptReview(false)}
+                className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={applyReviewedTranscript}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
+                style={{ backgroundColor: '#500000' }}
+              >
+                Apply Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showTranscriptReview && reviewContextMenu.open && (
+        <div
+          className="fixed z-[60] w-56 rounded-lg border border-gray-200 bg-white shadow-lg overflow-hidden"
+          style={{ top: reviewContextMenu.y, left: reviewContextMenu.x }}
+        >
+          <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase">
+            Move to semester
+          </div>
+          <div className="max-h-64 overflow-auto">
+            {reviewTerms.map((term) => (
+              <button
+                key={`${term.label}-move`}
+                type="button"
+                onClick={() => {
+                  moveReviewedCourse(
+                    reviewContextMenu.courseCode,
+                    reviewContextMenu.fromTermLabel,
+                    term.label
+                  );
+                  setReviewContextMenu((prev) => ({ ...prev, open: false }));
+                }}
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 ${
+                  term.label === reviewContextMenu.fromTermLabel
+                    ? 'text-gray-400 cursor-not-allowed'
+                    : 'text-gray-700'
+                }`}
+                disabled={term.label === reviewContextMenu.fromTermLabel}
+              >
+                {term.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
