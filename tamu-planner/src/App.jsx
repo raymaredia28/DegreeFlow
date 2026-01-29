@@ -1067,13 +1067,13 @@ function App() {
 
     return (
       <div className="bg-white rounded-lg shadow p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div className="flex flex-col items-start gap-3 mb-4">
           <div>
             <h3 className="text-lg font-bold text-gray-900">Academic Record</h3>
             <p className="text-sm text-gray-600">Transcript-aligned terms with grades</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <label className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-100 cursor-pointer">
+            <label className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-100 cursor-pointer inline-flex items-center">
               <input
                 type="file"
                 accept="application/pdf"
@@ -1085,11 +1085,14 @@ function App() {
             <button
               type="button"
               onClick={() => {
-                setTranscriptTerms(RAW_TRANSCRIPT_TERMS);
+                setTranscriptTerms(TRANSCRIPT_DEMO);
                 setTranscriptError('');
-                setSelectedTranscriptYear('2024-2025');
                 setTranscriptPdfName('');
                 setTranscriptTotals(null);
+                const normalized = normalizeTranscript(TRANSCRIPT_DEMO);
+                if (normalized.length > 0) {
+                  setSelectedTranscriptYear(normalized[normalized.length - 1].year);
+                }
               }}
               className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-100"
             >
@@ -2246,7 +2249,7 @@ function App() {
             className="flex items-center justify-center h-14 w-7 rounded-l-full bg-[#500000] text-white shadow-lg hover:bg-[#3d0000]"
             aria-label="Toggle chat assistant"
           >
-            {isChatOpen ? '‹' : '›'}
+            {isChatOpen ? '›' : '‹'}
           </button>
         </div>
       )}
