@@ -386,32 +386,36 @@ const parseTranscriptTotals = (lines) => {
 };
 
 const FLOWCHART_COURSES = {
+  'ENGR 102': { title: 'Engr Lab I Computation', prereqs: [] },
   'CSCE 120': { title: 'Program Design & Concepts', prereqs: [] },
   'CSCE 121': { title: 'Intro to Program Design', prereqs: [] },
   'CSCE 181': { title: 'Intro to Computing', prereqs: [] },
   'MATH 151': { title: 'Engineering Math I', prereqs: [] },
+  'MATH 152': { title: 'Calculus II', prereqs: [] },
   'CSCE 222': { title: 'Discrete Structures', prereqs: [] },
   'CSCE 221': { title: 'Data Structures & Algorithms', prereqs: ['CSCE 120'] },
   'CSCE 312': { title: 'Computer Organization', prereqs: ['CSCE 221'] },
   'CSCE 313': { title: 'Intro to Computer Systems', prereqs: ['CSCE 221', 'CSCE 312'] },
   'CSCE 314': { title: 'Programming Languages', prereqs: ['CSCE 221'] },
-  'CSCE 315': { title: 'Programming Studio', prereqs: ['CSCE 312', 'CSCE 314', 'CSCE 313'] },
   'CSCE 331': { title: 'Foundations of Software Eng', prereqs: ['CSCE 221'] },
   'CSCE 411': { title: 'Design/Analysis of Algorithms', prereqs: ['CSCE 221', 'CSCE 222'] },
   'CSCE 420': { title: 'Artificial Intelligence', prereqs: ['CSCE 411'] },
   'MATH 304': { title: 'Linear Algebra', prereqs: ['MATH 151'] },
   'STAT 211': { title: 'Prin of Statistics I', prereqs: [] },
+  'STAT 212': { title: 'Prin of Statistics II', prereqs: [] },
+  'MATH 251': { title: 'Engineering Math III', prereqs: [] },
+  'MATH 308': { title: 'Differential Equations', prereqs: [] },
   'CSCE 421': { title: 'Machine Learning', prereqs: ['MATH 304', 'STAT 211', 'CSCE 221', 'CSCE 120'] },
-  'CSCE 431': { title: 'Software Engineering', prereqs: ['CSCE 315'] },
-  'CSCE 434': { title: 'Compiler Design', prereqs: ['CSCE 315'] },
+  'CSCE 431': { title: 'Software Engineering', prereqs: ['CSCE 331'] },
+  'CSCE 434': { title: 'Compiler Design', prereqs: ['CSCE 331'] },
   'CSCE 441': { title: 'Computer Graphics', prereqs: ['CSCE 221'] },
   'CSCE 442': { title: 'Scientific Programming', prereqs: ['CSCE 221', 'MATH 304'] },
-  'CSCE 448': { title: 'Computational Photography', prereqs: ['CSCE 315', 'MATH 304'] },
+  'CSCE 448': { title: 'Computational Photography', prereqs: ['CSCE 331', 'MATH 304'] },
   'CSCE 451': { title: 'Software Reverse Engineering', prereqs: ['CSCE 313'] },
   'CSCE 463': { title: 'Networks & Distributed Processing', prereqs: ['CSCE 313'] },
-  'CSCE 465': { title: 'Computer & Network Security', prereqs: ['CSCE 315', 'CSCE 313'] },
+  'CSCE 465': { title: 'Computer & Network Security', prereqs: ['CSCE 331', 'CSCE 313'] },
   'CSCE 481': { title: 'Seminar', prereqs: [] },
-  'CSCE 482': { title: 'Senior Capstone Design', prereqs: ['CSCE 411', 'CSCE 315'] }
+  'CSCE 482': { title: 'Senior Capstone Design', prereqs: ['CSCE 411', 'CSCE 331'] }
 };
 
 const buildTranscriptIndex = (terms) => {
@@ -1584,32 +1588,37 @@ function App() {
       onFullscreenChange?.(!isFullscreen);
     };
     const flowNodes = [
-      { id: 'CSCE 120', x: 40, y: 20 },
-      { id: 'CSCE 121', x: 40, y: 150 },
-      { id: 'CSCE 181', x: 40, y: 280 },
-      { id: 'MATH 151', x: 40, y: 410 },
-      { id: 'CSCE 221', x: 320, y: 60 },
-      { id: 'CSCE 222', x: 320, y: 190 },
-      { id: 'MATH 304', x: 320, y: 320 },
-      { id: 'STAT 211', x: 320, y: 450 },
-      { id: 'CSCE 312', x: 620, y: 20 },
-      { id: 'CSCE 313', x: 620, y: 130 },
-      { id: 'CSCE 314', x: 620, y: 240 },
-      { id: 'CSCE 331', x: 620, y: 350 },
-      { id: 'CSCE 481', x: 620, y: 460 },
-      { id: 'CSCE 411', x: 920, y: 20 },
-      { id: 'CSCE 420', x: 920, y: 130 },
-      { id: 'CSCE 421', x: 920, y: 240 },
-      { id: 'CSCE 463', x: 920, y: 350 },
-      { id: 'CSCE 465', x: 920, y: 460 },
-      { id: 'CSCE 315', x: 1220, y: 20 },
-      { id: 'CSCE 431', x: 1220, y: 130 },
-      { id: 'CSCE 434', x: 1220, y: 240 },
-      { id: 'CSCE 441', x: 1220, y: 350 },
-      { id: 'CSCE 448', x: 1220, y: 460 },
-      { id: 'CSCE 451', x: 1520, y: 130 },
-      { id: 'CSCE 482', x: 1520, y: 260 },
-      { id: 'CSCE 442', x: 1520, y: 390 }
+      { id: 'MATH 151', x: 40, y: 20 },
+      { id: 'ENGR 102', x: 40, y: 110 },
+      { id: 'MATH 152', x: 40, y: 200 },
+      { id: 'CSCE 181', x: 40, y: 290 },
+      { id: 'CSCE 120', x: 340, y: 20 },
+      { id: 'CSCE 222', x: 340, y: 110 },
+      { id: 'MATH 304', x: 340, y: 200 },
+      { id: 'STAT 211', x: 340, y: 290 },
+      { id: 'CSCE 221', x: 640, y: 20 },
+      { id: 'CSCE 312', x: 640, y: 110 },
+      { id: 'CSCE 314', x: 640, y: 200 },
+      { id: 'STAT 212', x: 640, y: 290 },
+      { id: 'MATH 251', x: 640, y: 380 },
+      { id: 'MATH 308', x: 640, y: 470 },
+      { id: 'CSCE 313', x: 940, y: 20 },
+      { id: 'CSCE 331', x: 940, y: 110 },
+      { id: 'CSCE 411', x: 940, y: 200 },
+      { id: 'CSCE 121', x: 1240, y: 20 },
+      { id: 'CSCE 310', x: 1240, y: 90 },
+      { id: 'CSCE 420', x: 1240, y: 160 },
+      { id: 'CSCE 421', x: 1240, y: 230 },
+      { id: 'CSCE 431', x: 1240, y: 300 },
+      { id: 'CSCE 434', x: 1240, y: 370 },
+      { id: 'CSCE 441', x: 1240, y: 440 },
+      { id: 'CSCE 442', x: 1240, y: 510 },
+      { id: 'CSCE 448', x: 1240, y: 580 },
+      { id: 'CSCE 451', x: 1240, y: 650 },
+      { id: 'CSCE 463', x: 1240, y: 720 },
+      { id: 'CSCE 465', x: 1240, y: 790 },
+      { id: 'CSCE 481', x: 1240, y: 860 },
+      { id: 'CSCE 482', x: 1240, y: 930 }
     ];
     const flowEdges = Object.entries(FLOWCHART_COURSES).flatMap(([code, course]) =>
       course.prereqs.map((prereq) => ({ from: prereq, to: code }))
@@ -1644,6 +1653,17 @@ function App() {
       course.prereqs.forEach((prereq) => collectPrereqs(prereq, collected));
       return collected;
     };
+    const collectMissingPrereqs = (code, collected = new Set()) => {
+      const course = FLOWCHART_COURSES[code] || COURSES[code];
+      if (!course?.prereqs?.length) return collected;
+      course.prereqs.forEach((prereq) => {
+        if (isCourseCompleted(prereq)) return;
+        if (collected.has(prereq)) return;
+        collected.add(prereq);
+        collectMissingPrereqs(prereq, collected);
+      });
+      return collected;
+    };
     const highlightedCourses = useMemo(() => {
       if (selectedPath === 'All') return new Set();
       const path = careerPaths.find((item) => item.id === selectedPath);
@@ -1653,7 +1673,9 @@ function App() {
     }, [careerPaths, selectedPath]);
     const hoveredPrereqs = useMemo(() => {
       if (!hoveredCourse) return new Set();
-      return collectPrereqs(hoveredCourse, new Set());
+      const missing = collectMissingPrereqs(hoveredCourse, new Set());
+      missing.add(hoveredCourse);
+      return missing;
     }, [hoveredCourse]);
     const handleZoom = (delta) => {
       setZoomLevel((prev) => {
@@ -1722,11 +1744,11 @@ function App() {
       >
         <div
           className={`flex items-center justify-center ${
-            isFullscreen ? 'min-w-[2600px] min-h-[900px]' : 'min-w-[2000px] min-h-[700px]'
+            isFullscreen ? 'min-w-[2600px] min-h-[1200px]' : 'min-w-[2000px] min-h-[900px]'
           }`}
         >
           <svg
-            viewBox="0 0 1800 600"
+            viewBox="0 0 1800 1050"
             className={isFullscreen ? 'w-[2400px] h-auto' : 'w-[1800px] h-auto'}
             role="img"
             aria-label="Course prerequisite flowchart"
