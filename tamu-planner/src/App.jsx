@@ -1,12 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import tamuLogo from './assets/tamu-logo.svg';
+import { TRANSCRIPT_DEMO } from './data/transcriptDemo';
 import {
   Calendar,
   AlertTriangle,
   CheckCircle,
   Book,
-  GraduationCap,
-  TrendingUp,
   Plus,
   X,
   Search,
@@ -158,138 +159,7 @@ const RISKY_COMBOS = [
   }
 ];
 
-const RAW_TRANSCRIPT_TERMS = [
-  {
-    label: 'Fall 2020',
-    status: 'Transfer',
-    courses: [
-      { code: 'CHEM 119', title: 'Fund of Chemistry I', credits: 4, grade: 'TA', transfer: true },
-      { code: 'ENGL 103', title: 'Intro to Comp & Rhet', credits: 3, grade: 'TA', transfer: true }
-    ]
-  },
-  {
-    label: 'Spring 2021',
-    status: 'Transfer',
-    courses: [
-      {
-        code: 'ENGL 104',
-        title: 'Composition & Rhetoric',
-        credits: 3,
-        grade: 'TA',
-        transfer: true
-      }
-    ]
-  },
-  {
-    label: 'Fall 2021',
-    status: 'Transfer',
-    courses: [
-      { code: 'ECON 202', title: 'Prin of Economics', credits: 3, grade: 'TA', transfer: true },
-      {
-        code: 'ENGL 231',
-        title: 'Survey of English Lit I',
-        credits: 3,
-        grade: 'TA',
-        transfer: true
-      }
-    ]
-  },
-  {
-    label: 'Spring 2022',
-    status: 'Transfer',
-    courses: [
-      {
-        code: 'ENGL 232',
-        title: 'Survey of English Lit II',
-        credits: 3,
-        grade: 'TA',
-        transfer: true
-      },
-      {
-        code: 'POLS 206',
-        title: 'Amer Natnl Govt',
-        credits: 3,
-        grade: 'TA',
-        transfer: true
-      }
-    ]
-  },
-  {
-    label: 'Fall 2022',
-    status: 'Evaluated',
-    courses: [
-      { code: 'CHEM 107', title: 'Gen Chem for Engineers', credits: 3, grade: 'A' },
-      { code: 'CHEM 117', title: 'Gen Chem for Engr Lab', credits: 1, grade: 'A' },
-      { code: 'DCED 202', title: 'Dance Appreciation', credits: 3, grade: 'A' },
-      { code: 'ENGR 102', title: 'Engr Lab I Computation', credits: 2, grade: 'A' },
-      { code: 'FYEX 101', title: 'Hullabaloo U', credits: 0, grade: 'S' },
-      { code: 'MATH 151', title: 'Engineering Math I', credits: 4, grade: 'A' },
-      { code: 'POLS 207', title: 'State & Local Govt', credits: 3, grade: 'A' }
-    ]
-  },
-  {
-    label: 'Spring 2023',
-    status: 'Evaluated',
-    courses: [
-      { code: 'MATH 152', title: 'Engineering Math II', credits: 4, grade: 'A' },
-      { code: 'PERF 201', title: 'Mus & Human Experience', credits: 3, grade: 'A' },
-      { code: 'PHYS 206', title: 'Newtonian Mechanics Engr & Sci', credits: 3, grade: 'A' },
-      { code: 'PHYS 216', title: 'Ex Phys Engr Lab II Mechanics', credits: 2, grade: 'B' }
-    ]
-  },
-  {
-    label: 'Summer 2023',
-    status: 'Transfer',
-    courses: [
-      { code: 'ANTH 210', title: 'Soc and Cult Anth', credits: 3, grade: 'TA', transfer: true },
-      { code: 'GEOG 203', title: 'Planet Earth', credits: 3, grade: 'TA', transfer: true }
-    ]
-  },
-  {
-    label: 'Fall 2023',
-    status: 'Evaluated',
-    courses: [
-      { code: 'CSCE 120', title: 'Program Design & Concepts', credits: 3, grade: 'A' },
-      { code: 'CSCE 181', title: 'Intro to Computing', credits: 1, grade: 'A' },
-      { code: 'CSCE 222', title: 'Discrete Struc Computing', credits: 3, grade: 'A' },
-      { code: 'MATH 251', title: 'Engineering Math III', credits: 3, grade: 'B' },
-      { code: 'MATH 304', title: 'Linear Algebra', credits: 3, grade: 'A' }
-    ]
-  },
-  {
-    label: 'Spring 2024',
-    status: 'Evaluated',
-    courses: [
-      { code: 'CSCE 221', title: 'Data Struc & Algorithms', credits: 4, grade: 'A' },
-      { code: 'CSCE 312', title: 'Computer Organization', credits: 4, grade: 'A' },
-      { code: 'CSCE 314', title: 'Programming Languages', credits: 3, grade: 'A' },
-      { code: 'STAT 211', title: 'Prin of Statistics I', credits: 3, grade: 'A' }
-    ]
-  },
-  {
-    label: 'Fall 2024',
-    status: 'Evaluated',
-    courses: [
-      { code: 'CSCE 313', title: 'Intro to Computer Systems', credits: 4, grade: 'B' },
-      { code: 'CSCE 331', title: 'Foundations Software Engineer', credits: 4, grade: 'A' },
-      { code: 'CSCE 481', title: 'Seminar', credits: 1, grade: 'A' },
-      { code: 'FINC 409', title: 'Survey of Finance Prin', credits: 3, grade: 'A' },
-      { code: 'GEOL 101', title: 'Principles of Geology', credits: 3, grade: 'A' },
-      { code: 'GEOL 102', title: 'Principles of Geology Lab', credits: 1, grade: 'A' }
-    ]
-  },
-  {
-    label: 'Spring 2025',
-    status: 'In Progress',
-    courses: [
-      { code: 'CSCE 310', title: 'Database Systems', credits: 3, grade: 'IP' },
-      { code: 'CSCE 411', title: 'Design Analy Algorithms', credits: 3, grade: 'IP' },
-      { code: 'CSCE 413', title: 'Software Security', credits: 3, grade: 'IP' },
-      { code: 'CSCE 448', title: 'Computational Photography', credits: 3, grade: 'IP' },
-      { code: 'MKTG 409', title: 'Principles of Marketing', credits: 3, grade: 'IP' }
-    ]
-  }
-];
+const RAW_TRANSCRIPT_TERMS = TRANSCRIPT_DEMO;
 
 const normalizeTranscript = (terms) => {
   const termOrder = { Fall: 0, Winter: 1, Spring: 2, Summer: 3 };
@@ -330,7 +200,190 @@ const normalizeTranscript = (terms) => {
     });
 };
 
-const TRANSCRIPT_YEARS = normalizeTranscript(RAW_TRANSCRIPT_TERMS);
+GlobalWorkerOptions.workerSrc = pdfWorker;
+
+const TERM_REGEX = /\b(Fall|Spring|Summer|Winter)\s+(20\d{2})\b/;
+const COURSE_REGEX = /\b([A-Z]{2,4})\s+(\d{3})\b/;
+const GRADE_REGEX = /\b(A|A-|B\+|B|B-|C\+|C|C-|D\+|D|D-|F|S|U|P|W|IP|TA)\b/;
+
+const extractPdfLines = async (file) => {
+  const data = new Uint8Array(await file.arrayBuffer());
+  const pdf = await getDocument({ data }).promise;
+  const lines = [];
+
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum += 1) {
+    const page = await pdf.getPage(pageNum);
+    const textContent = await page.getTextContent();
+    const items = textContent.items
+      .map((item) => ({
+        text: item.str,
+        x: item.transform[4],
+        y: item.transform[5]
+      }))
+      .filter((item) => item.text && item.text.trim() !== '');
+
+    items.sort((a, b) => (b.y === a.y ? a.x - b.x : b.y - a.y));
+
+    const grouped = [];
+    const threshold = 2;
+    items.forEach((item) => {
+      const group = grouped.find((g) => Math.abs(g.y - item.y) <= threshold);
+      if (group) {
+        group.items.push(item);
+      } else {
+        grouped.push({ y: item.y, items: [item] });
+      }
+    });
+
+    grouped.forEach((group) => {
+      group.items.sort((a, b) => a.x - b.x);
+      lines.push(group.items.map((i) => i.text).join(' '));
+    });
+  }
+
+  return lines;
+};
+
+const extractPdfOcrLines = async (file, onProgress) => {
+  const data = new Uint8Array(await file.arrayBuffer());
+  const pdf = await getDocument({ data }).promise;
+  const { default: Tesseract } = await import('tesseract.js');
+  const lines = [];
+
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum += 1) {
+    const page = await pdf.getPage(pageNum);
+    const viewport = page.getViewport({ scale: 2 });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const context = canvas.getContext('2d');
+    await page.render({ canvasContext: context, viewport }).promise;
+
+    onProgress?.(`Running OCR (page ${pageNum}/${pdf.numPages})...`);
+    const result = await Tesseract.recognize(canvas, 'eng');
+    const text = result?.data?.text || '';
+    text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .forEach((line) => lines.push(line));
+  }
+
+  return lines;
+};
+
+const parseTranscriptLines = (lines) => {
+  const terms = [];
+  let currentTerm = null;
+
+  lines.forEach((rawLine) => {
+    const line = rawLine.replace(/\s+/g, ' ').trim();
+    if (!line) return;
+
+    if (/courses in progress/i.test(line)) {
+      currentTerm = {
+        label: 'In Progress',
+        status: 'In Progress',
+        courses: []
+      };
+      terms.push(currentTerm);
+      return;
+    }
+
+    const termMatch = line.match(TERM_REGEX);
+    if (termMatch) {
+      currentTerm = {
+        label: `${termMatch[1]} ${termMatch[2]}`,
+        status: 'Evaluated',
+        courses: []
+      };
+      terms.push(currentTerm);
+      return;
+    }
+
+    if (!currentTerm) return;
+
+    if (/^semester$/i.test(line) || /term totals/i.test(line)) return;
+
+    const courseLineMatch = line.match(
+      /^([A-Z]{2,4})\s+(\d{3})\s+(.+?)\s+(\d+\.\d{3})\s+([A-Z][+\-]?|IP|TA|S|U|P|W)\b/
+    );
+    if (courseLineMatch) {
+      const [, subj, num, title, creditsStr, gradeRaw] = courseLineMatch;
+      const code = `${subj} ${num}`;
+      const credits = Number(creditsStr);
+      const grade = gradeRaw;
+      currentTerm.courses.push({
+        code,
+        title: title.trim(),
+        credits: Number.isFinite(credits) ? credits : 0,
+        grade,
+        transfer: grade === 'TA'
+      });
+      if (grade === 'IP') {
+        currentTerm.status = 'In Progress';
+      }
+      return;
+    }
+
+    const courseMatch = line.match(COURSE_REGEX);
+    if (!courseMatch) return;
+    const code = `${courseMatch[1]} ${courseMatch[2]}`;
+    const gradeMatch = line.match(GRADE_REGEX);
+    const grade = gradeMatch?.[1] ?? '';
+    const creditsMatch = line.match(/\b(\d+\.\d{3}|\d+)\b(?!.*\b\d\b)/);
+    const credits = creditsMatch ? Number(creditsMatch[1]) : 0;
+    const withoutCode = line.replace(courseMatch[0], '').trim();
+    const withoutGrade = grade ? withoutCode.replace(grade, '').trim() : withoutCode;
+    const title = credits
+      ? withoutGrade.replace(String(credits), '').trim()
+      : withoutGrade.trim();
+
+    currentTerm.courses.push({
+      code,
+      title: title || code,
+      credits: Number.isFinite(credits) ? credits : 0,
+      grade,
+      transfer: grade === 'TA'
+    });
+    if (grade === 'IP') {
+      currentTerm.status = 'In Progress';
+    }
+  });
+
+  return terms;
+};
+
+const hasTermInLines = (lines) => lines.some((line) => TERM_REGEX.test(line));
+
+const parseTranscriptTotals = (lines) => {
+  const totals = {
+    institution: null,
+    transfer: null,
+    overall: null
+  };
+
+  lines.forEach((line) => {
+    const cleaned = line.replace(/\s+/g, ' ').trim();
+    if (!cleaned) return;
+    const match = cleaned.match(
+      /\b(TOTAL INSTITUTION|TOTAL TRANSFER|OVERALL)\b.*?(\d+\.\d{3}|\d+)\s+(\d+\.\d{3}|\d+)\s+(\d+\.\d{3}|\d+)\s+(\d+\.\d{3}|\d+)/
+    );
+    if (!match) return;
+    const label = match[1];
+    const entry = {
+      earnedHours: Number(match[2]),
+      gpaHours: Number(match[3]),
+      points: Number(match[4]),
+      gpa: Number(match[5])
+    };
+    if (label === 'TOTAL INSTITUTION') totals.institution = entry;
+    if (label === 'TOTAL TRANSFER') totals.transfer = entry;
+    if (label === 'OVERALL') totals.overall = entry;
+  });
+
+  return totals;
+};
 
 const FLOWCHART_COURSES = {
   'CSCE 120': { title: 'Program Design & Concepts', prereqs: [] },
@@ -448,7 +501,6 @@ function App() {
     () => buildSemesterRange(SEMESTER_START_YEAR, 'Fall', PLAN_END_YEAR + 1, 'Summer'),
     []
   );
-  const transcriptIndex = useMemo(() => buildTranscriptIndex(RAW_TRANSCRIPT_TERMS), []);
   const semesterIndex = useMemo(() => {
     const map = new Map();
     semesterOrder.forEach((sem, idx) => map.set(sem, idx));
@@ -463,29 +515,132 @@ function App() {
   };
 
   const [activeTab, setActiveTab] = useState('planner');
+  const [transcriptTerms, setTranscriptTerms] = useState([]);
+  const [transcriptPdfName, setTranscriptPdfName] = useState('');
+  const [transcriptTotals, setTranscriptTotals] = useState(null);
   const [selectedSemester, setSelectedSemester] = useState('Fall 2024');
-  const [semesterPlans, setSemesterPlans] = useState(() =>
-    initSemesterPlans({
-      'Fall 2024': ['CSCE 312', 'CSCE 314', 'MATH 304'],
-      'Spring 2025': [],
-      'Fall 2025': [],
-      'Spring 2026': []
-    })
-  );
+  const [isFlowFullscreen, setIsFlowFullscreen] = useState(false);
+  const [semesterPlans, setSemesterPlans] = useState(() => initSemesterPlans({}));
   const [searchQuery, setSearchQuery] = useState('');
   const [showCourseModal, setShowCourseModal] = useState(false);
   const [planError, setPlanError] = useState('');
   const [selectedPlanYear, setSelectedPlanYear] = useState('2024-2025');
-  const [selectedTranscriptYear, setSelectedTranscriptYear] = useState('2024-2025');
+  const [selectedTranscriptYear, setSelectedTranscriptYear] = useState('');
+  const [transcriptError, setTranscriptError] = useState('');
+  const [transcriptLoading, setTranscriptLoading] = useState(false);
+  const [transcriptLoadingMessage, setTranscriptLoadingMessage] = useState('');
+  const transcriptYears = useMemo(() => normalizeTranscript(transcriptTerms), [transcriptTerms]);
+  const transcriptIndex = useMemo(() => buildTranscriptIndex(transcriptTerms), [transcriptTerms]);
+
+  useEffect(() => {
+    if (transcriptYears.length === 0) {
+      if (selectedTranscriptYear) setSelectedTranscriptYear('');
+      return;
+    }
+    const exists = transcriptYears.some((year) => year.year === selectedTranscriptYear);
+    if (!exists) {
+      setSelectedTranscriptYear(transcriptYears[transcriptYears.length - 1].year);
+    }
+  }, [transcriptYears, selectedTranscriptYear]);
+  const transcriptCourseList = useMemo(
+    () =>
+      transcriptTerms.flatMap((term) =>
+        (term.courses || []).map((course) => ({
+          ...course,
+          termLabel: term.label
+        }))
+      ),
+    [transcriptTerms]
+  );
+  const transcriptCourseCodes = useMemo(
+    () => new Set(transcriptCourseList.map((course) => course.code)),
+    [transcriptCourseList]
+  );
+  const transcriptCreditsSummary = useMemo(() => {
+    let completedCredits = 0;
+    let inProgressCredits = 0;
+    let totalTranscriptCredits = 0;
+
+    transcriptCourseList.forEach((course) => {
+      const credits = Number(course.credits) || 0;
+      totalTranscriptCredits += credits;
+      if (course.grade === 'IP') {
+        inProgressCredits += credits;
+      } else {
+        completedCredits += credits;
+      }
+    });
+
+    return { completedCredits, inProgressCredits, totalTranscriptCredits };
+  }, [transcriptCourseList]);
+  const plannedCreditsSummary = useMemo(() => {
+    let plannedCredits = 0;
+    let plannedCourses = 0;
+    const seen = new Set();
+
+    Object.values(semesterPlans).forEach((courses) => {
+      (courses || []).forEach((code) => {
+        if (seen.has(code) || transcriptCourseCodes.has(code)) return;
+        const credits = Number(COURSES[code]?.credits) || 0;
+        plannedCredits += credits;
+        plannedCourses += 1;
+        seen.add(code);
+      });
+    });
+
+    return { plannedCredits, plannedCourses };
+  }, [semesterPlans, transcriptCourseCodes]);
+
+  const transcriptGpa = useMemo(() => {
+    if (transcriptTotals?.overall?.gpa) return transcriptTotals.overall.gpa;
+    const gradePoints = {
+      A: 4.0,
+      'A-': 3.7,
+      'B+': 3.3,
+      B: 3.0,
+      'B-': 2.7,
+      'C+': 2.3,
+      C: 2.0,
+      'C-': 1.7,
+      'D+': 1.3,
+      D: 1.0,
+      'D-': 0.7,
+      F: 0
+    };
+    let qualityPoints = 0;
+    let attemptedCredits = 0;
+
+    transcriptCourseList.forEach((course) => {
+      if (course.transfer) return;
+      if (!course.grade || course.grade === 'IP') return;
+      const points = gradePoints[course.grade];
+      if (points === undefined) return;
+      const credits = Number(course.credits) || 0;
+      if (!credits) return;
+      qualityPoints += points * credits;
+      attemptedCredits += credits;
+    });
+
+    if (!attemptedCredits) return MOCK_STUDENT.gpa;
+    return Number((qualityPoints / attemptedCredits).toFixed(2));
+  }, [transcriptCourseList, transcriptTotals]);
+  const classification = useMemo(() => {
+    const credits =
+      transcriptTotals?.overall?.earnedHours ?? transcriptCreditsSummary.completedCredits;
+    if (credits < 30) return 'Freshman';
+    if (credits < 60) return 'Sophomore';
+    if (credits < 90) return 'Junior';
+    return 'Senior';
+  }, [transcriptCreditsSummary.completedCredits, transcriptTotals]);
 
   const transcriptTermMap = useMemo(() => {
     const map = new Map();
-    RAW_TRANSCRIPT_TERMS.forEach((term) => {
+    transcriptTerms.forEach((term) => {
       if (!term?.label) return;
       map.set(term.label, term);
     });
     return map;
-  }, []);
+  }, [transcriptTerms]);
 
   const isCourseInTranscriptTerm = (courseCode, termLabel) =>
     transcriptTermMap
@@ -526,7 +681,7 @@ function App() {
       return courses?.includes(courseCode);
     });
     if (plannedInOther) return true;
-    return RAW_TRANSCRIPT_TERMS.some((term) => {
+    return transcriptTerms.some((term) => {
       if (term.label === semester) return false;
       return term.courses?.some((course) => course.code === courseCode);
     });
@@ -538,6 +693,42 @@ function App() {
   const isCourseInProgress = (courseCode) =>
     transcriptIndex.get(courseCode)?.status === 'in-progress' ||
     COURSES[courseCode]?.status === 'in-progress';
+
+  const handleTranscriptPdf = async (file) => {
+    if (!file) return;
+    setTranscriptPdfName(file.name);
+    setTranscriptError('');
+    setTranscriptLoading(true);
+    setTranscriptLoadingMessage('Extracting text…');
+    try {
+      const lines = await extractPdfLines(file);
+      let parsedTerms = parseTranscriptLines(lines);
+      let totals = parseTranscriptTotals(lines);
+      if (!parsedTerms.length || !hasTermInLines(lines)) {
+        setTranscriptLoadingMessage('No text detected. Running OCR…');
+        const ocrLines = await extractPdfOcrLines(file, setTranscriptLoadingMessage);
+        parsedTerms = parseTranscriptLines(ocrLines);
+        totals = parseTranscriptTotals(ocrLines);
+      }
+      if (parsedTerms.length === 0) {
+        setTranscriptError(
+          'No terms detected. This PDF may be image-only or formatted unexpectedly.'
+        );
+        return;
+      }
+      setTranscriptTotals(totals);
+      setTranscriptTerms(parsedTerms);
+      const normalized = normalizeTranscript(parsedTerms);
+      if (normalized.length > 0) {
+        setSelectedTranscriptYear(normalized[normalized.length - 1].year);
+      }
+    } catch (err) {
+      setTranscriptError('Unable to read this PDF. Please try a different transcript file.');
+    } finally {
+      setTranscriptLoading(false);
+      setTranscriptLoadingMessage('');
+    }
+  };
 
   const addCourseToSemester = (courseCode, semester) => {
     if (isCourseCompleted(courseCode)) {
@@ -624,7 +815,18 @@ function App() {
   }, [searchQuery]);
 
   const DashboardTab = () => {
-    const completionPercentage = (MOCK_STUDENT.completedCredits / MOCK_STUDENT.totalRequired) * 100;
+    const hasTranscriptData =
+      transcriptTerms.length > 0 || Boolean(transcriptTotals?.overall?.earnedHours);
+    const earnedHours = hasTranscriptData
+      ? transcriptTotals?.overall?.earnedHours ?? transcriptCreditsSummary.completedCredits
+      : null;
+    const completionPercentage = earnedHours
+      ? Math.min((earnedHours / MOCK_STUDENT.totalRequired) * 100, 100)
+      : 0;
+    const trackedCredits =
+      transcriptCreditsSummary.completedCredits +
+      transcriptCreditsSummary.inProgressCredits +
+      plannedCreditsSummary.plannedCredits;
 
     return (
       <div className="space-y-6">
@@ -636,26 +838,30 @@ function App() {
               <p className="text-gray-600">
                 {MOCK_STUDENT.major} • Catalog Year: {MOCK_STUDENT.catalogYear}
               </p>
+              <p className="text-gray-600">
+                {hasTranscriptData ? classification : '—'} •{' '}
+                {hasTranscriptData ? earnedHours : '—'} earned credits
+              </p>
             </div>
             <div className="text-right">
               <div className="text-3xl font-bold" style={{ color: '#500000' }}>
-                {MOCK_STUDENT.gpa}
+                {hasTranscriptData ? transcriptGpa : '—'}
               </div>
               <div className="text-sm text-gray-600">Current GPA</div>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Credits Completed</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {MOCK_STUDENT.completedCredits}/{MOCK_STUDENT.totalRequired}
+                  {earnedHours ?? '—'}/{MOCK_STUDENT.totalRequired}
                 </p>
               </div>
-              <Book className="w-8 h-8 text-blue-500" />
+              <CheckCircle className="w-8 h-8 text-green-500" />
             </div>
             <div className="mt-4 bg-gray-200 rounded-full h-2">
               <div
@@ -663,28 +869,48 @@ function App() {
                 style={{ width: `${completionPercentage}%`, backgroundColor: '#500000' }}
               ></div>
             </div>
+            <p className="mt-2 text-xs text-gray-500">
+              Transcript totals (overall earned hours)
+            </p>
           </div>
 
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Emphasis Area</p>
-                <p className="text-lg font-bold text-gray-900">{MOCK_STUDENT.emphasisArea}</p>
+                <p className="text-sm text-gray-600">In Progress</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {transcriptCreditsSummary.inProgressCredits} credits
+                </p>
               </div>
-              <GraduationCap className="w-8 h-8 text-green-500" />
+              <Calendar className="w-8 h-8 text-blue-500" />
             </div>
-            <p className="mt-2 text-sm text-gray-600">On track</p>
+            <p className="mt-2 text-xs text-gray-500">Active term coursework</p>
           </div>
 
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">GPA Trend</p>
-                <p className="text-2xl font-bold text-gray-900">↗</p>
+                <p className="text-sm text-gray-600">Planned Credits</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {plannedCreditsSummary.plannedCredits}
+                </p>
               </div>
-              <TrendingUp className="w-8 h-8 text-purple-500" />
+              <Plus className="w-8 h-8 text-amber-500" />
             </div>
-            <p className="mt-2 text-sm text-green-600">Improving</p>
+            <p className="mt-2 text-xs text-gray-500">
+              {plannedCreditsSummary.plannedCourses} courses in planner
+            </p>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Tracked Credits</p>
+                <p className="text-2xl font-bold text-gray-900">{trackedCredits}</p>
+              </div>
+              <Book className="w-8 h-8 text-purple-500" />
+            </div>
+            <p className="mt-2 text-xs text-gray-500">Completed + In Progress + Planned</p>
           </div>
         </div>
 
@@ -722,6 +948,179 @@ function App() {
             </div>
           </div>
         </div>
+      </div>
+    );
+  };
+
+  const AcademicRecordPanel = () => {
+    const transcriptYear =
+      transcriptYears.find((year) => year.year === selectedTranscriptYear) ||
+      transcriptYears[0];
+    const transcriptYearLabels = transcriptYears.map((year) => year.year);
+    const statusStyles = {
+      Evaluated: 'bg-green-100 text-green-700',
+      'In Progress': 'bg-blue-100 text-blue-700',
+      Transfer: 'bg-gray-200 text-gray-700'
+    };
+
+    return (
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900">Academic Record</h3>
+            <p className="text-sm text-gray-600">Transcript-aligned terms with grades</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-100 cursor-pointer">
+              <input
+                type="file"
+                accept="application/pdf"
+                className="hidden"
+                onChange={(e) => handleTranscriptPdf(e.target.files?.[0])}
+              />
+              Upload Transcript PDF
+            </label>
+            <button
+              type="button"
+              onClick={() => {
+                setTranscriptTerms(RAW_TRANSCRIPT_TERMS);
+                setTranscriptError('');
+                setSelectedTranscriptYear('2024-2025');
+                setTranscriptPdfName('');
+                setTranscriptTotals(null);
+              }}
+              className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-100"
+            >
+              Use demo data
+            </button>
+            {transcriptLoading && (
+              <span className="text-sm text-gray-500">
+                {transcriptLoadingMessage || 'Parsing…'}
+              </span>
+            )}
+            {transcriptError && <span className="text-sm text-red-600">{transcriptError}</span>}
+            {transcriptPdfName && (
+              <span className="text-sm text-gray-500">Selected: {transcriptPdfName}</span>
+            )}
+            {transcriptYearLabels.map((year) => (
+              <button
+                key={year}
+                onClick={() => setSelectedTranscriptYear(year)}
+                className={`px-3 py-2 rounded-lg text-sm font-medium border ${
+                  selectedTranscriptYear === year
+                    ? 'text-white'
+                    : 'text-gray-700 border-gray-200 hover:bg-gray-100'
+                }`}
+                style={selectedTranscriptYear === year ? { backgroundColor: '#500000' } : {}}
+              >
+                {year}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {transcriptTotals?.overall && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+            {[
+              { label: 'Institution', data: transcriptTotals.institution },
+              { label: 'Transfer', data: transcriptTotals.transfer },
+              { label: 'Overall', data: transcriptTotals.overall }
+            ].map((entry) => (
+              <div
+                key={entry.label}
+                className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3"
+              >
+                <p className="text-xs text-gray-500 uppercase">{entry.label} Totals</p>
+                {entry.data ? (
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-gray-700">
+                    <span>Earned Hours</span>
+                    <span className="text-right font-semibold">{entry.data.earnedHours}</span>
+                    <span>GPA Hours</span>
+                    <span className="text-right font-semibold">{entry.data.gpaHours}</span>
+                    <span>Points</span>
+                    <span className="text-right font-semibold">{entry.data.points}</span>
+                    <span>GPA</span>
+                    <span className="text-right font-semibold">{entry.data.gpa}</span>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-xs text-gray-500">Not reported</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!transcriptYear ? (
+          <div className="border border-dashed border-gray-300 rounded-lg p-8 text-center text-gray-500">
+            Upload a transcript PDF to populate your academic record.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {transcriptYear.terms
+              .filter((term) => term.courses.length > 0)
+              .map((term) => {
+                const termCredits = term.courses.reduce((sum, c) => sum + c.credits, 0);
+                return (
+                  <div
+                    key={term.label}
+                    className="border border-gray-200 rounded-lg p-4 bg-gray-50"
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <h4 className="font-semibold text-gray-900">{term.label}</h4>
+                        <p className="text-xs text-gray-600">{termCredits} credits</p>
+                      </div>
+                      <span
+                        className={`text-xs px-2 py-1 rounded-full ${
+                          statusStyles[term.status] || 'bg-gray-200 text-gray-700'
+                        }`}
+                      >
+                        {term.status}
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {term.courses.map((course) => (
+                        <div
+                          key={`${term.label}-${course.code}`}
+                          className="rounded-md bg-white border border-gray-100 px-3 py-2"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900">
+                                {course.code}
+                              </p>
+                              <p className="text-xs text-gray-600">{course.title}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm font-semibold text-gray-900">
+                                {course.grade}
+                              </p>
+                              <p className="text-xs text-gray-500">{course.credits} cr</p>
+                            </div>
+                          </div>
+                          {(course.transfer || course.honors) && (
+                            <div className="mt-2 flex items-center justify-end gap-2">
+                              {course.honors && (
+                                <span className="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-700">
+                                  Honors
+                                </span>
+                              )}
+                              {course.transfer && (
+                                <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 flex items-center gap-1">
+                                  <CheckCircle className="w-3 h-3" />
+                                  Transfer
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        )}
       </div>
     );
   };
@@ -769,16 +1168,6 @@ function App() {
       ? selectedPlanYear
       : filteredPlanYears[0];
     const planTerms = activePlanYear ? getTermsForAcademicYear(activePlanYear) : [];
-    const transcriptYear =
-      TRANSCRIPT_YEARS.find((year) => year.year === selectedTranscriptYear) ||
-      TRANSCRIPT_YEARS[0];
-    const transcriptYears = TRANSCRIPT_YEARS.map((year) => year.year);
-    const statusStyles = {
-      Evaluated: 'bg-green-100 text-green-700',
-      'In Progress': 'bg-blue-100 text-blue-700',
-      Transfer: 'bg-gray-200 text-gray-700'
-    };
-
     useEffect(() => {
       if (activePlanYear && selectedPlanYear !== activePlanYear) {
         setSelectedPlanYear(activePlanYear);
@@ -1018,94 +1407,7 @@ function App() {
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <div>
-              <h3 className="text-lg font-bold text-gray-900">Academic Record</h3>
-              <p className="text-sm text-gray-600">Transcript-aligned terms with grades</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {transcriptYears.map((year) => (
-                <button
-                  key={year}
-                  onClick={() => setSelectedTranscriptYear(year)}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium border ${
-                    selectedTranscriptYear === year
-                      ? 'text-white'
-                      : 'text-gray-700 border-gray-200 hover:bg-gray-100'
-                  }`}
-                  style={selectedTranscriptYear === year ? { backgroundColor: '#500000' } : {}}
-                >
-                  {year}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {transcriptYear.terms
-              .filter((term) => term.courses.length > 0)
-              .map((term) => {
-                const termCredits = term.courses.reduce((sum, c) => sum + c.credits, 0);
-                return (
-                  <div
-                    key={term.label}
-                    className="border border-gray-200 rounded-lg p-4 bg-gray-50"
-                  >
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <h4 className="font-semibold text-gray-900">{term.label}</h4>
-                        <p className="text-xs text-gray-600">{termCredits} credits</p>
-                      </div>
-                      <span
-                        className={`text-xs px-2 py-1 rounded-full ${
-                          statusStyles[term.status] || 'bg-gray-200 text-gray-700'
-                        }`}
-                      >
-                        {term.status}
-                      </span>
-                    </div>
-                    <div className="space-y-2">
-                      {term.courses.map((course) => (
-                        <div
-                          key={`${term.label}-${course.code}`}
-                          className="rounded-md bg-white border border-gray-100 px-3 py-2"
-                        >
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <p className="text-sm font-semibold text-gray-900">{course.code}</p>
-                              <p className="text-xs text-gray-600">{course.title}</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-sm font-semibold text-gray-900">
-                                {course.grade}
-                              </p>
-                              <p className="text-xs text-gray-500">{course.credits} cr</p>
-                            </div>
-                          </div>
-                          {(course.transfer || course.honors) && (
-                            <div className="mt-2 flex items-center justify-end gap-2">
-                              {course.honors && (
-                                <span className="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-700">
-                                  Honors
-                                </span>
-                              )}
-                              {course.transfer && (
-                                <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 flex items-center gap-1">
-                                  <CheckCircle className="w-3 h-3" />
-                                  Transfer
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-          </div>
-        </div>
+        <AcademicRecordPanel />
 
         {showCourseModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -1245,34 +1547,69 @@ function App() {
     );
   };
 
-  const PrerequisiteTab = () => {
+  const PrerequisiteTab = ({ isFullscreen, onFullscreenChange }) => {
+    const careerPaths = [
+      {
+        id: 'All',
+        title: 'All'
+      },
+      {
+        id: 'SWE',
+        title: 'SWE',
+        courses: EMPHASIS_TRACKS['Software Engineering']
+      },
+      {
+        id: 'ML',
+        title: 'ML',
+        courses: EMPHASIS_TRACKS['AI/ML']
+      },
+      {
+        id: 'Cyber',
+        title: 'Cyber',
+        courses: EMPHASIS_TRACKS.Cybersecurity
+      }
+    ];
+    const [selectedPath, setSelectedPath] = useState('All');
+    const [zoomLevel, setZoomLevel] = useState(1);
+    const [hoveredCourse, setHoveredCourse] = useState(null);
+    useEffect(() => {
+      if (!isFullscreen) return undefined;
+      const { overflow } = document.body.style;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = overflow || '';
+      };
+    }, [isFullscreen]);
+    const toggleFullscreen = () => {
+      onFullscreenChange?.(!isFullscreen);
+    };
     const flowNodes = [
-      { id: 'CSCE 120', x: 20, y: 20 },
-      { id: 'CSCE 121', x: 20, y: 100 },
-      { id: 'CSCE 181', x: 20, y: 180 },
-      { id: 'MATH 151', x: 20, y: 260 },
-      { id: 'CSCE 221', x: 240, y: 60 },
-      { id: 'CSCE 222', x: 240, y: 140 },
-      { id: 'MATH 304', x: 240, y: 220 },
-      { id: 'STAT 211', x: 240, y: 300 },
-      { id: 'CSCE 312', x: 460, y: 20 },
-      { id: 'CSCE 313', x: 460, y: 90 },
-      { id: 'CSCE 314', x: 460, y: 160 },
-      { id: 'CSCE 331', x: 460, y: 230 },
-      { id: 'CSCE 481', x: 460, y: 300 },
-      { id: 'CSCE 411', x: 680, y: 20 },
-      { id: 'CSCE 420', x: 680, y: 90 },
-      { id: 'CSCE 421', x: 680, y: 160 },
-      { id: 'CSCE 463', x: 680, y: 230 },
-      { id: 'CSCE 465', x: 680, y: 300 },
-      { id: 'CSCE 315', x: 900, y: 20 },
-      { id: 'CSCE 431', x: 900, y: 90 },
-      { id: 'CSCE 434', x: 900, y: 160 },
-      { id: 'CSCE 441', x: 900, y: 230 },
-      { id: 'CSCE 448', x: 900, y: 300 },
-      { id: 'CSCE 451', x: 1120, y: 90 },
-      { id: 'CSCE 482', x: 1120, y: 170 },
-      { id: 'CSCE 442', x: 1120, y: 250 }
+      { id: 'CSCE 120', x: 40, y: 20 },
+      { id: 'CSCE 121', x: 40, y: 150 },
+      { id: 'CSCE 181', x: 40, y: 280 },
+      { id: 'MATH 151', x: 40, y: 410 },
+      { id: 'CSCE 221', x: 320, y: 60 },
+      { id: 'CSCE 222', x: 320, y: 190 },
+      { id: 'MATH 304', x: 320, y: 320 },
+      { id: 'STAT 211', x: 320, y: 450 },
+      { id: 'CSCE 312', x: 620, y: 20 },
+      { id: 'CSCE 313', x: 620, y: 130 },
+      { id: 'CSCE 314', x: 620, y: 240 },
+      { id: 'CSCE 331', x: 620, y: 350 },
+      { id: 'CSCE 481', x: 620, y: 460 },
+      { id: 'CSCE 411', x: 920, y: 20 },
+      { id: 'CSCE 420', x: 920, y: 130 },
+      { id: 'CSCE 421', x: 920, y: 240 },
+      { id: 'CSCE 463', x: 920, y: 350 },
+      { id: 'CSCE 465', x: 920, y: 460 },
+      { id: 'CSCE 315', x: 1220, y: 20 },
+      { id: 'CSCE 431', x: 1220, y: 130 },
+      { id: 'CSCE 434', x: 1220, y: 240 },
+      { id: 'CSCE 441', x: 1220, y: 350 },
+      { id: 'CSCE 448', x: 1220, y: 460 },
+      { id: 'CSCE 451', x: 1520, y: 130 },
+      { id: 'CSCE 482', x: 1520, y: 260 },
+      { id: 'CSCE 442', x: 1520, y: 390 }
     ];
     const flowEdges = Object.entries(FLOWCHART_COURSES).flatMap(([code, course]) =>
       course.prereqs.map((prereq) => ({ from: prereq, to: code }))
@@ -1299,6 +1636,187 @@ function App() {
         course.prereqs.length === 0 || course.prereqs.every((p) => isCourseCompleted(p));
       return prereqsMet ? 'available' : 'locked';
     };
+    const collectPrereqs = (code, collected = new Set()) => {
+      if (!code || collected.has(code)) return collected;
+      collected.add(code);
+      const course = FLOWCHART_COURSES[code] || COURSES[code];
+      if (!course?.prereqs?.length) return collected;
+      course.prereqs.forEach((prereq) => collectPrereqs(prereq, collected));
+      return collected;
+    };
+    const highlightedCourses = useMemo(() => {
+      if (selectedPath === 'All') return new Set();
+      const path = careerPaths.find((item) => item.id === selectedPath);
+      const highlight = new Set();
+      (path?.courses || []).forEach((course) => collectPrereqs(course, highlight));
+      return highlight;
+    }, [careerPaths, selectedPath]);
+    const hoveredPrereqs = useMemo(() => {
+      if (!hoveredCourse) return new Set();
+      return collectPrereqs(hoveredCourse, new Set());
+    }, [hoveredCourse]);
+    const handleZoom = (delta) => {
+      setZoomLevel((prev) => {
+        const next = Math.round((prev + delta) * 10) / 10;
+        return Math.min(2, Math.max(0.6, next));
+      });
+    };
+    const flowchartControls = (
+      <div className="flex flex-wrap items-center justify-between gap-3 border border-gray-200 rounded-lg bg-white px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {careerPaths.map((path) => (
+            <button
+              key={path.id}
+              onClick={() => setSelectedPath(path.id)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
+                selectedPath === path.id
+                  ? 'text-white'
+                  : 'text-gray-700 border-gray-200 hover:bg-gray-100'
+              }`}
+              style={selectedPath === path.id ? { backgroundColor: '#500000' } : {}}
+            >
+              {path.title}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handleZoom(-0.1)}
+            className="px-3 py-1.5 rounded-full text-xs font-semibold border border-gray-200 text-gray-700 hover:bg-gray-100"
+          >
+            −
+          </button>
+          <span className="text-xs font-semibold text-gray-600">
+            {Math.round(zoomLevel * 100)}%
+          </span>
+          <button
+            type="button"
+            onClick={() => handleZoom(0.1)}
+            className="px-3 py-1.5 rounded-full text-xs font-semibold border border-gray-200 text-gray-700 hover:bg-gray-100"
+          >
+            +
+          </button>
+          <button
+            type="button"
+            onClick={() => setZoomLevel(1)}
+            className="px-3 py-1.5 rounded-full text-xs font-semibold border border-gray-200 text-gray-700 hover:bg-gray-100"
+          >
+            Reset
+          </button>
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            className="px-3 py-1.5 rounded-full text-xs font-semibold border border-gray-200 text-gray-700 hover:bg-gray-100"
+          >
+            {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+          </button>
+        </div>
+      </div>
+    );
+    const flowchartCanvas = (
+      <div
+        className={`border border-gray-200 rounded-lg bg-white p-4 ${
+          isFullscreen ? 'h-full' : 'h-[420px]'
+        } overflow-auto`}
+      >
+        <div
+          className={`flex items-center justify-center ${
+            isFullscreen ? 'min-w-[2600px] min-h-[900px]' : 'min-w-[2000px] min-h-[700px]'
+          }`}
+        >
+          <svg
+            viewBox="0 0 1800 600"
+            className={isFullscreen ? 'w-[2400px] h-auto' : 'w-[1800px] h-auto'}
+            role="img"
+            aria-label="Course prerequisite flowchart"
+            style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'center' }}
+          >
+            <defs>
+              <marker
+                id="arrow"
+                markerWidth="6"
+                markerHeight="6"
+                refX="6"
+                refY="3"
+                orient="auto"
+              >
+                <path d="M0,0 L6,3 L0,6 Z" fill="#9ca3af" />
+              </marker>
+            </defs>
+
+            {flowEdges.map((edge) => {
+              const from = nodeMap.get(edge.from);
+              const to = nodeMap.get(edge.to);
+              if (!from || !to) return null;
+              const startX = from.x + nodeWidth;
+              const startY = from.y + nodeHeight / 2;
+              const endX = to.x;
+              const endY = to.y + nodeHeight / 2;
+              const isHoveredEdge =
+                hoveredPrereqs.size > 0 &&
+                hoveredPrereqs.has(edge.from) &&
+                hoveredPrereqs.has(edge.to);
+              return (
+                <line
+                  key={`${edge.from}-${edge.to}`}
+                  x1={startX}
+                  y1={startY}
+                  x2={endX}
+                  y2={endY}
+                  stroke={isHoveredEdge ? '#f97316' : '#94a3b8'}
+                  strokeWidth={isHoveredEdge ? '2' : '1'}
+                  strokeOpacity={isHoveredEdge ? '0.85' : '0.35'}
+                  markerEnd="url(#arrow)"
+                />
+              );
+            })}
+
+            {flowNodes.map((node) => {
+              const course = FLOWCHART_COURSES[node.id] || COURSES[node.id];
+              if (!course) return null;
+              const status = getStatus(node.id);
+              const isPathHighlighted =
+                selectedPath === 'All' ? false : highlightedCourses.has(node.id);
+              const isHoveredHighlight =
+                hoveredPrereqs.size > 0 && hoveredPrereqs.has(node.id);
+              const dimmed =
+                (selectedPath !== 'All' && !isPathHighlighted && hoveredPrereqs.size === 0) ||
+                (hoveredPrereqs.size > 0 && !isHoveredHighlight);
+              return (
+                <g
+                  key={node.id}
+                  onMouseEnter={() => {
+                    if (status === 'locked') setHoveredCourse(node.id);
+                  }}
+                  onMouseLeave={() => setHoveredCourse(null)}
+                >
+                  <rect
+                    x={node.x}
+                    y={node.y}
+                    width={nodeWidth}
+                    height={nodeHeight}
+                    rx="8"
+                    className={`${statusStyles[status]} stroke-2`}
+                    opacity={dimmed ? 0.35 : 1}
+                    stroke={
+                      isHoveredHighlight ? '#f97316' : isPathHighlighted ? '#500000' : undefined
+                    }
+                    strokeWidth={isHoveredHighlight ? 3 : isPathHighlighted ? 3 : undefined}
+                  />
+                  <text x={node.x + 12} y={node.y + 20} fontSize="12" fill="#111827">
+                    <tspan fontWeight="600">{node.id}</tspan>
+                  </text>
+                  <text x={node.x + 12} y={node.y + 38} fontSize="10" fill="#4b5563">
+                    <tspan>{course.title}</tspan>
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+      </div>
+    );
 
     return (
       <div className="space-y-4">
@@ -1308,74 +1826,32 @@ function App() {
             Flowchart-style prerequisites for the CS core. Boxes show status based on transcript.
           </p>
 
-          <div className="border border-gray-200 rounded-lg bg-gray-50 p-4 overflow-x-auto">
-            <svg
-              viewBox="0 0 1540 380"
-              className="w-[1540px] h-auto"
-              role="img"
-              aria-label="Course prerequisite flowchart"
-            >
-              <defs>
-                <marker
-                  id="arrow"
-                  markerWidth="10"
-                  markerHeight="10"
-                  refX="9"
-                  refY="3"
-                  orient="auto"
-                >
-                  <path d="M0,0 L9,3 L0,6 Z" fill="#9ca3af" />
-                </marker>
-              </defs>
-
-              {flowEdges.map((edge) => {
-                const from = nodeMap.get(edge.from);
-                const to = nodeMap.get(edge.to);
-                if (!from || !to) return null;
-                const startX = from.x + nodeWidth;
-                const startY = from.y + nodeHeight / 2;
-                const endX = to.x;
-                const endY = to.y + nodeHeight / 2;
-                return (
-                  <line
-                    key={`${edge.from}-${edge.to}`}
-                    x1={startX}
-                    y1={startY}
-                    x2={endX}
-                    y2={endY}
-                    stroke="#9ca3af"
-                    strokeWidth="2"
-                    markerEnd="url(#arrow)"
-                  />
-                );
-              })}
-
-              {flowNodes.map((node) => {
-                const course = FLOWCHART_COURSES[node.id] || COURSES[node.id];
-                if (!course) return null;
-                const status = getStatus(node.id);
-                return (
-                  <g key={node.id}>
-                    <rect
-                      x={node.x}
-                      y={node.y}
-                      width={nodeWidth}
-                      height={nodeHeight}
-                      rx="8"
-                      className={`${statusStyles[status]} stroke-2`}
-                    />
-                    <text x={node.x + 12} y={node.y + 20} fontSize="12" fill="#111827">
-                      <tspan fontWeight="600">{node.id}</tspan>
-                    </text>
-                    <text x={node.x + 12} y={node.y + 38} fontSize="10" fill="#4b5563">
-                      <tspan>{course.title}</tspan>
-                    </text>
-                  </g>
-                );
-              })}
-            </svg>
+          <div className="space-y-3">
+            {flowchartControls}
+            {flowchartCanvas}
           </div>
         </div>
+
+        {isFullscreen && (
+          <div className="fixed inset-0 z-50 bg-white">
+            <div className="flex h-full w-full flex-col">
+              <div className="border-b border-gray-200 px-6 py-4 bg-white">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-bold text-gray-900">Prerequisite Flowchart</h3>
+                  <button
+                    type="button"
+                    onClick={() => onFullscreenChange?.(false)}
+                    className="px-3 py-1.5 rounded-full text-xs font-semibold border border-gray-200 text-gray-700 hover:bg-gray-100"
+                  >
+                    Exit Fullscreen
+                  </button>
+                </div>
+                <div className="mt-3">{flowchartControls}</div>
+              </div>
+              <div className="flex-1 overflow-auto p-6">{flowchartCanvas}</div>
+            </div>
+          </div>
+        )}
 
         <div className="bg-white rounded-lg shadow p-6">
           <h3 className="text-lg font-bold mb-4">Legend</h3>
@@ -1485,72 +1961,87 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <header className="shadow-lg" style={{ backgroundColor: '#500000' }}>
-        <div className="max-w-7xl mx-auto px-4 py-6">
-          <div className="flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => setActiveTab('dashboard')}
-              className="flex items-center gap-3 text-left"
-              aria-label="Go to dashboard"
-            >
-              <img
-                src={tamuLogo}
-                alt="TAMU logo"
-                className="w-10 h-10 rounded-full bg-white p-1"
-              />
-              <div>
-                <h1 className="text-2xl font-bold text-white">TAMU Academic Planner</h1>
-                <p className="text-sm" style={{ color: '#f0e5d8' }}>
-                  Enhanced Planning Tool
-                </p>
+      {!isFlowFullscreen && (
+        <>
+          <header className="shadow-lg" style={{ backgroundColor: '#500000' }}>
+            <div className="max-w-7xl mx-auto px-4 py-6">
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('dashboard')}
+                  className="flex items-center gap-3 text-left"
+                  aria-label="Go to dashboard"
+                >
+                  <img
+                    src={tamuLogo}
+                    alt="TAMU logo"
+                    className="w-10 h-10 rounded-full bg-white p-1"
+                  />
+                  <div>
+                    <h1 className="text-2xl font-bold text-white">TAMU Academic Planner</h1>
+                    <p className="text-sm" style={{ color: '#f0e5d8' }}>
+                      Enhanced Planning Tool
+                    </p>
+                  </div>
+                </button>
+                <div className="flex gap-2">
+                  <button
+                    className="flex items-center gap-2 bg-white px-4 py-2 rounded-lg hover:bg-gray-100"
+                    style={{ color: '#500000' }}
+                  >
+                    <Save className="w-4 h-4" />
+                    Save Plan
+                  </button>
+                  <button
+                    className="flex items-center gap-2 border border-white/60 px-4 py-2 rounded-lg text-white hover:bg-white/10"
+                    type="button"
+                    onClick={() => setActiveTab('login')}
+                  >
+                    Login
+                  </button>
+                </div>
               </div>
-            </button>
-            <div className="flex gap-2">
-              <button
-                className="flex items-center gap-2 bg-white px-4 py-2 rounded-lg hover:bg-gray-100"
-                style={{ color: '#500000' }}
-              >
-                <Save className="w-4 h-4" />
-                Save Plan
-              </button>
-              <button
-                className="flex items-center gap-2 border border-white/60 px-4 py-2 rounded-lg text-white hover:bg-white/10"
-                type="button"
-                onClick={() => setActiveTab('login')}
-              >
-                Login
-              </button>
             </div>
-          </div>
-        </div>
-      </header>
+          </header>
 
-      <nav className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="flex gap-6">
-            {['dashboard', 'planner', 'prerequisites'].map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`py-4 px-2 border-b-2 font-medium capitalize ${
-                  activeTab === tab
-                    ? 'text-gray-900'
-                    : 'border-transparent text-gray-600 hover:text-gray-900'
-                }`}
-                style={activeTab === tab ? { borderColor: '#500000', color: '#500000' } : {}}
-              >
-                {tab}
-              </button>
-            ))}
-          </div>
-        </div>
-      </nav>
+          <nav className="bg-white shadow">
+            <div className="max-w-7xl mx-auto px-4">
+              <div className="flex gap-6">
+                {[
+                  { id: 'dashboard', label: 'Dashboard' },
+                  { id: 'planner', label: 'Planner' },
+                  { id: 'prerequisites', label: 'Prerequisites' }
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`py-4 px-2 border-b-2 font-medium capitalize ${
+                      activeTab === tab.id
+                        ? 'text-gray-900'
+                        : 'border-transparent text-gray-600 hover:text-gray-900'
+                    }`}
+                    style={
+                      activeTab === tab.id ? { borderColor: '#500000', color: '#500000' } : {}
+                    }
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </nav>
+        </>
+      )}
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
+      <main className={isFlowFullscreen ? 'p-0' : 'max-w-7xl mx-auto px-4 py-8'}>
         {activeTab === 'dashboard' && <DashboardTab />}
         {activeTab === 'planner' && <PlannerTab />}
-        {activeTab === 'prerequisites' && <PrerequisiteTab />}
+        {activeTab === 'prerequisites' && (
+          <PrerequisiteTab
+            isFullscreen={isFlowFullscreen}
+            onFullscreenChange={setIsFlowFullscreen}
+          />
+        )}
         {activeTab === 'login' && <LoginPage />}
       </main>
     </div>
