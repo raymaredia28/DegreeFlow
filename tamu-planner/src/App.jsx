@@ -11,7 +11,9 @@ import {
   Plus,
   X,
   Search,
-  Save
+  Save,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 // Mock data
@@ -145,6 +147,40 @@ const COURSES = {
     status: 'available'
   }
 };
+
+// Requirement areas used for the evaluation bars on the Dashboard.
+// NOTE: Replace/extend these with your real CS degree audit rules as needed.
+const REQUIREMENT_AREAS = [
+  {
+    id: 'major-coursework',
+    name: 'Major Coursework',
+    requiredCredits: 30,
+    courses: [
+      'CSCE 121',
+      'CSCE 221',
+      'CSCE 222',
+      'CSCE 312',
+      'CSCE 313',
+      'CSCE 314',
+      'CSCE 331',
+      'CSCE 399'
+    ]
+  },
+  {
+    id: 'supporting-coursework',
+    name: 'Supporting Coursework',
+    requiredCredits: 46,
+    courses: ['MATH 151', 'MATH 152', 'MATH 304']
+  },
+  { id: 'communication', name: 'Communication', requiredCredits: 6, courses: [] },
+  { id: 'mathematics', name: 'Mathematics', requiredCredits: 8, courses: ['MATH 151', 'MATH 152'] },
+  { id: 'life-physical-sciences', name: 'Life and Physical Sciences', requiredCredits: 14, courses: [] },
+  { id: 'language-philosophy-culture', name: 'Language, Philosophy & Culture', requiredCredits: 3, courses: [] },
+  { id: 'creative-arts', name: 'Creative Arts', requiredCredits: 3, courses: [] },
+  { id: 'social-behavioral-sciences', name: 'Social and Behavioral Sciences', requiredCredits: 3, courses: [] },
+  { id: 'citizenship', name: 'Citizenship', requiredCredits: 12, courses: [] },
+  { id: 'general-electives', name: 'General Electives', requiredCredits: 1, courses: [] }
+];
 
 const RISKY_COMBOS = [
   {
@@ -818,6 +854,287 @@ function App() {
     });
   }, [searchQuery]);
 
+  const AreasEvaluation = ({ areas, transcriptCourseList, semesterPlans }) => {
+    const [expandedAreas, setExpandedAreas] = useState(() => new Set());
+    const allExpanded = expandedAreas.size === areas.length && areas.length > 0;
+
+    // Green: Taken/Registered = anything in transcript (including IP)
+    const takenOrRegistered = useMemo(() => {
+      const set = new Set();
+      transcriptCourseList.forEach((c) => {
+        if (!c?.code) return;
+        set.add(c.code);
+      });
+      return set;
+    }, [transcriptCourseList]);
+
+    // Yellow: Planned = in semesterPlans but not already taken/registered
+    const plannedSet = useMemo(() => {
+      const set = new Set();
+      Object.values(semesterPlans || {}).forEach((list) => {
+        (list || []).forEach((code) => {
+          if (!code) return;
+          if (takenOrRegistered.has(code)) return;
+          set.add(code);
+        });
+      });
+      return set;
+    }, [semesterPlans, takenOrRegistered]);
+
+    const getCreditsFor = (code) => {
+      const fromCatalog = Number(COURSES[code]?.credits);
+      if (!Number.isNaN(fromCatalog) && fromCatalog > 0) return fromCatalog;
+
+      const fromTranscript = transcriptCourseList.find((c) => c.code === code);
+      const tc = Number(fromTranscript?.credits);
+      if (!Number.isNaN(tc) && tc > 0) return tc;
+
+      return 0;
+    };
+
+    const getTitleFor = (code) => COURSES[code]?.title || 'Course';
+
+    const areaSummaries = useMemo(() => {
+      return areas.map((area) => {
+        const required = Number(area.requiredCredits) || 0;
+        const eligible = Array.isArray(area.courses) ? area.courses : [];
+
+        const takenCourses = eligible.filter((c) => takenOrRegistered.has(c));
+        const plannedCourses = eligible.filter((c) => plannedSet.has(c));
+
+        const takenCredits = takenCourses.reduce((sum, c) => sum + getCreditsFor(c), 0);
+        const plannedCredits = plannedCourses.reduce((sum, c) => sum + getCreditsFor(c), 0);
+
+        // Cap display so bar never exceeds required credits
+        const displayGreen = Math.min(takenCredits, required);
+        const remainingAfterGreen = Math.max(required - displayGreen, 0);
+        const displayYellow = Math.min(plannedCredits, remainingAfterGreen);
+        const displayRed = Math.max(required - displayGreen - displayYellow, 0);
+
+        // Pick a small set of missing courses to show (until it covers missing credits)
+        const missingCoursesAll = eligible.filter(
+          (c) => !takenOrRegistered.has(c) && !plannedSet.has(c)
+        );
+        const missingPick = [];
+        let picked = 0;
+        for (const c of missingCoursesAll) {
+          if (picked >= displayRed) break;
+          missingPick.push(c);
+          picked += getCreditsFor(c);
+        }
+
+        return {
+          ...area,
+          required,
+          takenCourses,
+          plannedCourses,
+          missingCourses: missingPick,
+          takenCredits,
+          plannedCredits,
+          displayGreen,
+          displayYellow,
+          displayRed,
+          isMet: displayRed <= 0.00001
+        };
+      });
+    }, [areas, takenOrRegistered, plannedSet, transcriptCourseList]);
+
+    const toggleArea = (id) => {
+      setExpandedAreas((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+    };
+
+    const toggleExpandAll = () => {
+      setExpandedAreas(() => {
+        if (allExpanded) return new Set();
+        return new Set(areas.map((a) => a.id));
+      });
+    };
+
+    return (
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold" style={{ color: '#500000' }}>
+            Areas
+          </h3>
+
+          <div className="flex items-center gap-4">
+            <div className="hidden sm:flex items-center gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="inline-block w-4 h-4 rounded" style={{ backgroundColor: '#2f9e44' }} />
+                <span className="text-gray-700">Taken/Registered</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="inline-block w-4 h-4 rounded" style={{ backgroundColor: '#f2c94c' }} />
+                <span className="text-gray-700">Planned</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="inline-block w-4 h-4 rounded" style={{ backgroundColor: '#eb5757' }} />
+                <span className="text-gray-700">Not Satisfied</span>
+              </div>
+            </div>
+
+            <button
+              onClick={toggleExpandAll}
+              className="px-4 py-2 text-sm font-semibold text-white rounded shadow"
+              style={{ backgroundColor: '#6b6b6b' }}
+              type="button"
+            >
+              {allExpanded ? 'Collapse All' : 'Expand All'}
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          {areaSummaries.map((area) => {
+            const expanded = expandedAreas.has(area.id);
+            const pct = (v) => (area.required > 0 ? `${(v / area.required) * 100}%` : '0%');
+
+            return (
+              <div key={area.id} className="border rounded-lg" style={{ borderColor: '#2f9e44' }}>
+                <button
+                  type="button"
+                  onClick={() => toggleArea(area.id)}
+                  className="w-full flex items-center justify-between gap-4 p-4"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex-shrink-0">
+                      {area.isMet ? (
+                        <CheckCircle className="w-7 h-7 text-green-600" />
+                      ) : (
+                        <AlertTriangle className="w-7 h-7 text-red-600" />
+                      )}
+                    </div>
+
+                    <div className="text-left min-w-0">
+                      <div className="font-semibold text-gray-900 truncate">
+                        {area.name} ({area.required}) {area.isMet ? 'Met' : 'Not Met'}
+                      </div>
+                      <div className="text-xs text-gray-600">
+                        {Math.min(area.takenCredits + area.plannedCredits, area.required)}/{area.required}{' '}
+                        credits accounted for
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4 flex-1 justify-end">
+                    <div className="w-full max-w-xl">
+                      <div className="h-10 rounded overflow-hidden flex bg-gray-100 border border-gray-200">
+                        {area.displayGreen > 0 && (
+                          <div
+                            className="h-full flex items-center justify-center text-white font-semibold"
+                            style={{ width: pct(area.displayGreen), backgroundColor: '#2f9e44' }}
+                          >
+                            {Math.round(area.displayGreen)}
+                          </div>
+                        )}
+                        {area.displayYellow > 0 && (
+                          <div
+                            className="h-full flex items-center justify-center text-gray-900 font-semibold"
+                            style={{ width: pct(area.displayYellow), backgroundColor: '#f2c94c' }}
+                          >
+                            {Math.round(area.displayYellow)}
+                          </div>
+                        )}
+                        {area.displayRed > 0 && (
+                          <div
+                            className="h-full flex items-center justify-center text-white font-semibold"
+                            style={{ width: pct(area.displayRed), backgroundColor: '#eb5757' }}
+                          >
+                            {Math.round(area.displayRed)}
+                          </div>
+                        )}
+                        {area.displayGreen === 0 && area.displayYellow === 0 && area.displayRed === 0 && (
+                          <div className="h-full flex items-center justify-center text-gray-600 w-full">—</div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex-shrink-0">
+                      {expanded ? (
+                        <ChevronUp className="w-7 h-7 text-gray-600" />
+                      ) : (
+                        <ChevronDown className="w-7 h-7 text-gray-600" />
+                      )}
+                    </div>
+                  </div>
+                </button>
+
+                {expanded && (
+                  <div className="px-6 pb-5">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <div className="text-sm font-semibold text-gray-900 mb-2">Taken/Registered</div>
+                        {area.takenCourses.length === 0 ? (
+                          <div className="text-sm text-gray-600">None</div>
+                        ) : (
+                          <ul className="space-y-1 text-sm">
+                            {area.takenCourses.map((code) => (
+                              <li key={code} className="flex items-start gap-2">
+                                <span className="mt-1 inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#2f9e44' }} />
+                                <span className="text-gray-900">
+                                  {code} <span className="text-gray-500">— {getTitleFor(code)}</span>
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="text-sm font-semibold text-gray-900 mb-2">Planned</div>
+                        {area.plannedCourses.length === 0 ? (
+                          <div className="text-sm text-gray-600">None</div>
+                        ) : (
+                          <ul className="space-y-1 text-sm">
+                            {area.plannedCourses.map((code) => (
+                              <li key={code} className="flex items-start gap-2">
+                                <span className="mt-1 inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#f2c94c' }} />
+                                <span className="text-gray-900">
+                                  {code} <span className="text-gray-500">— {getTitleFor(code)}</span>
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="text-sm font-semibold text-gray-900 mb-2">Not Satisfied</div>
+                        {area.displayRed <= 0.00001 ? (
+                          <div className="text-sm text-gray-600">Satisfied</div>
+                        ) : area.missingCourses.length === 0 ? (
+                          <div className="text-sm text-gray-600">
+                            Need {Math.round(area.displayRed)} more credits (no course list configured)
+                          </div>
+                        ) : (
+                          <ul className="space-y-1 text-sm">
+                            {area.missingCourses.map((code) => (
+                              <li key={code} className="flex items-start gap-2">
+                                <span className="mt-1 inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#eb5757' }} />
+                                <span className="text-gray-900">
+                                  {code} <span className="text-gray-500">— {getTitleFor(code)}</span>
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   const DashboardTab = () => {
     const hasTranscriptData =
       transcriptTerms.length > 0 || Boolean(transcriptTotals?.overall?.earnedHours);
@@ -952,6 +1269,12 @@ function App() {
             </div>
           </div>
         </div>
+        {/* Areas evaluation bars */}
+        <AreasEvaluation
+          areas={REQUIREMENT_AREAS}
+          transcriptCourseList={transcriptCourseList}
+          semesterPlans={semesterPlans}
+        />
       </div>
     );
   };
