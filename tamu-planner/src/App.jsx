@@ -559,6 +559,9 @@ function App() {
   const [transcriptError, setTranscriptError] = useState('');
   const [transcriptLoading, setTranscriptLoading] = useState(false);
   const [transcriptLoadingMessage, setTranscriptLoadingMessage] = useState('');
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatInput, setChatInput] = useState('');
+  const [chatMessages, setChatMessages] = useState([]);
   const transcriptYears = useMemo(() => normalizeTranscript(transcriptTerms), [transcriptTerms]);
   const transcriptIndex = useMemo(() => buildTranscriptIndex(transcriptTerms), [transcriptTerms]);
 
@@ -1064,13 +1067,13 @@ function App() {
 
     return (
       <div className="bg-white rounded-lg shadow p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div className="flex flex-col items-start gap-3 mb-4">
           <div>
             <h3 className="text-lg font-bold text-gray-900">Academic Record</h3>
             <p className="text-sm text-gray-600">Transcript-aligned terms with grades</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <label className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-100 cursor-pointer">
+            <label className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-100 cursor-pointer inline-flex items-center">
               <input
                 type="file"
                 accept="application/pdf"
@@ -1082,11 +1085,14 @@ function App() {
             <button
               type="button"
               onClick={() => {
-                setTranscriptTerms(RAW_TRANSCRIPT_TERMS);
+                setTranscriptTerms(TRANSCRIPT_DEMO);
                 setTranscriptError('');
-                setSelectedTranscriptYear('2024-2025');
                 setTranscriptPdfName('');
                 setTranscriptTotals(null);
+                const normalized = normalizeTranscript(TRANSCRIPT_DEMO);
+                if (normalized.length > 0) {
+                  setSelectedTranscriptYear(normalized[normalized.length - 1].year);
+                }
               }}
               className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-100"
             >
@@ -2162,176 +2168,89 @@ function App() {
         {activeTab === 'login' && <LoginPage />}
       </main>
 
-      {showTranscriptReview && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col">
-            <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900">Review Transcript Terms</h3>
-                <p className="text-sm text-gray-600">
-                  Drag courses to the correct semester, then apply changes.
-                </p>
+      {!isFlowFullscreen && (
+        <div className="fixed right-0 bottom-6 z-50 flex items-end">
+          <div
+            className={`mr-3 w-80 rounded-2xl border border-gray-200 bg-white shadow-xl transition-all duration-300 ease-out ${
+              isChatOpen
+                ? 'opacity-100 translate-x-0 pointer-events-auto'
+                : 'opacity-0 translate-x-6 pointer-events-none'
+            }`}
+          >
+              <div className="flex items-center justify-between border-b px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">DegreeFlow Assistant</p>
+                  <p className="text-xs text-gray-500">Ask anything about your plan</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsChatOpen(false)}
+                  className="text-xs text-gray-500 hover:text-gray-800"
+                >
+                  Close
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowTranscriptReview(false)}
-                className="px-3 py-1.5 rounded-full text-xs font-semibold border border-gray-200 text-gray-700 hover:bg-gray-100"
-              >
-                Close
-              </button>
-            </div>
-
-            <div
-              ref={reviewScrollRef}
-              className="p-6 overflow-auto"
-              onDragOver={handleReviewDragOver}
-            >
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {reviewTerms.map((term) => {
-                  const isDragOver = dragOverTermLabel === term.label;
-                  return (
-                  <div
-                    key={term.label}
-                    className={`border rounded-lg p-3 min-h-[220px] transition ${
-                      isDragOver
-                        ? 'border-amber-400 bg-amber-50 shadow-sm'
-                        : 'border-gray-200 bg-gray-50'
-                    }`}
-                    onDragOver={(event) => event.preventDefault()}
-                    onDragEnter={() => setDragOverTermLabel(term.label)}
-                    onDragLeave={() =>
-                      setDragOverTermLabel((prev) => (prev === term.label ? null : prev))
-                    }
-                    onDrop={() => {
-                      if (!draggedReviewCourse) return;
-                      moveReviewedCourse(
-                        draggedReviewCourse.code,
-                        draggedReviewCourse.fromTermLabel,
-                        term.label
-                      );
-                      setDraggedReviewCourse(null);
-                      setDragOverTermLabel(null);
-                    }}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-semibold text-gray-900">{term.label}</h4>
-                      <span className="text-xs text-gray-500">
-                        {(term.courses || []).length} courses
+              <div className="h-56 px-4 py-3 text-xs text-gray-600 space-y-2 overflow-y-auto">
+                {chatMessages.length === 0 ? (
+                  <div className="text-gray-400">Messages will appear here.</div>
+                ) : (
+                  chatMessages.map((message) => (
+                    <div key={message.id} className="flex justify-end">
+                      <span className="max-w-[85%] rounded-lg bg-[#500000]/10 px-3 py-2 text-xs text-gray-800">
+                        {message.text}
                       </span>
                     </div>
-                    <div className="space-y-2">
-                      {(term.courses || []).map((course) => (
-                        <div
-                          key={`${term.label}-${course.code}`}
-                          draggable
-                          onDragStart={() =>
-                            setDraggedReviewCourse({
-                              code: course.code,
-                              fromTermLabel: term.label
-                            })
-                          }
-                          onDragEnd={() => {
-                            setDraggedReviewCourse(null);
-                            setDragOverTermLabel(null);
-                          }}
-                          onDragEnter={() => setDragOverTermLabel(term.label)}
-                          onDragOver={(event) => {
-                            event.preventDefault();
-                            setDragOverTermLabel(term.label);
-                          }}
-                          onContextMenu={(event) => {
-                            event.preventDefault();
-                            setReviewContextMenu({
-                              open: true,
-                              x: event.clientX,
-                              y: event.clientY,
-                              courseCode: course.code,
-                              fromTermLabel: term.label
-                            });
-                          }}
-                          className="rounded-md bg-white border border-gray-100 px-3 py-2 cursor-move"
-                        >
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <p className="text-sm font-semibold text-gray-900">
-                                {course.code}
-                              </p>
-                              <p className="text-xs text-gray-600">{course.title}</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-sm font-semibold text-gray-900">
-                                {course.grade}
-                              </p>
-                              <p className="text-xs text-gray-500">
-                                {course.credits} cr
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                      {(term.courses || []).length === 0 && (
-                        <div className="text-xs text-gray-500 border border-dashed border-gray-300 rounded-md px-3 py-4 text-center">
-                          Drop courses here
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )})}
+                  ))
+                )}
+              </div>
+              <div className="border-t px-3 py-3">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Type your question..."
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const trimmed = chatInput.trim();
+                        if (!trimmed) return;
+                        setChatMessages((prev) => [
+                          ...prev,
+                          { id: `${Date.now()}-${prev.length}`, text: trimmed }
+                        ]);
+                        setChatInput('');
+                      }
+                    }}
+                    className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#500000]/20"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const trimmed = chatInput.trim();
+                      if (!trimmed) return;
+                      setChatMessages((prev) => [
+                        ...prev,
+                        { id: `${Date.now()}-${prev.length}`, text: trimmed }
+                      ]);
+                      setChatInput('');
+                    }}
+                    className="rounded-full bg-[#500000] px-3 py-2 text-xs font-semibold text-white hover:bg-[#3d0000]"
+                  >
+                    Send
+                  </button>
+                </div>
               </div>
             </div>
 
-            <div className="border-t border-gray-200 px-6 py-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowTranscriptReview(false)}
-                className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-100"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={applyReviewedTranscript}
-                className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
-                style={{ backgroundColor: '#500000' }}
-              >
-                Apply Changes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {showTranscriptReview && reviewContextMenu.open && (
-        <div
-          className="fixed z-[60] w-56 rounded-lg border border-gray-200 bg-white shadow-lg overflow-hidden"
-          style={{ top: reviewContextMenu.y, left: reviewContextMenu.x }}
-        >
-          <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase">
-            Move to semester
-          </div>
-          <div className="max-h-64 overflow-auto">
-            {reviewTerms.map((term) => (
-              <button
-                key={`${term.label}-move`}
-                type="button"
-                onClick={() => {
-                  moveReviewedCourse(
-                    reviewContextMenu.courseCode,
-                    reviewContextMenu.fromTermLabel,
-                    term.label
-                  );
-                  setReviewContextMenu((prev) => ({ ...prev, open: false }));
-                }}
-                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 ${
-                  term.label === reviewContextMenu.fromTermLabel
-                    ? 'text-gray-400 cursor-not-allowed'
-                    : 'text-gray-700'
-                }`}
-                disabled={term.label === reviewContextMenu.fromTermLabel}
-              >
-                {term.label}
-              </button>
-            ))}
-          </div>
+          <button
+            type="button"
+            onClick={() => setIsChatOpen((prev) => !prev)}
+            className="flex items-center justify-center h-14 w-7 rounded-l-full bg-[#500000] text-white shadow-lg hover:bg-[#3d0000]"
+            aria-label="Toggle chat assistant"
+          >
+            {isChatOpen ? '›' : '‹'}
+          </button>
         </div>
       )}
     </div>
