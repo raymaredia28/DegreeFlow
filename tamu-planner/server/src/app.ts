@@ -2,8 +2,7 @@ import cors from "cors";
 import express from "express";
 import { env } from "./config/env.js";
 import { errorHandler, notFound } from "./middleware/error.js";
-import { healthRouter } from "./routes/health.js";
-import { studentsRouter } from "./routes/students.js";
+import { apiRouter } from "./routes/index.js";
 
 export function createApp() {
   const app = express();
@@ -14,10 +13,9 @@ export function createApp() {
       credentials: true,
     })
   );
-  app.use(express.json({ limit: "2mb" }));
+  app.use(express.json({ limit: "12mb" }));
 
-  app.use(healthRouter);
-  app.use(studentsRouter);
+  app.use(apiRouter);
 
   app.use(notFound);
   app.use(errorHandler);
