@@ -381,6 +381,13 @@
       "course_number": "309",
       "title": "SURVEY OF MANAGEMENT",
       "credits": 3
+    },
+    {
+      "course_id": 54,
+      "department": "ANTH",
+      "course_number": "210",
+      "title": "Soc and Cult Anth",
+      "credits": 3
     }
   ],
   "student_emphasis": [],
@@ -568,7 +575,7 @@
     {
       "entry_id": 19,
       "user_id": 1,
-      "course_id": 34,
+      "course_id": 54,
       "student_emphasis_id": null,
       "term": "Summer",
       "year": 2023,
@@ -650,7 +657,7 @@
       "user_id": 1,
       "course_id": 12,
       "student_emphasis_id": null,
-      "term": "Summer",
+      "term": "Spring",
       "year": 2024,
       "grade": "A",
       "status": "Evaluated"
@@ -660,7 +667,7 @@
       "user_id": 1,
       "course_id": 13,
       "student_emphasis_id": null,
-      "term": "Summer",
+      "term": "Spring",
       "year": 2024,
       "grade": "A",
       "status": "Evaluated"
@@ -670,7 +677,7 @@
       "user_id": 1,
       "course_id": 14,
       "student_emphasis_id": null,
-      "term": "Summer",
+      "term": "Spring",
       "year": 2024,
       "grade": "A",
       "status": "Evaluated"
@@ -738,160 +745,50 @@
     {
       "entry_id": 36,
       "user_id": 1,
-      "course_id": 41,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2025,
-      "grade": "B",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 37,
-      "user_id": 1,
       "course_id": 21,
       "student_emphasis_id": null,
       "term": "Spring",
       "year": 2025,
-      "grade": "A",
-      "status": "Evaluated"
+      "grade": "IP",
+      "status": "In Progress"
     },
     {
-      "entry_id": 38,
+      "entry_id": 37,
       "user_id": 1,
       "course_id": 22,
       "student_emphasis_id": null,
       "term": "Spring",
       "year": 2025,
-      "grade": "A",
-      "status": "Evaluated"
+      "grade": "IP",
+      "status": "In Progress"
     },
     {
-      "entry_id": 39,
+      "entry_id": 38,
       "user_id": 1,
       "course_id": 42,
       "student_emphasis_id": null,
       "term": "Spring",
       "year": 2025,
-      "grade": "A",
-      "status": "Evaluated"
+      "grade": "IP",
+      "status": "In Progress"
     },
     {
-      "entry_id": 40,
+      "entry_id": 39,
       "user_id": 1,
       "course_id": 23,
       "student_emphasis_id": null,
       "term": "Spring",
       "year": 2025,
-      "grade": "B",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 41,
-      "user_id": 1,
-      "course_id": 43,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2025,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 42,
-      "user_id": 1,
-      "course_id": 44,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2025,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 43,
-      "user_id": 1,
-      "course_id": 45,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2025,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 44,
-      "user_id": 1,
-      "course_id": 46,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2025,
-      "grade": "S",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 45,
-      "user_id": 1,
-      "course_id": 47,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2025,
-      "grade": "B",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 46,
-      "user_id": 1,
-      "course_id": 48,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2026,
-      "grade": "TA",
-      "status": "In Progress"
-    },
-    {
-      "entry_id": 47,
-      "user_id": 1,
-      "course_id": 49,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2026,
-      "grade": "S",
-      "status": "In Progress"
-    },
-    {
-      "entry_id": 48,
-      "user_id": 1,
-      "course_id": 50,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2026,
       "grade": "IP",
       "status": "In Progress"
     },
     {
-      "entry_id": 49,
+      "entry_id": 40,
       "user_id": 1,
-      "course_id": 51,
+      "course_id": 41,
       "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2026,
-      "grade": "IP",
-      "status": "In Progress"
-    },
-    {
-      "entry_id": 50,
-      "user_id": 1,
-      "course_id": 52,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2026,
-      "grade": "A",
-      "status": "In Progress"
-    },
-    {
-      "entry_id": 51,
-      "user_id": 1,
-      "course_id": 53,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2026,
+      "term": "Winter",
+      "year": 2024,
       "grade": "IP",
       "status": "In Progress"
     }
