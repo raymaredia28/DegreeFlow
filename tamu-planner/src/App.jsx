@@ -250,7 +250,9 @@ const extractPdfLines = async (file) => {
 
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum += 1) {
     const page = await pdf.getPage(pageNum);
+    const viewport = page.getViewport({ scale: 1 });
     const textContent = await page.getTextContent();
+
     const items = textContent.items
       .map((item) => ({
         text: item.str,
@@ -259,8 +261,14 @@ const extractPdfLines = async (file) => {
       }))
       .filter((item) => item.text && item.text.trim() !== '');
 
+    // Sort primarily by y (top to bottom), then x (left to right)
     items.sort((a, b) => (b.y === a.y ? a.x - b.x : b.y - a.y));
 
+    // Infer a split point between the left and right columns.
+    // Using the page width is more stable than using the max-x of items (some pages have sparse right column).
+    const midX = viewport.width / 2;
+
+    // Group items into "rows" by similar y values
     const grouped = [];
     const threshold = 2;
     items.forEach((item) => {
@@ -272,10 +280,34 @@ const extractPdfLines = async (file) => {
       }
     });
 
+    // Collect column lines separately so that within a page we read each column
+    // top-to-bottom. Interleaving left+right by row can cause right-column term headers
+    // to appear before "INSTITUTION CREDIT" (left column) and get sliced out, leaving
+    // right-column courses without their headers.
+    const leftColumnLines = [];
+    const rightColumnLines = [];
+
     grouped.forEach((group) => {
-      group.items.sort((a, b) => a.x - b.x);
-      lines.push(group.items.map((i) => i.text).join(' '));
+      const left = [];
+      const right = [];
+
+      group.items.forEach((it) => {
+        if (it.x <= midX) left.push(it);
+        else right.push(it);
+      });
+
+      left.sort((a, b) => a.x - b.x);
+      right.sort((a, b) => a.x - b.x);
+
+      const leftLine = left.map((i) => i.text).join(' ').trim();
+      const rightLine = right.map((i) => i.text).join(' ').trim();
+
+      if (leftLine) leftColumnLines.push(leftLine);
+      if (rightLine) rightColumnLines.push(rightLine);
     });
+
+    // Append: left column first, then right column (each already in top-to-bottom order).
+    lines.push(...leftColumnLines, ...rightColumnLines);
   }
 
   return lines;
@@ -309,89 +341,189 @@ const extractPdfOcrLines = async (file, onProgress) => {
   return lines;
 };
 
-const parseTranscriptLines = (lines) => {
+const TERM_HEADER_REGEX = /\b(Fall|Spring|Summer|Winter)\s+(20\d{2})\s*-\s*College Station\b/i;
+
+// Course line on TAMU transcript is typically:
+// SUBJ 123 TITLE... GRADE CREDITS POINTS
+const COURSE_LINE_REGEX =
+  /^([A-Z]{2,4})\s+(\d{3})\s+(.+?)\s+([A-Z][+\-]?|IP|TA|S|U|P|W)\s+(\d+\.\d{3})\s+(\d+\.\d{3})\b/;
+
+const isNoiseLine = (line) => {
+  const s = line.trim();
+  if (!s) return true;
+  return (
+    /^semester$/i.test(s) ||
+    /term totals/i.test(s) ||
+    /^subj no\./i.test(s) ||
+    /engineering\s*-\s*/i.test(s) ||
+    /unofficial academic record/i.test(s) ||
+    /curriculum information/i.test(s)
+  );
+};
+
+// Split lines that contain a term header *plus other text* into multiple lines,
+// so the term header becomes its own standalone line.
+const splitLinesOnTermHeaders = (lines) => {
+  const out = [];
+  for (const raw of lines) {
+    const line = raw.replace(/\s+/g, " ").trim();
+    if (!line) continue;
+
+    const match = line.match(TERM_HEADER_REGEX);
+    if (!match) {
+      out.push(line);
+      continue;
+    }
+
+    const headerText = `${match[1]} ${match[2]} - College Station`;
+    const idx = line.toLowerCase().indexOf(headerText.toLowerCase());
+
+    const before = line.slice(0, idx).trim();
+    const after = line.slice(idx + headerText.length).trim();
+
+    if (before) out.push(before);
+    out.push(headerText);
+    if (after) out.push(after);
+  }
+  return out;
+};
+
+const extractInstitutionSection = (lines) => {
+  const cleaned = lines.map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean);
+
+  const startIdx = cleaned.findIndex((l) => /INSTITUTION CREDIT/i.test(l));
+  if (startIdx === -1) return cleaned; // fallback: parse everything
+
+  // stop at totals (end of institution section)
+  const endIdx = cleaned.findIndex(
+    (l, i) =>
+      i > startIdx &&
+      (/^TOTAL INSTITUTION\b/i.test(l) ||
+        /^TOTAL TRANSFER\b/i.test(l) ||
+        /^OVERALL\b/i.test(l))
+  );
+
+  const slice = endIdx === -1 ? cleaned.slice(startIdx + 1) : cleaned.slice(startIdx + 1, endIdx);
+  return slice;
+};
+
+const parseTranscriptLines = (rawLines) => {
+  // 1) Only parse the INSTITUTION CREDIT section
+  let lines = extractInstitutionSection(rawLines);
+
+  // 2) Make term headers reliable (standalone lines)
+  lines = splitLinesOnTermHeaders(lines);
+
   const terms = [];
   let currentTerm = null;
 
-  lines.forEach((rawLine) => {
-    const line = rawLine.replace(/\s+/g, ' ').trim();
-    if (!line) return;
+  const ensureTerm = (term, year) => {
+    const label = `${term} ${year}`;
+    currentTerm = { label, status: "Evaluated", courses: [] };
+    terms.push(currentTerm);
+  };
 
-    if (/courses in progress/i.test(line)) {
-      currentTerm = {
-        label: 'In Progress',
-        status: 'In Progress',
-        courses: []
-      };
-      terms.push(currentTerm);
-      return;
-    }
+  for (const raw of lines) {
+    const line = raw.replace(/\s+/g, " ").trim();
+    if (!line || isNoiseLine(line)) continue;
 
-    const termMatch = line.match(TERM_REGEX);
+    // 3) Term header
+    const termMatch = line.match(TERM_HEADER_REGEX);
     if (termMatch) {
-      currentTerm = {
-        label: `${termMatch[1]} ${termMatch[2]}`,
-        status: 'Evaluated',
-        courses: []
-      };
-      terms.push(currentTerm);
-      return;
+      ensureTerm(termMatch[1], termMatch[2]);
+      continue;
     }
 
-    if (!currentTerm) return;
+    if (!currentTerm) {
+      // ignore everything until we hit the first "Fall YYYY - College Station"
+      continue;
+    }
 
-    if (/^semester$/i.test(line) || /term totals/i.test(line)) return;
-
-    const courseLineMatch = line.match(
-      /^([A-Z]{2,4})\s+(\d{3})\s+(.+?)\s+(\d+\.\d{3})\s+([A-Z][+\-]?|IP|TA|S|U|P|W)\b/
-    );
-    if (courseLineMatch) {
-      const [, subj, num, title, creditsStr, gradeRaw] = courseLineMatch;
+    // 4) Course row
+    const m = line.match(COURSE_LINE_REGEX);
+    if (m) {
+      const [, subj, num, titleRaw, grade, creditsStr] = m;
       const code = `${subj} ${num}`;
+
       const credits = Number(creditsStr);
-      const grade = gradeRaw;
       currentTerm.courses.push({
         code,
-        title: title.trim(),
+        title: titleRaw.trim(),
         credits: Number.isFinite(credits) ? credits : 0,
         grade,
-        transfer: grade === 'TA'
+        transfer: grade === "TA"
       });
-      if (grade === 'IP') {
-        currentTerm.status = 'In Progress';
-      }
-      return;
+
+      if (grade === "IP") currentTerm.status = "In Progress";
+      continue;
     }
 
-    const courseMatch = line.match(COURSE_REGEX);
-    if (!courseMatch) return;
-    const code = `${courseMatch[1]} ${courseMatch[2]}`;
-    const gradeMatch = line.match(GRADE_REGEX);
-    const grade = gradeMatch?.[1] ?? '';
-    const creditsMatch = line.match(/\b(\d+\.\d{3}|\d+)\b(?!.*\b\d\b)/);
-    const credits = creditsMatch ? Number(creditsMatch[1]) : 0;
-    const withoutCode = line.replace(courseMatch[0], '').trim();
-    const withoutGrade = grade ? withoutCode.replace(grade, '').trim() : withoutCode;
-    const title = credits
-      ? withoutGrade.replace(String(credits), '').trim()
-      : withoutGrade.trim();
+    // 5) Handle wrapped titles (a line like "ALGORITHMS" or "ORGANIZATION")
+    // If the line has no subject/number and looks like pure words, append to last course title.
+    const looksLikeContinuation =
+      /^[A-Za-z0-9&/\-(),.' ]+$/.test(line) && !/\d+\.\d{3}/.test(line) && !TERM_HEADER_REGEX.test(line);
 
-    currentTerm.courses.push({
-      code,
-      title: title || code,
-      credits: Number.isFinite(credits) ? credits : 0,
-      grade,
-      transfer: grade === 'TA'
-    });
-    if (grade === 'IP') {
-      currentTerm.status = 'In Progress';
+    if (looksLikeContinuation && currentTerm.courses.length > 0) {
+      const last = currentTerm.courses[currentTerm.courses.length - 1];
+      last.title = `${last.title} ${line}`.replace(/\s+/g, " ").trim();
     }
-  });
+  }
 
   return terms;
 };
 
-const hasTermInLines = (lines) => lines.some((line) => TERM_REGEX.test(line));
+const hasTermInLines = (lines) =>
+  lines.some(
+    (line) =>
+      TERM_HEADER_REGEX.test(line) || /INSTITUTION CREDIT/i.test(line)
+  );
+
+  const extractStudentNameFromLines = (lines) => {
+    if (!Array.isArray(lines)) return null;
+
+    const cleaned = lines
+      .map((l) => String(l || '').replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+
+    // 1) Explicit "Name: ..." formats
+    for (const line of cleaned.slice(0, 150)) {
+      const m =
+        line.match(/\bStudent\s*Name\s*:\s*(.+)\b/i) ||
+        line.match(/\bName\s*:\s*(.+)\b/i);
+      if (m && m[1]) {
+        let name = m[1].trim();
+
+        // If transcript formats as "Student Name (UIN)" or "Name (UIN)", keep only the name before "("
+        if (name.includes('(')) {
+          name = name.split('(')[0].trim();
+        }
+        if (
+          name.length >= 3 &&
+          name.length <= 80 &&
+          !/unofficial|record|credit|transfer|institution/i.test(name)
+        ) {
+          return name;
+        }
+      }
+    }
+
+    // 2) Common transcript format: "LAST, FIRST MIDDLE"
+    for (const line of cleaned.slice(0, 150)) {
+      if (
+        /^[A-Z][A-Z' -]+,\s*[A-Z][A-Z' -]+(?:\s+[A-Z][A-Z' -]+)*$/.test(line) &&
+        !/COLLEGE STATION|TEXAS|CREDIT|TRANSFER|INSTITUTION/i.test(line)
+      ) {
+        const base = line.includes('(') ? line.split('(')[0].trim() : line.trim();
+        return base
+          .toLowerCase()
+          .split(' ')
+          .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+          .join(' ');
+      }
+    }
+
+    return null;
+  };
 
 const parseTranscriptTotals = (lines) => {
   const totals = {
@@ -559,6 +691,7 @@ function App() {
   const [transcriptTerms, setTranscriptTerms] = useState([]);
   const [transcriptPdfName, setTranscriptPdfName] = useState('');
   const [transcriptTotals, setTranscriptTotals] = useState(null);
+  const [transcriptStudentName, setTranscriptStudentName] = useState('');
   const [selectedSemester, setSelectedSemester] = useState('Fall 2024');
   const [isFlowFullscreen, setIsFlowFullscreen] = useState(false);
   const [semesterPlans, setSemesterPlans] = useState(() => initSemesterPlans({}));
@@ -720,10 +853,40 @@ function App() {
 
   const transcriptTermMap = useMemo(() => {
     const map = new Map();
+
     transcriptTerms.forEach((term) => {
       if (!term?.label) return;
-      map.set(term.label, term);
+
+      const existing = map.get(term.label);
+      if (!existing) {
+        map.set(term.label, { ...term, courses: [...(term.courses || [])] });
+        return;
+      }
+
+      // Merge duplicate terms with the same label (can happen with data sources or parsing)
+      const mergedCourses = [...(existing.courses || []), ...(term.courses || [])];
+
+      const seen = new Set();
+      const deduped = mergedCourses.filter((c) => {
+        if (!c?.code) return false;
+        const key = c.code;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      const mergedStatus =
+        existing.status === 'In Progress' || term.status === 'In Progress'
+          ? 'In Progress'
+          : existing.status || term.status;
+
+      map.set(term.label, {
+        ...existing,
+        status: mergedStatus,
+        courses: deduped
+      });
     });
+
     return map;
   }, [transcriptTerms]);
 
@@ -787,11 +950,15 @@ function App() {
     setTranscriptLoadingMessage('Extracting text…');
     try {
       const lines = await extractPdfLines(file);
+      const detectedName = extractStudentNameFromLines(lines);
+      if (detectedName) setTranscriptStudentName(detectedName);
       let parsedTerms = parseTranscriptLines(lines);
       let totals = parseTranscriptTotals(lines);
       if (!parsedTerms.length || !hasTermInLines(lines)) {
         setTranscriptLoadingMessage('No text detected. Running OCR…');
         const ocrLines = await extractPdfOcrLines(file, setTranscriptLoadingMessage);
+        const detectedNameFromOcr = extractStudentNameFromLines(ocrLines);
+        if (detectedNameFromOcr) setTranscriptStudentName(detectedNameFromOcr);
         parsedTerms = parseTranscriptLines(ocrLines);
         totals = parseTranscriptTotals(ocrLines);
       }
@@ -1199,7 +1366,9 @@ function App() {
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex justify-between items-start">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">{MOCK_STUDENT.name}</h2>
+            <h2 className="text-2xl font-bold text-gray-900">
+              {authUser?.name || transcriptStudentName || MOCK_STUDENT.name}
+            </h2>
               <p className="text-gray-600">UIN: {MOCK_STUDENT.uin}</p>
               <p className="text-gray-600">
                 {MOCK_STUDENT.major} • Catalog Year: {MOCK_STUDENT.catalogYear}
