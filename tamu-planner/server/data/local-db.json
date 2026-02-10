@@ -575,7 +575,7 @@
     {
       "entry_id": 19,
       "user_id": 1,
-      "course_id": 54,
+      "course_id": 34,
       "student_emphasis_id": null,
       "term": "Summer",
       "year": 2023,
@@ -745,50 +745,160 @@
     {
       "entry_id": 36,
       "user_id": 1,
+      "course_id": 41,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2025,
+      "grade": "B",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 37,
+      "user_id": 1,
       "course_id": 21,
       "student_emphasis_id": null,
       "term": "Spring",
       "year": 2025,
-      "grade": "IP",
-      "status": "In Progress"
+      "grade": "A",
+      "status": "Evaluated"
     },
     {
-      "entry_id": 37,
+      "entry_id": 38,
       "user_id": 1,
       "course_id": 22,
       "student_emphasis_id": null,
       "term": "Spring",
       "year": 2025,
-      "grade": "IP",
-      "status": "In Progress"
+      "grade": "A",
+      "status": "Evaluated"
     },
     {
-      "entry_id": 38,
+      "entry_id": 39,
       "user_id": 1,
       "course_id": 42,
       "student_emphasis_id": null,
       "term": "Spring",
       "year": 2025,
-      "grade": "IP",
-      "status": "In Progress"
+      "grade": "A",
+      "status": "Evaluated"
     },
     {
-      "entry_id": 39,
+      "entry_id": 40,
       "user_id": 1,
       "course_id": 23,
       "student_emphasis_id": null,
       "term": "Spring",
       "year": 2025,
+      "grade": "B",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 41,
+      "user_id": 1,
+      "course_id": 43,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2025,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 42,
+      "user_id": 1,
+      "course_id": 44,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2025,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 43,
+      "user_id": 1,
+      "course_id": 45,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2025,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 44,
+      "user_id": 1,
+      "course_id": 46,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2025,
+      "grade": "S",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 45,
+      "user_id": 1,
+      "course_id": 47,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2025,
+      "grade": "B",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 46,
+      "user_id": 1,
+      "course_id": 48,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2026,
+      "grade": "TA",
+      "status": "In Progress"
+    },
+    {
+      "entry_id": 47,
+      "user_id": 1,
+      "course_id": 49,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2026,
+      "grade": "S",
+      "status": "In Progress"
+    },
+    {
+      "entry_id": 48,
+      "user_id": 1,
+      "course_id": 50,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2026,
       "grade": "IP",
       "status": "In Progress"
     },
     {
-      "entry_id": 40,
+      "entry_id": 49,
       "user_id": 1,
-      "course_id": 41,
+      "course_id": 51,
       "student_emphasis_id": null,
-      "term": "Winter",
-      "year": 2024,
+      "term": "Spring",
+      "year": 2026,
+      "grade": "IP",
+      "status": "In Progress"
+    },
+    {
+      "entry_id": 50,
+      "user_id": 1,
+      "course_id": 52,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2026,
+      "grade": "A",
+      "status": "In Progress"
+    },
+    {
+      "entry_id": 51,
+      "user_id": 1,
+      "course_id": 53,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2026,
       "grade": "IP",
       "status": "In Progress"
     }
@@ -800,7 +910,7 @@
       "id": "planner_1770304468536_dayd51",
       "user_id": 1,
       "created_at": "2026-02-05T15:14:28.536Z",
-      "updated_at": "2026-02-05T16:35:00.610Z",
+      "updated_at": "2026-02-05T20:09:29.017Z",
       "payload": {
         "semesterPlans": {
           "Fall 2021": [],
@@ -1018,8 +1128,8 @@
               },
               {
                 "code": "ENGL 103",
-                "title": "INTRO TO COMP & RHET",
-                "credits": 3,
+                "title": "INTROTO COMP & RHET mo so oom Engineering - General Engineering",
+                "credits": 103,
                 "grade": "TA",
                 "transfer": true
               }
@@ -1031,8 +1141,8 @@
             "courses": [
               {
                 "code": "ENGL 104",
-                "title": "COMPOSITION & RHETORIC",
-                "credits": 3,
+                "title": "COMPOSITION & RHETORIC  3000 0.000",
+                "credits": 0,
                 "grade": "TA",
                 "transfer": true
               }
@@ -1044,15 +1154,15 @@
             "courses": [
               {
                 "code": "ECON 202",
-                "title": "PRIN OF ECONOMICS",
-                "credits": 3,
+                "title": "PRINOF ECONOMICS Tm 2000 0000 Ehrs: 12000 GPA-Hrs: 12000 Qpis: 46000 GPA:3833",
+                "credits": 202,
                 "grade": "TA",
                 "transfer": true
               },
               {
                 "code": "ENGL 231",
-                "title": "SURVEY OF ENGLISH LIT I",
-                "credits": 3,
+                "title": "SURVEY OF ENGLISH LITI mo so 000 i",
+                "credits": 231,
                 "grade": "TA",
                 "transfer": true
               }
@@ -1064,8 +1174,8 @@
             "courses": [
               {
                 "code": "ENGL 232",
-                "title": "SURVEY OF ENGLISH LIT II",
-                "credits": 3,
+                "title": "SURVEY OF ENGLISH LITI T3000 000 CSCE 120 PROGRM DESIGN & so A 12000",
+                "credits": 232,
                 "grade": "TA",
                 "transfer": true
               },
@@ -1146,22 +1256,22 @@
               },
               {
                 "code": "PERF 201",
-                "title": "MUS & HUMAN EXPERIENCE",
-                "credits": 3,
+                "title": "MUS & HUMN EXPERIENCE 3000 A 12000",
+                "credits": 201,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "PHYS 206",
-                "title": "NEWTONIAN MECHANICS ENGR & SCI",
-                "credits": 3,
+                "title": "NEWIONINMECHANICS 3000 A 12000",
+                "credits": 206,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "PHYS 216",
-                "title": "EX PHYS ENGR LAB II MECHANICS",
-                "credits": 2,
+                "title": "EX PHYS ENGRLAB II 20m  com",
+                "credits": 8,
                 "grade": "B",
                 "transfer": false
               }
@@ -1172,7 +1282,7 @@
             "status": "Transfer",
             "courses": [
               {
-                "code": "ANTOH 210",
+                "code": "NTOH 210",
                 "title": "SOC AND CULT ANTH",
                 "credits": 3,
                 "grade": "TA",
@@ -1180,8 +1290,8 @@
               },
               {
                 "code": "GEOG 203",
-                "title": "PLANET EARTH",
-                "credits": 3,
+                "title": "PLANET EARTH mmo oom Ehrs: 13000 GPA-Hrs: 13000 Qpis: 49.000 GPA:",
+                "credits": 3.769,
                 "grade": "TA",
                 "transfer": true
               }
@@ -1200,15 +1310,15 @@
               },
               {
                 "code": "CSCE 181",
-                "title": "INTRO TO COMPUTING",
-                "credits": 1,
+                "title": "INTROTO COMPUTING Loo  som",
+                "credits": 181,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "CSCE 222",
-                "title": "DISCRETE STRUC COMPUTING",
-                "credits": 3,
+                "title": "DISCRETE STRUC COMPUTING 3000  12000",
+                "credits": 222,
                 "grade": "A",
                 "transfer": false
               },
@@ -1238,31 +1348,25 @@
                 "credits": 4,
                 "grade": "A",
                 "transfer": false
-              }
-            ]
-          },
-          {
-            "label": "Summer 2024",
-            "status": "Evaluated",
-            "courses": [
+              },
               {
                 "code": "CSCE 312",
-                "title": "COMPUTER ORGANIZATION",
-                "credits": 4,
+                "title": "COMPUTERORGNIZATION 4000 A 16.000",
+                "credits": 312,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "CSCE 314",
-                "title": "PROGRAMMING LANGUAGES",
-                "credits": 3,
+                "title": "PROGRMMING LANGUAGES 3000 A 12000",
+                "credits": 314,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "STAT 211",
-                "title": "PRIN OF STATISTICS I",
-                "credits": 3,
+                "title": "PRIN OF STATISTICS I 50  120m",
+                "credits": 4,
                 "grade": "A",
                 "transfer": false
               }
@@ -1274,15 +1378,15 @@
             "courses": [
               {
                 "code": "CSCE 313",
-                "title": "INTRO TO COMPUTER SYSTEM",
-                "credits": 4,
+                "title": "INTROTO COMPUTER SYSTEM 4000  12000",
+                "credits": 313,
                 "grade": "B",
                 "transfer": false
               },
               {
                 "code": "CSCE 331",
-                "title": "FOUNDATIONS SOFTWARE ENGINEER",
-                "credits": 4,
+                "title": "FOUNDTIONSSOFTWARE 4000 A 16000",
+                "credits": 331,
                 "grade": "A",
                 "transfer": false
               },
@@ -1302,15 +1406,15 @@
               },
               {
                 "code": "GEOL 101",
-                "title": "PRINCIPLES OF GEOLOGY",
-                "credits": 3,
+                "title": "PRINCIPLES OF GEOLOGY — 30W  12000",
+                "credits": 101,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "GEOL 102",
-                "title": "PRINCIPLES OF GEOLOGY LAB",
-                "credits": 1,
+                "title": "PRINCIPLES OF GEOLOGY LAB 1000  4000",
+                "credits": 4,
                 "grade": "A",
                 "transfer": false
               }
@@ -1329,15 +1433,15 @@
               },
               {
                 "code": "CSCE 411",
-                "title": "DESIGN ANALY ALGORITHMS",
-                "credits": 3,
+                "title": "DESIGN ANALY ALGORITHMS 3000",
+                "credits": 411,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "CSCE 413",
-                "title": "SOFTWARE SECURITCY",
-                "credits": 3,
+                "title": "SOFTWARE SECURITY 3000",
+                "credits": 413,
                 "grade": "A",
                 "transfer": false
               },
@@ -1350,7 +1454,7 @@
               },
               {
                 "code": "MKTG 409",
-                "title": "PRINCIPLES OF MARKETING",
+                "title": "PRINCIPLES OF MARKETING .000",
                 "credits": 3,
                 "grade": "B",
                 "transfer": false
@@ -1390,7 +1494,7 @@
                 "transfer": false
               },
               {
-                "code": "NCSCE 464",
+                "code": "CSCE 464",
                 "title": "WIRELESS AND MOBILE SYS",
                 "credits": 3,
                 "grade": "B",
@@ -1410,7 +1514,7 @@
                 "transfer": true
               },
               {
-                "code": "UHIST 106",
+                "code": "HIST 106",
                 "title": "HISTORY OF THE U",
                 "credits": 3,
                 "grade": "S",
