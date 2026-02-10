@@ -1,8 +1,9 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import tamuLogo from './assets/tamu-logo.svg';
 import { TRANSCRIPT_DEMO } from './data/transcriptDemo';
+import { DegreeProgress } from './components/DegreeProgress';
 import { useGoogleLogin } from '@react-oauth/google';
 import {
   Calendar,
@@ -14,17 +15,36 @@ import {
   Search,
   Save,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Edit2
 } from 'lucide-react';
+
+const API_BASE = import.meta.env?.VITE_API_BASE ?? 'http://localhost:4000';
+
+const fileToBase64 = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        const [, base64] = reader.result.split(',');
+        resolve(base64);
+      } else {
+        reject(new Error('Unable to read file'));
+      }
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
 
 // Mock data
 const MOCK_STUDENT = {
-  name: 'John Doe',
-  uin: '123456789',
+  name: 'Rayaan A. Maredia',
+  uin: '832006835',
+  email: 'rayaan.maredia@tamu.edu',
   major: 'Computer Science',
-  catalogYear: '2023-2024',
-  gpa: 3.45,
-  completedCredits: 45,
+  catalogYear: '2025-2026',
+  gpa: 3.82,
+  completedCredits: 98,
   totalRequired: 120,
   emphasisArea: 'Software Engineering'
 };
@@ -239,9 +259,163 @@ const normalizeTranscript = (terms) => {
 
 GlobalWorkerOptions.workerSrc = pdfWorker;
 
+const DEMO_COURSE_LOOKUP = new Map(
+  TRANSCRIPT_DEMO.flatMap((term) =>
+    (term.courses || []).map((course) => [course.code, course])
+  )
+);
+
 const TERM_REGEX = /\b(Fall|Spring|Summer|Winter)\s+(20\d{2})\b/;
 const COURSE_REGEX = /\b([A-Z]{2,4})\s+(\d{3})\b/;
 const GRADE_REGEX = /\b(A|A-|B\+|B|B-|C\+|C|C-|D\+|D|D-|F|S|U|P|W|IP|TA)\b/;
+
+const normalizeSpacedText = (line) => {
+  const tokens = line.split(/\s+/).filter(Boolean);
+  if (tokens.length < 3) return line.trim();
+  const singleCount = tokens.filter((t) => t.length === 1).length;
+  if (singleCount / tokens.length < 0.6) return line.trim();
+  const out = [];
+  let buffer = '';
+  const flush = () => {
+    if (buffer) {
+      out.push(buffer);
+      buffer = '';
+    }
+  };
+  tokens.forEach((tok) => {
+    if (tok.length === 1 && /[A-Za-z0-9]/.test(tok)) {
+      buffer += tok;
+    } else {
+      flush();
+      out.push(tok);
+    }
+  });
+  flush();
+  return out.join(' ');
+};
+
+const cleanTranscriptLine = (rawLine) => {
+  let line = normalizeSpacedText(rawLine);
+  if (!line) return '';
+  line = line
+    .replace(/([A-Za-z])(\d{2,4})/g, '$1 $2')
+    .replace(/(\d)([A-Za-z])/g, '$1 $2')
+    .replace(/([A-Z]{2,4})(\d{3})/g, '$1 $2')
+    .replace(/(\d)\s*\.\s*(\d)/g, '$1.$2')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return line;
+};
+
+const splitByTermMarkers = (line) => {
+  const matches = [...line.matchAll(new RegExp(TERM_REGEX, 'g'))];
+  if (matches.length <= 1) return [line];
+  const parts = [];
+  let cursor = 0;
+  matches.forEach((match, idx) => {
+    if (idx === 0) return;
+    const index = match.index ?? 0;
+    if (index > cursor) {
+      parts.push(line.slice(cursor, index).trim());
+    }
+    cursor = index;
+  });
+  if (cursor < line.length) parts.push(line.slice(cursor).trim());
+  return parts.filter(Boolean);
+};
+
+const splitByCourseCodes = (line) => {
+  const matches = [...line.matchAll(new RegExp(COURSE_REGEX, 'g'))];
+  if (matches.length <= 1) return [line];
+  const parts = [];
+  let cursor = 0;
+  matches.forEach((match, idx) => {
+    if (idx === 0) return;
+    const index = match.index ?? 0;
+    if (index > cursor) {
+      parts.push(line.slice(cursor, index).trim());
+    }
+    cursor = index;
+  });
+  if (cursor < line.length) parts.push(line.slice(cursor).trim());
+  return parts.filter(Boolean);
+};
+
+const splitLineByMarkers = (line) => {
+  let working = line;
+  const parts = [];
+  let guard = 0;
+  while (working && guard < 5) {
+    guard += 1;
+    const termMatch = working.match(TERM_REGEX);
+    const courseMatch = working.match(COURSE_REGEX);
+    if (!termMatch || !courseMatch) break;
+    const termIndex = termMatch.index ?? 0;
+    const courseIndex = courseMatch.index ?? 0;
+    if (termIndex === 0 && courseIndex === 0) break;
+    if (courseIndex < termIndex && termIndex > 0) {
+      parts.push(working.slice(0, termIndex).trim());
+      working = working.slice(termIndex).trim();
+      continue;
+    }
+    if (termIndex < courseIndex && courseIndex > 0) {
+      parts.push(working.slice(0, courseIndex).trim());
+      working = working.slice(courseIndex).trim();
+      continue;
+    }
+    break;
+  }
+  if (working) parts.push(working.trim());
+  return parts.filter(Boolean);
+};
+
+const preprocessTranscriptLines = (lines) => {
+  const cleaned = [];
+  lines.forEach((raw) => {
+    const line = cleanTranscriptLine(raw);
+    if (!line) return;
+    splitLineByMarkers(line).forEach((segment) => {
+      splitByTermMarkers(segment).forEach((part) => {
+        splitByCourseCodes(part).forEach((piece) => {
+          const trimmed = piece.trim();
+          if (trimmed) cleaned.push(trimmed);
+        });
+      });
+    });
+  });
+  return cleaned;
+};
+
+const shouldForceOcr = (lines) => {
+  if (!lines.length) return true;
+  let spacedLike = 0;
+  lines.forEach((line) => {
+    const tokens = line.split(/\s+/).filter(Boolean);
+    if (tokens.length < 6) return;
+    const singleCount = tokens.filter((t) => t.length === 1).length;
+    if (singleCount / tokens.length > 0.6) spacedLike += 1;
+  });
+  const spacedRatio = spacedLike / lines.length;
+  if (spacedRatio > 0.3) return true;
+  const hasMergedMarkers = lines.some((line) => {
+    const cleaned = cleanTranscriptLine(line);
+    const termMatch = cleaned.match(TERM_REGEX);
+    const courseMatch = cleaned.match(COURSE_REGEX);
+    if (!termMatch || !courseMatch) return false;
+    const termIndex = termMatch.index ?? 0;
+    const courseIndex = courseMatch.index ?? 0;
+    return courseIndex < termIndex;
+  });
+  return hasMergedMarkers;
+};
+
+const scoreTranscript = (terms) => {
+  if (!Array.isArray(terms) || terms.length === 0) return 0;
+  const termsWithCourses = terms.filter((term) => (term.courses || []).length > 0).length;
+  const totalCourses = terms.reduce((sum, term) => sum + (term.courses || []).length, 0);
+  const uniqueLabels = new Set(terms.map((term) => term.label)).size;
+  return termsWithCourses * 100 + totalCourses * 2 + uniqueLabels;
+};
 
 const extractPdfLines = async (file) => {
   const data = new Uint8Array(await file.arrayBuffer());
@@ -310,17 +484,105 @@ const extractPdfOcrLines = async (file, onProgress) => {
 };
 
 const parseTranscriptLines = (lines) => {
+  const normalizedLines = preprocessTranscriptLines(lines);
   const terms = [];
   let currentTerm = null;
 
-  lines.forEach((rawLine) => {
-    const line = rawLine.replace(/\s+/g, ' ').trim();
+  const addCourseFromLine = (raw) => {
+    const line = raw.replace(/\s+/g, ' ').trim();
+    if (!line) return false;
+    if (/^semester$/i.test(line) || /term totals/i.test(line) || /overall totals/i.test(line)) {
+      return false;
+    }
+    if (/subj\s*no\.?/i.test(line) && /course\s*title/i.test(line)) return false;
+    if (/ehr?s\s*:/i.test(line)) {
+      const trimmed = line.split(/ehr?s\s*:/i)[0]?.trim();
+      if (!trimmed) return false;
+      return addCourseFromLine(trimmed);
+    }
+
+    const courseLineMatch = line.match(
+      /^([A-Z]{2,4})\s+(\d{3})\s+(.+?)\s+(\d+(?:\.\d{3})?)\s+([A-Z][+\-]?|IP|TA|S|U|P|W)\b/
+    );
+    if (courseLineMatch && currentTerm) {
+      const [, subj, num, title, creditsStr, gradeRaw] = courseLineMatch;
+      const code = `${subj} ${num}`;
+      const credits = Number(creditsStr);
+      const grade = gradeRaw;
+      const demoCourse = DEMO_COURSE_LOOKUP.get(code);
+      const resolvedTitle = demoCourse?.title ?? title.trim();
+      const resolvedCredits =
+        Number.isFinite(credits) && credits > 0 ? credits : demoCourse?.credits ?? 0;
+      currentTerm.courses.push({
+        code,
+        title: resolvedTitle,
+        credits: resolvedCredits,
+        grade,
+        transfer: grade === 'TA'
+      });
+      if (grade === 'IP') {
+        currentTerm.status = 'In Progress';
+      } else if (grade === 'TA' && currentTerm.status !== 'In Progress') {
+        currentTerm.status = 'Transfer';
+      }
+      return true;
+    }
+
+    const courseMatch = line.match(COURSE_REGEX);
+    if (!courseMatch || !currentTerm) return false;
+    if (!line.startsWith(courseMatch[0])) return false;
+    const code = `${courseMatch[1]} ${courseMatch[2]}`;
+    const gradeMatch = line.match(GRADE_REGEX);
+    const grade = gradeMatch?.[1] ?? '';
+    const creditsMatch = line.match(/\b(\d+\.\d{3}|\d+)\b(?!.*\b\d\b)/);
+    const credits = creditsMatch ? Number(creditsMatch[1]) : 0;
+    const withoutCode = line.replace(courseMatch[0], '').trim();
+    const withoutGrade = grade ? withoutCode.replace(grade, '').trim() : withoutCode;
+    const title = credits
+      ? withoutGrade.replace(String(credits), '').trim()
+      : withoutGrade.trim();
+    const demoCourse = DEMO_COURSE_LOOKUP.get(code);
+    const resolvedTitle = demoCourse?.title ?? (title || code);
+    const resolvedCredits =
+      Number.isFinite(credits) && credits > 0 ? credits : demoCourse?.credits ?? 0;
+
+    currentTerm.courses.push({
+      code,
+      title: resolvedTitle,
+      credits: resolvedCredits,
+      grade,
+      transfer: grade === 'TA'
+    });
+    if (grade === 'IP') {
+      currentTerm.status = 'In Progress';
+    } else if (grade === 'TA' && currentTerm.status !== 'In Progress') {
+      currentTerm.status = 'Transfer';
+    }
+    return true;
+  };
+
+  normalizedLines.forEach((rawLine) => {
+    let line = rawLine.replace(/\s+/g, ' ').trim();
     if (!line) return;
 
+    if (/courses in progress/i.test(line)) {
+      console.log('[transcript] Skipping "courses in progress" marker:', line);
+      return;
+    }
+
     const termMatch = line.match(TERM_REGEX);
-    if (termMatch) {
-      console.log('[transcript] Term match:', { line, termMatch });
-      const label = `${termMatch[1]} ${termMatch[2]}`;
+    const courseMatch = line.match(COURSE_REGEX);
+    if (termMatch && courseMatch && (courseMatch.index ?? 0) < (termMatch.index ?? 0)) {
+      const courseSegment = line.slice(0, termMatch.index).trim();
+      const termSegment = line.slice(termMatch.index).trim();
+      if (courseSegment) addCourseFromLine(courseSegment);
+      line = termSegment;
+    }
+
+    const termCheck = line.match(TERM_REGEX);
+    if (termCheck) {
+      console.log('[transcript] Term match:', { line, termMatch: termCheck });
+      const label = `${termCheck[1]} ${termCheck[2]}`;
       const existing = terms.find((term) => term.label === label);
       if (existing) {
         currentTerm = existing;
@@ -332,88 +594,30 @@ const parseTranscriptLines = (lines) => {
         };
         terms.push(currentTerm);
       }
-      return;
-    }
-
-    if (/courses in progress/i.test(line)) {
-      console.log('[transcript] Skipping "courses in progress" marker:', line);
-      return;
-    }
-
-    if (!currentTerm) return;
-
-    if (/^semester$/i.test(line) || /term totals/i.test(line) || /overall totals/i.test(line)) {
-      return;
-    }
-
-    const courseLineMatch = line.match(
-      /^([A-Z]{2,4})\s+(\d{3})\s+(.+?)\s+(\d+\.\d{3})\s+([A-Z][+\-]?|IP|TA|S|U|P|W)\b/
-    );
-    if (courseLineMatch) {
-      console.log('[transcript] Course line match:', { line, courseLineMatch });
-      const [, subj, num, title, creditsStr, gradeRaw] = courseLineMatch;
-      const code = `${subj} ${num}`;
-      const credits = Number(creditsStr);
-      const grade = gradeRaw;
-      currentTerm.courses.push({
-        code,
-        title: title.trim(),
-        credits: Number.isFinite(credits) ? credits : 0,
-        grade,
-        transfer: grade === 'TA'
-      });
-      if (grade === 'IP') {
-        currentTerm.status = 'In Progress';
+      if (/transfer/i.test(line)) {
+        currentTerm.status = 'Transfer';
       }
       return;
     }
 
-    const courseMatch = line.match(COURSE_REGEX);
-    if (!courseMatch) return;
-    if (!line.startsWith(courseMatch[0])) return;
-    console.log('[transcript] Course code match:', { line, courseMatch });
-    const code = `${courseMatch[1]} ${courseMatch[2]}`;
-    const gradeMatch = line.match(GRADE_REGEX);
-    if (gradeMatch) {
-      console.log('[transcript] Grade match:', { line, gradeMatch });
-    }
-    const grade = gradeMatch?.[1] ?? '';
-    const creditsMatch = line.match(/\b(\d+\.\d{3}|\d+)\b(?!.*\b\d\b)/);
-    if (creditsMatch) {
-      console.log('[transcript] Credits match:', { line, creditsMatch });
-    }
-    const credits = creditsMatch ? Number(creditsMatch[1]) : 0;
-    const withoutCode = line.replace(courseMatch[0], '').trim();
-    const withoutGrade = grade ? withoutCode.replace(grade, '').trim() : withoutCode;
-    const title = credits
-      ? withoutGrade.replace(String(credits), '').trim()
-      : withoutGrade.trim();
-
-    currentTerm.courses.push({
-      code,
-      title: title || code,
-      credits: Number.isFinite(credits) ? credits : 0,
-      grade,
-      transfer: grade === 'TA'
-    });
-    if (grade === 'IP') {
-      currentTerm.status = 'In Progress';
-    }
+    addCourseFromLine(line);
   });
 
   return terms;
 };
 
-const hasTermInLines = (lines) => lines.some((line) => TERM_REGEX.test(line));
+const hasTermInLines = (lines) =>
+  preprocessTranscriptLines(lines).some((line) => TERM_REGEX.test(line));
 
 const parseTranscriptTotals = (lines) => {
+  const normalizedLines = preprocessTranscriptLines(lines);
   const totals = {
     institution: null,
     transfer: null,
     overall: null
   };
 
-  lines.forEach((line) => {
+  normalizedLines.forEach((line) => {
     const cleaned = line.replace(/\s+/g, ' ').trim();
     if (!cleaned) return;
     const match = cleaned.match(
@@ -569,14 +773,18 @@ function App() {
   };
 
   const [activeTab, setActiveTab] = useState('planner');
+  const [studentId, setStudentId] = useState(() => localStorage.getItem('studentId') || '');
+  const [storageError, setStorageError] = useState('');
   const [transcriptTerms, setTranscriptTerms] = useState([]);
   const [transcriptPdfName, setTranscriptPdfName] = useState('');
   const [transcriptTotals, setTranscriptTotals] = useState(null);
   const [showTranscriptReview, setShowTranscriptReview] = useState(false);
   const [reviewTerms, setReviewTerms] = useState([]);
   const [reviewTotals, setReviewTotals] = useState(null);
-  const [draggedReviewCourse, setDraggedReviewCourse] = useState(null);
-  const [dragOverTermLabel, setDragOverTermLabel] = useState(null);
+  const [isTranscriptDirty, setIsTranscriptDirty] = useState(false);
+  const [isTranscriptSaving, setIsTranscriptSaving] = useState(false);
+  const draggedReviewCourseRef = useRef(null);
+  const dragOverTermLabelRef = useRef(null);
   const reviewScrollRef = useRef(null);
   const [reviewContextMenu, setReviewContextMenu] = useState({
     open: false,
@@ -585,13 +793,28 @@ function App() {
     courseCode: '',
     fromTermLabel: ''
   });
-  const [selectedSemester, setSelectedSemester] = useState('Fall 2024');
+  const [selectedSemester, setSelectedSemester] = useState(() => {
+    const now = new Date();
+    const month = now.getMonth(); // 0-indexed
+    const year = now.getFullYear();
+    // Jan-May = Spring, Jun-Jul = Summer, Aug-Dec = Fall
+    if (month <= 4) return `Spring ${year}`;
+    if (month <= 6) return `Summer ${year}`;
+    return `Fall ${year}`;
+  });
   const [isFlowFullscreen, setIsFlowFullscreen] = useState(false);
   const [semesterPlans, setSemesterPlans] = useState(() => initSemesterPlans({}));
   const [searchQuery, setSearchQuery] = useState('');
   const [showCourseModal, setShowCourseModal] = useState(false);
   const [planError, setPlanError] = useState('');
-  const [selectedPlanYear, setSelectedPlanYear] = useState('2024-2025');
+  const [selectedPlanYear, setSelectedPlanYear] = useState(() => {
+    const now = new Date();
+    const month = now.getMonth(); // 0-indexed
+    const year = now.getFullYear();
+    // Academic year starts in Fall: Aug (7) onwards = current year, before Aug = previous year
+    const startYear = month >= 7 ? year : year - 1;
+    return `${startYear}-${startYear + 1}`;
+  });
   const [selectedTranscriptYear, setSelectedTranscriptYear] = useState('');
   const [transcriptError, setTranscriptError] = useState('');
   const [transcriptLoading, setTranscriptLoading] = useState(false);
@@ -599,8 +822,133 @@ function App() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState([]);
-  const transcriptYears = useMemo(() => normalizeTranscript(transcriptTerms), [transcriptTerms]);
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const transcriptYears = useMemo(() => normalizeTranscript(reviewTerms), [reviewTerms]);
   const transcriptIndex = useMemo(() => buildTranscriptIndex(transcriptTerms), [transcriptTerms]);
+
+  const loadStoredTranscript = useCallback(async (id) => {
+    if (!id) return;
+    try {
+      const response = await fetch(`${API_BASE}/storage/transcript/${id}`);
+      if (!response.ok) return;
+      const data = await response.json();
+      if (Array.isArray(data.terms)) {
+        setTranscriptTerms(data.terms);
+        setReviewTerms(data.terms);
+        setIsTranscriptDirty(false);
+        const normalized = normalizeTranscript(data.terms);
+        if (normalized.length > 0) {
+          setSelectedTranscriptYear(normalized[normalized.length - 1].year);
+        }
+      }
+    } catch (err) {
+      setStorageError('Unable to load saved transcript data.');
+    }
+  }, []);
+
+  const loadStoredPlanner = useCallback(async (id) => {
+    if (!id) return;
+    try {
+      const response = await fetch(`${API_BASE}/storage/planner/${id}`);
+      if (!response.ok) return;
+      const data = await response.json();
+      if (data?.payload) {
+        if (data.payload.semesterPlans) {
+          setSemesterPlans(initSemesterPlans(data.payload.semesterPlans));
+        }
+        if (data.payload.selectedPlanYear) {
+          setSelectedPlanYear(data.payload.selectedPlanYear);
+        }
+        if (data.payload.selectedTranscriptYear) {
+          setSelectedTranscriptYear(data.payload.selectedTranscriptYear);
+        }
+        if (data.payload.transcriptTotals) {
+          setTranscriptTotals(data.payload.transcriptTotals);
+        }
+      }
+    } catch (err) {
+      setStorageError('Unable to load saved planner data.');
+    }
+  }, []);
+
+  const saveTranscriptToStorage = useCallback(
+    async (terms) => {
+      try {
+        setStorageError('');
+        const response = await fetch(`${API_BASE}/storage/transcript`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            studentEmail: MOCK_STUDENT.email,
+            studentName: MOCK_STUDENT.name,
+            terms
+          })
+        });
+        const data = await response.json();
+        if (response.ok && data.studentId) {
+          localStorage.setItem('studentId', String(data.studentId));
+          setStudentId(String(data.studentId));
+          return String(data.studentId);
+        }
+        setStorageError('Unable to save transcript data.');
+        return null;
+      } catch (err) {
+        setStorageError('Unable to save transcript data.');
+        return null;
+      }
+    },
+    []
+  );
+
+  const savePlanToStorage = useCallback(async () => {
+    try {
+      setStorageError('');
+      let currentId = studentId;
+      if (!currentId && transcriptTerms.length > 0) {
+        currentId = await saveTranscriptToStorage(transcriptTerms);
+      } else if (currentId && transcriptTerms.length > 0) {
+        await saveTranscriptToStorage(transcriptTerms);
+      }
+
+      if (!currentId) {
+        setStorageError('No student ID found. Upload a transcript before saving.');
+        return;
+      }
+
+      const response = await fetch(`${API_BASE}/storage/planner/${currentId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          semesterPlans,
+          transcriptTerms,
+          transcriptTotals,
+          selectedPlanYear,
+          selectedTranscriptYear
+        })
+      });
+
+      if (!response.ok) {
+        setStorageError('Unable to save planner data.');
+      }
+    } catch (err) {
+      setStorageError('Unable to save planner data.');
+    }
+  }, [
+    studentId,
+    transcriptTerms,
+    transcriptTotals,
+    semesterPlans,
+    selectedPlanYear,
+    selectedTranscriptYear,
+    saveTranscriptToStorage
+  ]);
+
+  useEffect(() => {
+    if (studentId) {
+      loadStoredTranscript(studentId);
+      loadStoredPlanner(studentId);
+    }
+  }, [studentId, loadStoredTranscript, loadStoredPlanner]);
 
   const AUTH_STORAGE_KEY = 'tamuPlannerAuthUser';
 
@@ -651,7 +999,12 @@ function App() {
       if (selectedTranscriptYear) setSelectedTranscriptYear('');
       return;
     }
-    const exists = transcriptYears.some((year) => year.year === selectedTranscriptYear);
+    if (!selectedTranscriptYear) {
+      setSelectedTranscriptYear(transcriptYears[transcriptYears.length - 1].year);
+      return;
+    }
+    const normalizedSelection = selectedTranscriptYear.trim();
+    const exists = transcriptYears.some((year) => year.year === normalizedSelection);
     if (!exists) {
       setSelectedTranscriptYear(transcriptYears[transcriptYears.length - 1].year);
     }
@@ -808,6 +1161,15 @@ function App() {
     transcriptIndex.get(courseCode)?.status === 'in-progress' ||
     COURSES[courseCode]?.status === 'in-progress';
 
+  const deriveTermStatus = (courses = []) => {
+    let status = 'Evaluated';
+    for (const course of courses) {
+      if (course?.grade === 'IP') return 'In Progress';
+      if (course?.transfer || course?.grade === 'TA') status = 'Transfer';
+    }
+    return status;
+  };
+
   const moveReviewedCourse = (courseCode, fromTermLabel, toTermLabel) => {
     if (!courseCode || !fromTermLabel || !toTermLabel) return;
     if (fromTermLabel === toTermLabel) return;
@@ -817,32 +1179,71 @@ function App() {
         courses: [...(term.courses || [])]
       }));
       const fromTerm = next.find((term) => term.label === fromTermLabel);
-      const toTerm = next.find((term) => term.label === toTermLabel);
-      if (!fromTerm || !toTerm) return prev;
+      let toTerm = next.find((term) => term.label === toTermLabel);
+      if (!fromTerm) return prev;
+      if (!toTerm) {
+        toTerm = {
+          label: toTermLabel,
+          status: fromTerm.status || 'Evaluated',
+          courses: []
+        };
+        next.push(toTerm);
+      }
       const courseIndex = fromTerm.courses.findIndex((course) => course.code === courseCode);
       if (courseIndex === -1) return prev;
       if (toTerm.courses.some((course) => course.code === courseCode)) return prev;
       const [course] = fromTerm.courses.splice(courseIndex, 1);
       toTerm.courses.push(course);
+      fromTerm.status = deriveTermStatus(fromTerm.courses);
+      toTerm.status = deriveTermStatus(toTerm.courses);
+      setIsTranscriptDirty(true);
       return next;
     });
   };
 
-  const applyReviewedTranscript = () => {
+  const applyReviewedTranscript = async () => {
+    if (!reviewTerms.length) return;
+    setIsTranscriptSaving(true);
+    const savedId = await saveTranscriptToStorage(reviewTerms);
+    setIsTranscriptSaving(false);
+    if (!savedId) return;
     setTranscriptTerms(reviewTerms);
-    setTranscriptTotals(reviewTotals);
+    setTranscriptTotals(reviewTotals ?? transcriptTotals);
     const normalized = normalizeTranscript(reviewTerms);
     if (normalized.length > 0) {
       setSelectedTranscriptYear(normalized[normalized.length - 1].year);
     }
+    setIsTranscriptDirty(false);
     setShowTranscriptReview(false);
-    setDraggedReviewCourse(null);
-    setDragOverTermLabel(null);
+    draggedReviewCourseRef.current = null;
+    dragOverTermLabelRef.current = null;
     setReviewContextMenu((prev) => ({ ...prev, open: false }));
   };
 
+  const clearTermHighlight = () => {
+    const prev = dragOverTermLabelRef.current;
+    if (prev) {
+      const el = document.querySelector(`[data-term-label="${CSS.escape(prev)}"]`);
+      if (el) {
+        el.style.borderColor = '';
+        el.style.boxShadow = '';
+      }
+      dragOverTermLabelRef.current = null;
+    }
+  };
+
+  const highlightTerm = (termLabel) => {
+    if (dragOverTermLabelRef.current === termLabel) return;
+    clearTermHighlight();
+    const el = document.querySelector(`[data-term-label="${CSS.escape(termLabel)}"]`);
+    if (el) {
+      el.style.borderColor = '#500000';
+      el.style.boxShadow = '0 0 0 2px rgba(80, 0, 0, 0.3)';
+    }
+    dragOverTermLabelRef.current = termLabel;
+  };
+
   const handleReviewDragOver = (event) => {
-    event.preventDefault();
     const container = reviewScrollRef.current;
     if (!container) return;
     const rect = container.getBoundingClientRect();
@@ -853,6 +1254,77 @@ function App() {
     } else if (event.clientY > rect.bottom - edge) {
       container.scrollTop += scrollSpeed;
     }
+  };
+
+  const parseReviewDragPayload = (event) => {
+    if (!event?.dataTransfer) return null;
+    const json = event.dataTransfer.getData('application/json');
+    if (json) {
+      try {
+        const parsed = JSON.parse(json);
+        if (parsed?.code && parsed?.fromTermLabel) return parsed;
+      } catch (err) {
+        // Ignore malformed payloads.
+      }
+    }
+    const text = event.dataTransfer.getData('text/plain');
+    if (text) {
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed?.code && parsed?.fromTermLabel) return parsed;
+      } catch (err) {
+        // Fallback for older payloads that stored only the code.
+        if (draggedReviewCourseRef.current?.fromTermLabel) {
+          return { code: text, fromTermLabel: draggedReviewCourseRef.current.fromTermLabel };
+        }
+      }
+    }
+    return null;
+  };
+
+  const handleTermDragOver = (termLabel, event) => {
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
+    highlightTerm(termLabel);
+  };
+
+  const handleTermDragEnter = (termLabel, event) => {
+    event.preventDefault();
+    highlightTerm(termLabel);
+  };
+
+  const handleTermDragLeave = (termLabel, event) => {
+    if (!event.currentTarget?.contains(event.relatedTarget)) {
+      if (dragOverTermLabelRef.current === termLabel) {
+        clearTermHighlight();
+      }
+    }
+  };
+
+  const handleTermDrop = (termLabel, event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const payload = parseReviewDragPayload(event) || draggedReviewCourseRef.current;
+    const courseCode = payload?.code;
+    const fromTermLabel = payload?.fromTermLabel;
+    clearTermHighlight();
+    draggedReviewCourseRef.current = null;
+    if (!courseCode || !fromTermLabel) return;
+    moveReviewedCourse(courseCode, fromTermLabel, termLabel);
+  };
+
+  const handleCourseDragStart = (course, termLabel, event) => {
+    const payload = { code: course.code, fromTermLabel: termLabel };
+    draggedReviewCourseRef.current = payload;
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('application/json', JSON.stringify(payload));
+      event.dataTransfer.setData('text/plain', JSON.stringify(payload));
+    }
+    // Visual feedback: make the dragged card semi-transparent
+    event.currentTarget.style.opacity = '0.6';
   };
 
   useEffect(() => {
@@ -878,38 +1350,184 @@ function App() {
     setTranscriptPdfName(file.name);
     setTranscriptError('');
     setTranscriptLoading(true);
-    setTranscriptLoadingMessage('Extracting text…');
+    setTranscriptLoadingMessage('Uploading transcript…');
     try {
-      console.log('[transcript] Starting parse for file:', file.name);
-      const lines = await extractPdfLines(file);
-      console.log('[transcript] Extracted text lines:', lines.length);
-      console.log('[transcript] Extracted text lines (all):\n' + lines.join('\n'));
-      let parsedTerms = parseTranscriptLines(lines);
-      let totals = parseTranscriptTotals(lines);
-      console.log('[transcript] Parsed terms (text):', parsedTerms.length);
-      if (!parsedTerms.length || !hasTermInLines(lines)) {
-        setTranscriptLoadingMessage('No text detected. Running OCR…');
-        const ocrLines = await extractPdfOcrLines(file, setTranscriptLoadingMessage);
-        console.log('[transcript] OCR lines:', ocrLines.length);
-        console.log('[transcript] OCR lines (all):\n' + ocrLines.join('\n'));
-        parsedTerms = parseTranscriptLines(ocrLines);
-        totals = parseTranscriptTotals(ocrLines);
-        console.log('[transcript] Parsed terms (OCR):', parsedTerms.length);
-      }
-      if (parsedTerms.length === 0) {
-        setTranscriptError(
-          'No terms detected. This PDF may be image-only or formatted unexpectedly.'
-        );
+      console.log('[transcript] Sending to backend parser:', file.name);
+      const dataBase64 = await fileToBase64(file);
+      const response = await fetch(`${API_BASE}/storage/parse-transcript`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName: file.name, dataBase64 })
+      });
+      const result = await response.json();
+      if (!response.ok || !Array.isArray(result.terms)) {
+        setTranscriptError(result?.error || 'Unable to parse this transcript.');
         return;
       }
-      setReviewTerms(parsedTerms);
-      setReviewTotals(totals);
-      setShowTranscriptReview(true);
+      if (result.terms.length === 0) {
+        setTranscriptError('No terms detected. Please try a different transcript file.');
+        return;
+      }
+      setTranscriptTerms(result.terms);
+      setTranscriptTotals(null);
+      setReviewTerms(result.terms);
+      setReviewTotals(null);
+      setIsTranscriptDirty(false);
+      setShowTranscriptReview(false);
     } catch (err) {
-      setTranscriptError('Unable to read this PDF. Please try a different transcript file.');
+      setTranscriptError('Unable to parse this PDF. Please try a different transcript file.');
     } finally {
       setTranscriptLoading(false);
       setTranscriptLoadingMessage('');
+    }
+  };
+
+  const sendChatMessage = async (userMessage) => {
+    if (!userMessage.trim()) return;
+    
+    // Add user message to chat
+    const userMsg = { id: `user-${Date.now()}`, role: 'user', text: userMessage };
+    setChatMessages((prev) => [...prev, userMsg]);
+    setChatInput('');
+    setIsChatLoading(true);
+
+    try {
+      // Build comprehensive context about the student
+      const contextParts = [];
+      
+      // Student basic info
+      contextParts.push('STUDENT PROFILE:');
+      contextParts.push(`- Texas A&M University Computer Science student`);
+      contextParts.push(`- Major: ${MOCK_STUDENT.major}`);
+      contextParts.push(`- Catalog Year: ${MOCK_STUDENT.catalogYear}`);
+      
+      // Transcript summary
+      if (transcriptTerms.length > 0) {
+        const completedCourses = transcriptCourseList.filter(c => c.type === 'completed');
+        const inProgressCourses = transcriptCourseList.filter(c => c.type === 'in-progress');
+        const transferCourses = transcriptTerms.flatMap(t => 
+          t.courses.filter(c => c.transfer).map(c => c.code)
+        );
+        
+        contextParts.push('\nTRANSCRIPT DATA:');
+        contextParts.push(`- Current GPA: ${transcriptGpa}`);
+        contextParts.push(`- Credits Completed: ${transcriptCreditsSummary.completedCredits}`);
+        contextParts.push(`- Credits In Progress: ${transcriptCreditsSummary.inProgressCredits}`);
+        contextParts.push(`- Transfer Credits: ${transferCourses.length > 0 ? transferCourses.join(', ') : 'None'}`);
+        contextParts.push(`- Classification: ${classification}`);
+        
+        if (completedCourses.length > 0) {
+          contextParts.push('\nCOMPLETED COURSES:');
+          completedCourses.forEach(c => {
+            const term = transcriptTerms.find(t => 
+              t.courses.some(tc => tc.code === c.code)
+            );
+            const courseData = term?.courses.find(tc => tc.code === c.code);
+            contextParts.push(`- ${c.code}: ${courseData?.title || ''} (${courseData?.grade || 'N/A'}, ${courseData?.credits || 0} credits)`);
+          });
+        }
+        
+        if (inProgressCourses.length > 0) {
+          contextParts.push('\nIN PROGRESS COURSES:');
+          inProgressCourses.forEach(c => {
+            const term = transcriptTerms.find(t => 
+              t.courses.some(tc => tc.code === c.code)
+            );
+            const courseData = term?.courses.find(tc => tc.code === c.code);
+            contextParts.push(`- ${c.code}: ${courseData?.title || ''} (${courseData?.credits || 0} credits)`);
+          });
+        }
+      }
+      
+      // Planned courses
+      const allPlannedCourses = Object.entries(semesterPlans).filter(([_, courses]) => courses.length > 0);
+      if (allPlannedCourses.length > 0) {
+        contextParts.push('\nPLANNED COURSES:');
+        allPlannedCourses.forEach(([semester, courses]) => {
+          contextParts.push(`\n${semester}:`);
+          courses.forEach(code => {
+            const course = COURSES[code];
+            if (course) {
+              contextParts.push(`  - ${code}: ${course.title} (${course.credits} credits)`);
+            }
+          });
+        });
+      }
+      
+      // Degree requirements tracking
+      contextParts.push('\nDEGREE REQUIREMENTS:');
+      contextParts.push(`- Total Required: ${MOCK_STUDENT.totalRequired} credits`);
+      contextParts.push(`- Completed + In Progress + Planned: ${transcriptCreditsSummary.completedCredits + transcriptCreditsSummary.inProgressCredits + plannedCreditsSummary.plannedCredits} credits`);
+      contextParts.push(`- Remaining: ${MOCK_STUDENT.totalRequired - (transcriptCreditsSummary.completedCredits + transcriptCreditsSummary.inProgressCredits + plannedCreditsSummary.plannedCredits)} credits`);
+      
+      // System instructions
+      const systemMessage = {
+        role: 'system',
+        content: `You are DegreeFlow Assistant, an AI advisor for Texas A&M University Computer Science students. 
+
+IMPORTANT INSTRUCTIONS:
+1. You have access to the internet and can search for current Texas A&M course catalog information, prerequisites, and degree requirements.
+2. When asked about specific courses, look up the official TAMU course catalog for accurate information.
+3. Use the student's current transcript and planner data (provided below) to give personalized advice.
+4. Help with course planning, prerequisite checking, graduation requirements, and academic guidance.
+5. Format your responses with clear structure:
+   - Use **bold** for emphasis (e.g., **Important:** or **Course Name**)
+   - Use bullet points (•) or numbered lists for multiple items
+   - Use line breaks to separate sections
+   - Keep paragraphs short and scannable
+6. If you're unsure about something specific to TAMU CS, search for it online before responding.
+
+STUDENT CONTEXT:
+${contextParts.join('\n')}
+
+Now answer the student's question based on this context and any additional information you can find online about TAMU CS courses and requirements.`
+      };
+
+      // Build messages array with system context
+      const conversationMessages = chatMessages
+        .slice(-8) // Keep last 8 messages for context (leave room for system message)
+        .map(msg => ({ role: msg.role, content: msg.text }));
+      
+      const apiMessages = [
+        systemMessage,
+        ...conversationMessages,
+        { role: 'user', content: userMessage }
+      ];
+
+      const response = await fetch(`${API_BASE}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: apiMessages,
+          model: 'protected.gemini-2.0-flash-lite',
+          stream: false
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to get response from AI');
+      }
+
+      const data = await response.json();
+      const assistantText = data.choices?.[0]?.message?.content || 'Sorry, I could not generate a response.';
+      
+      // Add assistant response to chat
+      const assistantMsg = { 
+        id: `assistant-${Date.now()}`, 
+        role: 'assistant', 
+        text: assistantText 
+      };
+      setChatMessages((prev) => [...prev, assistantMsg]);
+    } catch (err) {
+      console.error('[chat] Error:', err);
+      const errorMsg = { 
+        id: `error-${Date.now()}`, 
+        role: 'assistant', 
+        text: 'Sorry, I encountered an error. Please try again.' 
+      };
+      setChatMessages((prev) => [...prev, errorMsg]);
+    } finally {
+      setIsChatLoading(false);
     }
   };
 
@@ -1378,6 +1996,12 @@ function App() {
           </div>
         </div>
 
+        {/* Degree Progress Validation */}
+        <DegreeProgress 
+          completedCourses={transcriptCourseList}
+          emphasisAreaCourses={['FINC 409', 'ACCT 209', 'MKTG 409', 'MGMT 309']}
+        />
+
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <div className="flex items-start">
             <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 mr-3" />
@@ -1423,10 +2047,60 @@ function App() {
   };
 
   const AcademicRecordPanel = () => {
+    const [editingCourse, setEditingCourse] = useState(null); // { termLabel, courseCode }
+    const [editingCredits, setEditingCredits] = useState('');
+
+    const updateCourseCredits = (termLabel, courseCode, newCredits) => {
+      const credits = parseFloat(newCredits);
+      if (isNaN(credits) || credits <= 0) {
+        alert('Please enter a valid credit value (e.g., 3, 4)');
+        return;
+      }
+
+      const updater = (prevTerms) =>
+        prevTerms.map(term => {
+          if (term.label !== termLabel) return term;
+          return {
+            ...term,
+            courses: term.courses.map(course => {
+              if (course.code !== courseCode) return course;
+              return { ...course, credits };
+            })
+          };
+        });
+
+      // Update both reviewTerms (what the panel displays) and transcriptTerms (what the dashboard uses)
+      setReviewTerms(updater);
+      setTranscriptTerms(updater);
+      setEditingCourse(null);
+      setEditingCredits('');
+    };
+
     const transcriptYear =
       transcriptYears.find((year) => year.year === selectedTranscriptYear) ||
       transcriptYears[0];
-    const transcriptYearLabels = transcriptYears.map((year) => year.year);
+    const transcriptYearLabels = transcriptYears.map((year) => year.year.trim());
+    const termLookup = useMemo(() => {
+      const map = new Map();
+      reviewTerms.forEach((term) => {
+        if (!term?.label) return;
+        map.set(term.label, term);
+      });
+      return map;
+    }, [reviewTerms]);
+    const displayTerms = useMemo(() => {
+      if (!transcriptYear) return [];
+      return getTermsForAcademicYear(transcriptYear.year).map((label) => {
+        const term = termLookup.get(label);
+        return (
+          term || {
+            label,
+            status: 'Evaluated',
+            courses: []
+          }
+        );
+      });
+    }, [transcriptYear, termLookup]);
     const statusStyles = {
       Evaluated: 'bg-green-100 text-green-700',
       'In Progress': 'bg-blue-100 text-blue-700',
@@ -1439,6 +2113,9 @@ function App() {
           <div>
             <h3 className="text-lg font-bold text-gray-900">Academic Record</h3>
             <p className="text-sm text-gray-600">Transcript-aligned terms with grades</p>
+            <p className="text-xs text-gray-500">
+              Drag courses between terms to correct parsing, then update the record.
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <label className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-100 cursor-pointer inline-flex items-center">
@@ -1454,9 +2131,12 @@ function App() {
               type="button"
               onClick={() => {
                 setTranscriptTerms(TRANSCRIPT_DEMO);
+                setReviewTerms(TRANSCRIPT_DEMO);
                 setTranscriptError('');
                 setTranscriptPdfName('');
                 setTranscriptTotals(null);
+                setReviewTotals(null);
+                setIsTranscriptDirty(false);
                 const normalized = normalizeTranscript(TRANSCRIPT_DEMO);
                 if (normalized.length > 0) {
                   setSelectedTranscriptYear(normalized[normalized.length - 1].year);
@@ -1466,12 +2146,56 @@ function App() {
             >
               Use demo data
             </button>
+            <button
+              type="button"
+              onClick={applyReviewedTranscript}
+              disabled={isTranscriptSaving || reviewTerms.length === 0}
+              className={`px-3 py-2 rounded-lg text-sm font-semibold inline-flex items-center gap-2 ${
+                isTranscriptSaving || reviewTerms.length === 0
+                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                  : 'text-white'
+              }`}
+              style={
+                isTranscriptSaving || reviewTerms.length === 0
+                  ? {}
+                  : { backgroundColor: '#500000' }
+              }
+            >
+              <Save className="w-4 h-4" />
+              {isTranscriptSaving ? 'Saving...' : 'Update Record'}
+            </button>
+            {reviewTerms.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm('Clear all academic record data? This will remove all parsed transcript courses.')) {
+                    setTranscriptTerms([]);
+                    setReviewTerms([]);
+                    setTranscriptTotals(null);
+                    setReviewTotals(null);
+                    setTranscriptPdfName('');
+                    setTranscriptError('');
+                    setIsTranscriptDirty(false);
+                    setSelectedTranscriptYear('');
+                  }
+                }}
+                className="px-3 py-2 rounded-lg text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50"
+              >
+                Clear Record
+              </button>
+            )}
+            {isTranscriptDirty && !isTranscriptSaving && (
+              <span className="text-xs text-amber-700 bg-amber-100 px-2 py-1 rounded-full">
+                Unsaved changes
+              </span>
+            )}
             {transcriptLoading && (
               <span className="text-sm text-gray-500">
                 {transcriptLoadingMessage || 'Parsing…'}
               </span>
             )}
             {transcriptError && <span className="text-sm text-red-600">{transcriptError}</span>}
+            {storageError && <span className="text-sm text-red-600">{storageError}</span>}
             {transcriptPdfName && (
               <span className="text-sm text-gray-500">Selected: {transcriptPdfName}</span>
             )}
@@ -1528,70 +2252,154 @@ function App() {
             Upload a transcript PDF to populate your academic record.
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {transcriptYear.terms
-              .filter((term) => term.courses.length > 0)
-              .map((term) => {
-                const termCredits = term.courses.reduce((sum, c) => sum + c.credits, 0);
-                return (
-                  <div
-                    key={term.label}
-                    className="border border-gray-200 rounded-lg p-4 bg-gray-50"
-                  >
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <h4 className="font-semibold text-gray-900">{term.label}</h4>
-                        <p className="text-xs text-gray-600">{termCredits} credits</p>
-                      </div>
-                      <span
-                        className={`text-xs px-2 py-1 rounded-full ${
-                          statusStyles[term.status] || 'bg-gray-200 text-gray-700'
-                        }`}
-                      >
-                        {term.status}
-                      </span>
+          <div
+            className="grid grid-cols-1 lg:grid-cols-3 gap-4"
+            ref={reviewScrollRef}
+            onDragOver={handleReviewDragOver}
+          >
+            {displayTerms.map((term) => {
+              const termCourses = term.courses || [];
+              const termCredits = termCourses.reduce((sum, c) => sum + c.credits, 0);
+              return (
+                <div
+                  key={term.label}
+                  data-term-label={term.label}
+                  className="border border-gray-200 rounded-lg p-4 bg-gray-50 transition"
+                  onDragOver={(event) => handleTermDragOver(term.label, event)}
+                  onDragEnter={(event) => handleTermDragEnter(term.label, event)}
+                  onDragLeave={(event) => handleTermDragLeave(term.label, event)}
+                  onDrop={(event) => handleTermDrop(term.label, event)}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h4 className="font-semibold text-gray-900">{term.label}</h4>
+                      <p className="text-xs text-gray-600">{termCredits} credits</p>
                     </div>
-                    <div className="space-y-2">
-                      {term.courses.map((course) => (
-                        <div
-                          key={`${term.label}-${course.code}`}
-                          className="rounded-md bg-white border border-gray-100 px-3 py-2"
-                        >
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <p className="text-sm font-semibold text-gray-900">
-                                {course.code}
-                              </p>
-                              <p className="text-xs text-gray-600">{course.title}</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-sm font-semibold text-gray-900">
-                                {course.grade}
-                              </p>
-                              <p className="text-xs text-gray-500">{course.credits} cr</p>
-                            </div>
-                          </div>
-                          {(course.transfer || course.honors) && (
-                            <div className="mt-2 flex items-center justify-end gap-2">
-                              {course.honors && (
-                                <span className="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-700">
-                                  Honors
-                                </span>
-                              )}
-                              {course.transfer && (
-                                <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 flex items-center gap-1">
-                                  <CheckCircle className="w-3 h-3" />
-                                  Transfer
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
+                    <span
+                      className={`text-xs px-2 py-1 rounded-full ${
+                        statusStyles[term.status] || 'bg-gray-200 text-gray-700'
+                      }`}
+                    >
+                      {term.status || 'Evaluated'}
+                    </span>
                   </div>
-                );
-              })}
+                  <div className="space-y-2">
+                    {termCourses.length === 0 ? (
+                      <div
+                        className="text-xs text-gray-500 border border-dashed border-gray-300 rounded-md px-3 py-4 text-center"
+                        onDragOver={(event) => handleTermDragOver(term.label, event)}
+                        onDragEnter={(event) => handleTermDragEnter(term.label, event)}
+                        onDrop={(event) => handleTermDrop(term.label, event)}
+                      >
+                        Drag courses here
+                      </div>
+                    ) : (
+                      termCourses.map((course) => (
+                          <div
+                            key={`${term.label}-${course.code}`}
+                            className="rounded-md bg-white border border-gray-100 px-3 py-2 cursor-grab active:cursor-grabbing"
+                            draggable
+                            onDragStart={(event) => handleCourseDragStart(course, term.label, event)}
+                            onDragEnd={(event) => {
+                              event.currentTarget.style.opacity = '';
+                              draggedReviewCourseRef.current = null;
+                              clearTermHighlight();
+                            }}
+                            onDragOver={(event) => handleTermDragOver(term.label, event)}
+                            onDrop={(event) => handleTermDrop(term.label, event)}
+                            title="Drag to another term"
+                          >
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <p className="text-sm font-semibold text-gray-900">
+                                  {course.code}
+                                </p>
+                                <p className="text-xs text-gray-600">{course.title}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-sm font-semibold text-gray-900">
+                                  {course.grade}
+                                </p>
+                                {editingCourse?.termLabel === term.label && editingCourse?.courseCode === course.code ? (
+                                  <div className="flex items-center gap-1">
+                                    <input
+                                      type="number"
+                                      value={editingCredits}
+                                      onChange={(e) => setEditingCredits(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          updateCourseCredits(term.label, course.code, editingCredits);
+                                        } else if (e.key === 'Escape') {
+                                          setEditingCourse(null);
+                                          setEditingCredits('');
+                                        }
+                                      }}
+                                      className="w-12 px-1 py-0.5 text-xs border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                      autoFocus
+                                      step="0.5"
+                                      min="0"
+                                      max="10"
+                                    />
+                                    <button
+                                      onClick={() => updateCourseCredits(term.label, course.code, editingCredits)}
+                                      className="text-green-600 hover:text-green-700"
+                                      title="Save"
+                                    >
+                                      <CheckCircle className="w-3 h-3" />
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setEditingCourse(null);
+                                        setEditingCredits('');
+                                      }}
+                                      className="text-red-600 hover:text-red-700"
+                                      title="Cancel"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-1">
+                                    <p className="text-xs text-gray-500">
+                                      {Number(course.credits).toFixed(0)} cr
+                                    </p>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingCourse({ termLabel: term.label, courseCode: course.code });
+                                        setEditingCredits(String(course.credits));
+                                      }}
+                                      className="text-gray-400 hover:text-blue-600 transition-colors"
+                                      title="Edit credits"
+                                    >
+                                      <Edit2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            {(course.transfer || course.honors) && (
+                              <div className="mt-2 flex items-center justify-end gap-2">
+                                {course.honors && (
+                                  <span className="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-700">
+                                    Honors
+                                  </span>
+                                )}
+                                {course.transfer && (
+                                  <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 flex items-center gap-1">
+                                    <CheckCircle className="w-3 h-3" />
+                                    Transfer
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -1661,31 +2469,54 @@ function App() {
                 Build Fall, Winter, and Spring schedules within each year
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {filteredPlanYears.map((year) => {
-                const selectable = isPlanYearSelectable(year);
-                return (
-                  <button
-                    key={year}
-                    onClick={() => {
-                      if (!selectable) return;
-                      setSelectedPlanYear(year);
-                      const [fallTerm] = getTermsForAcademicYear(year);
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm('Are you sure you want to clear all planned courses? This cannot be undone.')) {
+                  // Clear all semester plans with proper initialization
+                  setSemesterPlans(initSemesterPlans({}));
+                  setPlanError('');
+                  // Also clear selected courses
+                  setSelectedCourses([]);
+                  // Reset to first year
+                  if (filteredPlanYears.length > 0) {
+                    setSelectedPlanYear(filteredPlanYears[0]);
+                    const [fallTerm] = getTermsForAcademicYear(filteredPlanYears[0]);
+                    if (fallTerm) {
                       setSelectedSemester(fallTerm);
-                      setPlanError('');
-                    }}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium border ${
-                      selectedPlanYear === year
-                        ? 'text-white'
-                        : 'text-gray-700 border-gray-200 hover:bg-gray-100'
-                    }`}
-                    style={selectedPlanYear === year ? { backgroundColor: '#500000' } : {}}
-                  >
-                    {year}
-                  </button>
-                );
-              })}
-            </div>
+                    }
+                  }
+                }
+              }}
+              className="px-3 py-2 rounded-lg text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50"
+            >
+              Clear All Plans
+            </button>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            {filteredPlanYears.map((year) => {
+              const selectable = isPlanYearSelectable(year);
+              return (
+                <button
+                  key={year}
+                  onClick={() => {
+                    if (!selectable) return;
+                    setSelectedPlanYear(year);
+                    const [fallTerm] = getTermsForAcademicYear(year);
+                    setSelectedSemester(fallTerm);
+                    setPlanError('');
+                  }}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium border ${
+                    selectedPlanYear === year
+                      ? 'text-white'
+                      : 'text-gray-700 border-gray-200 hover:bg-gray-100'
+                  }`}
+                  style={selectedPlanYear === year ? { backgroundColor: '#500000' } : {}}
+                >
+                  {year}
+                </button>
+              );
+            })}
           </div>
 
           {(planError || validation.errors.length > 0) && (
@@ -2480,6 +3311,8 @@ function App() {
                   <button
                     className="flex items-center gap-2 bg-white px-4 py-2 rounded-lg hover:bg-gray-100"
                     style={{ color: '#500000' }}
+                    type="button"
+                    onClick={savePlanToStorage}
                   >
                     <Save className="w-4 h-4" />
                     Save Plan
@@ -2589,15 +3422,63 @@ function App() {
               </div>
               <div className="h-56 px-4 py-3 text-xs text-gray-600 space-y-2 overflow-y-auto">
                 {chatMessages.length === 0 ? (
-                  <div className="text-gray-400">Messages will appear here.</div>
+                  <div className="text-center text-gray-400 mt-8">
+                    <p className="font-semibold mb-1">Welcome to DegreeFlow Assistant!</p>
+                    <p className="text-xs">Ask me anything about course planning, requirements, or your degree.</p>
+                  </div>
                 ) : (
-                  chatMessages.map((message) => (
-                    <div key={message.id} className="flex justify-end">
-                      <span className="max-w-[85%] rounded-lg bg-[#500000]/10 px-3 py-2 text-xs text-gray-800">
-                        {message.text}
+                  chatMessages.map((message) => {
+                    // Simple markdown-like formatting for assistant messages
+                    const formatText = (text) => {
+                      if (message.role !== 'assistant') return text;
+                      
+                      // Split by lines and process each
+                      return text.split('\n').map((line, idx) => {
+                        // Convert **text** to bold
+                        const parts = line.split(/(\*\*[^*]+\*\*)/g);
+                        const formatted = parts.map((part, i) => {
+                          if (part.startsWith('**') && part.endsWith('**')) {
+                            return <strong key={i}>{part.slice(2, -2)}</strong>;
+                          }
+                          return part;
+                        });
+                        
+                        return (
+                          <div key={idx} className={idx > 0 ? 'mt-2' : ''}>
+                            {formatted}
+                          </div>
+                        );
+                      });
+                    };
+
+                    return (
+                      <div
+                        key={message.id}
+                        className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                      >
+                        <div
+                          className={`max-w-[85%] rounded-lg px-3 py-2 text-xs ${
+                            message.role === 'user'
+                              ? 'bg-[#500000] text-white'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}
+                        >
+                          {message.role === 'user' ? message.text : formatText(message.text)}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                {isChatLoading && (
+                  <div className="flex justify-start">
+                    <span className="max-w-[85%] rounded-lg bg-gray-100 px-3 py-2 text-xs text-gray-500">
+                      <span className="inline-flex gap-1">
+                        <span className="animate-bounce">●</span>
+                        <span className="animate-bounce" style={{ animationDelay: '0.1s' }}>●</span>
+                        <span className="animate-bounce" style={{ animationDelay: '0.2s' }}>●</span>
                       </span>
-                    </div>
-                  ))
+                    </span>
+                  </div>
                 )}
               </div>
               <div className="border-t px-3 py-3">
@@ -2608,33 +3489,21 @@ function App() {
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
+                      if (e.key === 'Enter' && !isChatLoading) {
                         e.preventDefault();
-                        const trimmed = chatInput.trim();
-                        if (!trimmed) return;
-                        setChatMessages((prev) => [
-                          ...prev,
-                          { id: `${Date.now()}-${prev.length}`, text: trimmed }
-                        ]);
-                        setChatInput('');
+                        sendChatMessage(chatInput);
                       }
                     }}
-                    className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#500000]/20"
+                    disabled={isChatLoading}
+                    className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#500000]/20 disabled:bg-gray-50 disabled:cursor-not-allowed"
                   />
                   <button
                     type="button"
-                    onClick={() => {
-                      const trimmed = chatInput.trim();
-                      if (!trimmed) return;
-                      setChatMessages((prev) => [
-                        ...prev,
-                        { id: `${Date.now()}-${prev.length}`, text: trimmed }
-                      ]);
-                      setChatInput('');
-                    }}
-                    className="rounded-full bg-[#500000] px-3 py-2 text-xs font-semibold text-white hover:bg-[#3d0000]"
+                    onClick={() => sendChatMessage(chatInput)}
+                    disabled={isChatLoading || !chatInput.trim()}
+                    className="rounded-full bg-[#500000] px-3 py-2 text-xs font-semibold text-white hover:bg-[#3d0000] disabled:bg-gray-300 disabled:cursor-not-allowed"
                   >
-                    Send
+                    {isChatLoading ? '...' : 'Send'}
                   </button>
                 </div>
               </div>

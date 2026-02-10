@@ -1,0 +1,198 @@
+{
+  "degree": "Computer Science - BS",
+  "catalogYear": "2025-2026",
+  "totalRequiredHours": 126,
+  "minimumGrade": "C",
+  "programMission": "The mission of the computer science program is to prepare intellectual, professional and ethical graduates, capable of meeting challenges in the field of computer science.",
+  
+  "requiredCourses": {
+    "firstYear": {
+      "fall": [
+        { "code": "CHEM 107", "title": "General Chemistry for Engineering Students", "credits": 3, "required": true, "minGrade": "C" },
+        { "code": "CHEM 117", "title": "General Chemistry for Engineering Students Laboratory", "credits": 1, "required": true, "minGrade": "C" },
+        { 
+          "alternatives": ["ENGL 103", "ENGL 104"],
+          "titles": ["Introduction to Rhetoric and Composition", "Composition and Rhetoric"],
+          "credits": 3,
+          "required": true,
+          "minGrade": "C"
+        },
+        { "code": "ENGR 102", "title": "Engineering Lab I - Computation", "credits": 2, "required": true, "minGrade": "C" },
+        { "code": "MATH 151", "title": "Engineering Mathematics I", "credits": 4, "required": true, "minGrade": "C" }
+      ],
+      "spring": [
+        { "code": "ENGR 216", "alternateCode": "PHYS 216", "title": "Experimental Physics and Engineering Lab II - Mechanics", "credits": 2, "required": true, "minGrade": "C" },
+        { "code": "MATH 152", "title": "Engineering Mathematics II", "credits": 4, "required": true, "minGrade": "C" },
+        { "code": "PHYS 206", "title": "Newtonian Mechanics for Engineering and Science", "credits": 3, "required": true, "minGrade": "C" }
+      ]
+    },
+    "secondYear": {
+      "fall": [
+        { "code": "CSCE 181", "title": "Introduction to Computing", "credits": 1, "required": true, "minGrade": "C" },
+        { "code": "CSCE 120", "title": "Program Design and Concepts", "credits": 3, "required": true, "minGrade": "C" },
+        { "code": "CSCE 222", "alternateCode": "ECEN 222", "title": "Discrete Structures for Computing", "credits": 3, "required": true, "minGrade": "C" },
+        { "code": "MATH 304", "title": "Linear Algebra", "credits": 3, "required": true, "minGrade": "C" }
+      ],
+      "spring": [
+        { "code": "CSCE 221", "title": "Data Structures and Algorithms", "credits": 4, "required": true, "minGrade": "C" },
+        { "code": "CSCE 312", "title": "Computer Organization", "credits": 4, "required": true, "minGrade": "C" },
+        { "code": "CSCE 314", "title": "Programming Languages", "credits": 3, "required": true, "minGrade": "C" },
+        {
+          "alternatives": ["COMM 203", "COMM 205", "ENGL 210"],
+          "titles": ["Public Speaking", "Communication for Technical Professions", "Technical and Professional Writing"],
+          "credits": 3,
+          "required": true,
+          "minGrade": "C"
+        }
+      ]
+    },
+    "thirdYear": {
+      "fall": [
+        { "code": "CSCE 313", "title": "Introduction to Computer Systems", "credits": 4, "required": true, "minGrade": "C" },
+        { "code": "CSCE 331", "title": "Foundations of Software Engineering", "credits": 4, "required": true, "minGrade": "C" },
+        { "code": "STAT 211", "title": "Principles of Statistics I", "credits": 3, "required": true, "minGrade": "C" }
+      ],
+      "spring": [
+        { "code": "CSCE 411", "title": "Design and Analysis of Algorithms", "credits": 3, "required": true, "minGrade": "C" },
+        { "code": "CSCE 481", "title": "Seminar", "credits": 1, "required": true, "minGrade": "C" },
+        {
+          "alternatives": ["MATH 251", "MATH 308", "STAT 212"],
+          "titles": ["Engineering Mathematics III", "Differential Equations", "Principles of Statistics II"],
+          "credits": 3,
+          "required": true,
+          "minGrade": "C"
+        }
+      ]
+    },
+    "fourthYear": {
+      "spring": [
+        { "code": "CSCE 482", "title": "Senior Capstone Design", "credits": 3, "required": true, "minGrade": "C" }
+      ]
+    }
+  },
+
+  "coreCurriculum": {
+    "totalHours": 21,
+    "categories": {
+      "creativeArts": {
+        "hours": 3,
+        "description": "Must be from approved creative arts list"
+      },
+      "socialBehavioralSciences": {
+        "hours": 3,
+        "description": "Must be from approved social and behavioral sciences list"
+      },
+      "languagePhilosophyCulture": {
+        "hours": 3,
+        "description": "Must be from approved language, philosophy and culture list"
+      },
+      "americanHistory": {
+        "hours": 6,
+        "description": "Two courses in American history"
+      },
+      "governmentPoliticalScience": {
+        "hours": 6,
+        "description": "Two courses in government/political science"
+      }
+    },
+    "specialRequirements": {
+      "internationalCulturalDiversity": {
+        "hours": 3,
+        "description": "May be met by courses satisfying other core requirements if on approved ICD list"
+      },
+      "culturalDiscourse": {
+        "hours": 3,
+        "description": "May be met by courses satisfying other core requirements if on approved CD list"
+      }
+    }
+  },
+
+  "electiveRequirements": {
+    "computerScienceElectives": {
+      "totalHours": 18,
+      "breakdown": {
+        "systemsDirected": { "hours": 3, "description": "Must be from systems directed electives list" },
+        "softwareDirected": { "hours": 3, "description": "Must be from software directed electives list" },
+        "infoIntelSystemsDirected": { "hours": 3, "description": "Must be from info/intel systems directed electives list" },
+        "upperLevel": { "hours": 6, "description": "Upper level CSCE electives (300+)" },
+        "general": { "hours": 3, "description": "Any CSCE elective" }
+      },
+      "note": "Graduate courses may be taken by qualified students for some of the electives"
+    },
+    "emphasisArea": {
+      "totalHours": 12,
+      "description": "Area of concentration that complements computer science coursework",
+      "note": "Should be chosen after consultation with departmental advisor"
+    },
+    "scienceElectives": {
+      "totalHours": 7,
+      "description": "See advisor for list of acceptable science courses",
+      "note": "If ENGR 217/PHYS 217 and PHYS 207 are taken, 3 hours of PHYS 207 + 1 hour of ENGR 217/PHYS 217 satisfy this requirement"
+    },
+    "generalElectives": {
+      "totalHours": 1,
+      "description": "Any course to reach total credit hours"
+    }
+  },
+
+  "specialRequirements": {
+    "highImpactExperience": {
+      "code": "CSCE 399",
+      "credits": 0,
+      "required": true,
+      "description": "All students are required to complete a high-impact experience to graduate",
+      "note": "List of possible experiences available in CSCE advising office"
+    }
+  },
+
+  "creditSummary": {
+    "requiredCourses": 63,
+    "coreCurriculum": 21,
+    "computerScienceElectives": 18,
+    "emphasisAreaElectives": 12,
+    "scienceElectives": 7,
+    "generalElectives": 1,
+    "highImpactExperience": 0,
+    "total": 126
+  },
+
+  "coursePrerequisites": {
+    "CSCE 120": ["None or ENGR 102"],
+    "CSCE 181": ["None"],
+    "CSCE 221": ["CSCE 120", "CSCE 222"],
+    "CSCE 222": ["CSCE 120"],
+    "CSCE 312": ["CSCE 221", "CSCE 222"],
+    "CSCE 313": ["CSCE 221"],
+    "CSCE 314": ["CSCE 221"],
+    "CSCE 331": ["CSCE 221"],
+    "CSCE 411": ["CSCE 221", "CSCE 222"],
+    "CSCE 481": ["Senior standing"],
+    "CSCE 482": ["CSCE 331", "CSCE 481"],
+    "MATH 152": ["MATH 151"],
+    "MATH 251": ["MATH 152"],
+    "MATH 304": ["MATH 151"],
+    "MATH 308": ["MATH 152"],
+    "PHYS 206": ["MATH 151"],
+    "PHYS 216": ["PHYS 206 or concurrent"],
+    "STAT 211": ["MATH 151"],
+    "STAT 212": ["STAT 211"]
+  },
+
+  "notes": [
+    "A grade of C or better is required in all courses marked with minGrade: 'C'",
+    "Deviations from the prescribed course sequence should be made with care to ensure prerequisites are met",
+    "Students should file a degree plan before taking emphasis area courses",
+    "The freshman year is identical for most engineering degrees at TAMU"
+  ],
+
+  "validationRules": {
+    "minimumTotalHours": 126,
+    "minimumGradeRequired": "C",
+    "requiredCoursesCount": 26,
+    "coreCurriculumHours": 21,
+    "csElectivesMinimum": 18,
+    "emphasisAreaMinimum": 12,
+    "scienceElectivesMinimum": 7,
+    "highImpactRequired": true
+  }
+}
