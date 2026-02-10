@@ -6,6 +6,12 @@
       "first_name": "John",
       "last_name": "Doe",
       "email": "john.doe@tamu.edu"
+    },
+    {
+      "user_id": 2,
+      "first_name": "Rayaan",
+      "last_name": "A. Maredia",
+      "email": "rayaan.maredia@tamu.edu"
     }
   ],
   "emphasis_areas": [],
@@ -575,7 +581,7 @@
     {
       "entry_id": 19,
       "user_id": 1,
-      "course_id": 34,
+      "course_id": 54,
       "student_emphasis_id": null,
       "term": "Summer",
       "year": 2023,
@@ -895,6 +901,516 @@
     {
       "entry_id": 51,
       "user_id": 1,
+      "course_id": 53,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2026,
+      "grade": "IP",
+      "status": "In Progress"
+    },
+    {
+      "entry_id": 52,
+      "user_id": 2,
+      "course_id": 24,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2020,
+      "grade": "TA",
+      "status": "Transfer"
+    },
+    {
+      "entry_id": 53,
+      "user_id": 2,
+      "course_id": 1,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2020,
+      "grade": "TA",
+      "status": "Transfer"
+    },
+    {
+      "entry_id": 54,
+      "user_id": 2,
+      "course_id": 3,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2021,
+      "grade": "TA",
+      "status": "Transfer"
+    },
+    {
+      "entry_id": 55,
+      "user_id": 2,
+      "course_id": 6,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2021,
+      "grade": "TA",
+      "status": "Transfer"
+    },
+    {
+      "entry_id": 56,
+      "user_id": 2,
+      "course_id": 7,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2021,
+      "grade": "TA",
+      "status": "Transfer"
+    },
+    {
+      "entry_id": 57,
+      "user_id": 2,
+      "course_id": 8,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2022,
+      "grade": "TA",
+      "status": "Transfer"
+    },
+    {
+      "entry_id": 58,
+      "user_id": 2,
+      "course_id": 25,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2022,
+      "grade": "TA",
+      "status": "Transfer"
+    },
+    {
+      "entry_id": 59,
+      "user_id": 2,
+      "course_id": 26,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2022,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 60,
+      "user_id": 2,
+      "course_id": 27,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2022,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 61,
+      "user_id": 2,
+      "course_id": 28,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2022,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 62,
+      "user_id": 2,
+      "course_id": 29,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2022,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 63,
+      "user_id": 2,
+      "course_id": 30,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2022,
+      "grade": "S",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 64,
+      "user_id": 2,
+      "course_id": 31,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2022,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 65,
+      "user_id": 2,
+      "course_id": 32,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2022,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 66,
+      "user_id": 2,
+      "course_id": 33,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2023,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 67,
+      "user_id": 2,
+      "course_id": 2,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2023,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 68,
+      "user_id": 2,
+      "course_id": 4,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2023,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 69,
+      "user_id": 2,
+      "course_id": 5,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2023,
+      "grade": "B",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 70,
+      "user_id": 2,
+      "course_id": 54,
+      "student_emphasis_id": null,
+      "term": "Summer",
+      "year": 2023,
+      "grade": "TA",
+      "status": "Transfer"
+    },
+    {
+      "entry_id": 71,
+      "user_id": 2,
+      "course_id": 11,
+      "student_emphasis_id": null,
+      "term": "Summer",
+      "year": 2023,
+      "grade": "TA",
+      "status": "Transfer"
+    },
+    {
+      "entry_id": 72,
+      "user_id": 2,
+      "course_id": 35,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2023,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 73,
+      "user_id": 2,
+      "course_id": 9,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2023,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 74,
+      "user_id": 2,
+      "course_id": 10,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2023,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 75,
+      "user_id": 2,
+      "course_id": 36,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2023,
+      "grade": "B",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 76,
+      "user_id": 2,
+      "course_id": 37,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2023,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 77,
+      "user_id": 2,
+      "course_id": 38,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2024,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 78,
+      "user_id": 2,
+      "course_id": 12,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2024,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 79,
+      "user_id": 2,
+      "course_id": 13,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2024,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 80,
+      "user_id": 2,
+      "course_id": 14,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2024,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 81,
+      "user_id": 2,
+      "course_id": 15,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2024,
+      "grade": "B",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 82,
+      "user_id": 2,
+      "course_id": 16,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2024,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 83,
+      "user_id": 2,
+      "course_id": 39,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2024,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 84,
+      "user_id": 2,
+      "course_id": 40,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2024,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 85,
+      "user_id": 2,
+      "course_id": 18,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2024,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 86,
+      "user_id": 2,
+      "course_id": 19,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2024,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 87,
+      "user_id": 2,
+      "course_id": 41,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2025,
+      "grade": "B",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 88,
+      "user_id": 2,
+      "course_id": 21,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2025,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 89,
+      "user_id": 2,
+      "course_id": 22,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2025,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 90,
+      "user_id": 2,
+      "course_id": 42,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2025,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 91,
+      "user_id": 2,
+      "course_id": 23,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2025,
+      "grade": "B",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 92,
+      "user_id": 2,
+      "course_id": 43,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2025,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 93,
+      "user_id": 2,
+      "course_id": 44,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2025,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 94,
+      "user_id": 2,
+      "course_id": 45,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2025,
+      "grade": "A",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 95,
+      "user_id": 2,
+      "course_id": 46,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2025,
+      "grade": "S",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 96,
+      "user_id": 2,
+      "course_id": 47,
+      "student_emphasis_id": null,
+      "term": "Fall",
+      "year": 2025,
+      "grade": "B",
+      "status": "Evaluated"
+    },
+    {
+      "entry_id": 97,
+      "user_id": 2,
+      "course_id": 48,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2026,
+      "grade": "TA",
+      "status": "In Progress"
+    },
+    {
+      "entry_id": 98,
+      "user_id": 2,
+      "course_id": 49,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2026,
+      "grade": "TIP",
+      "status": "In Progress"
+    },
+    {
+      "entry_id": 99,
+      "user_id": 2,
+      "course_id": 50,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2026,
+      "grade": "IP",
+      "status": "In Progress"
+    },
+    {
+      "entry_id": 100,
+      "user_id": 2,
+      "course_id": 51,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2026,
+      "grade": "IP",
+      "status": "In Progress"
+    },
+    {
+      "entry_id": 101,
+      "user_id": 2,
+      "course_id": 52,
+      "student_emphasis_id": null,
+      "term": "Spring",
+      "year": 2026,
+      "grade": "A",
+      "status": "In Progress"
+    },
+    {
+      "entry_id": 102,
+      "user_id": 2,
       "course_id": 53,
       "student_emphasis_id": null,
       "term": "Spring",

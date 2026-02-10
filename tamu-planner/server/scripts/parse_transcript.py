@@ -56,11 +56,23 @@ GRADE_TOKENS = {
     "W",
     "IP",
     "TA",
+    "TIP",
 }
 
 CREDIT_RE = re.compile(r"^\d+\.\d{3}$")
 
 TERM_ORDER = {"Spring": 1, "Summer": 2, "Fall": 3, "Winter": 4}
+
+# Totals extraction patterns
+TOTALS_INSTITUTION_RE = re.compile(
+    r"TOTAL\s*INSTITUTION\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)", re.IGNORECASE
+)
+TOTALS_TRANSFER_RE = re.compile(
+    r"TOTAL\s*TRANSFER\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)", re.IGNORECASE
+)
+TOTALS_OVERALL_RE = re.compile(
+    r"OVERALL\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)", re.IGNORECASE
+)
 
 @dataclass
 class Course:
@@ -109,6 +121,56 @@ def strip_trailing_noise(line: str) -> str:
     return line
 
 
+def clean_department_code(dept: str) -> str:
+    """Fix garbled department codes from PDF extraction."""
+    # Common OCR/extraction errors in TAMU transcripts
+    corrections = {
+        "ANTOH": "ANTH",
+        "NCSCE": "CSCE",
+        "UCSCE": "CSCE",
+        "UHIST": "HIST",
+        "NMKTG": "MKTG",
+        "NFINC": "FINC",
+        "NMATH": "MATH",
+        "NPHYS": "PHYS",
+        "NENGL": "ENGL",
+    }
+    return corrections.get(dept, dept)
+
+
+def title_case_course_title(title: str) -> str:
+    """Convert ALL CAPS course title to Title Case."""
+    if not title:
+        return title
+    
+    # Words that should stay lowercase (except at start)
+    lowercase_words = {
+        'a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'from', 'in', 'into',
+        'of', 'on', 'or', 'the', 'to', 'with', '&'
+    }
+    
+    # Roman numerals that should stay uppercase
+    roman_numerals = {'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'}
+    
+    words = title.split()
+    result = []
+    
+    for i, word in enumerate(words):
+        # Check if it's a Roman numeral
+        if word.upper() in roman_numerals:
+            result.append(word.upper())
+        # First word is always capitalized
+        elif i == 0:
+            result.append(word.capitalize())
+        # Check if it should be lowercase
+        elif word.lower() in lowercase_words:
+            result.append(word.lower())
+        else:
+            result.append(word.capitalize())
+    
+    return ' '.join(result)
+
+
 def parse_course(line: str, in_progress_mode: bool) -> Optional[Course]:
     line = strip_trailing_noise(line)
     tokens = line.split()
@@ -116,6 +178,10 @@ def parse_course(line: str, in_progress_mode: bool) -> Optional[Course]:
         return None
     dept = tokens[0]
     num = tokens[1]
+    
+    # Clean department code
+    dept = clean_department_code(dept)
+    
     if not dept.isalpha() or not num.isdigit():
         return None
     if len(dept) > 6:
@@ -151,9 +217,12 @@ def parse_course(line: str, in_progress_mode: bool) -> Optional[Course]:
     if grade_idx is not None and grade_idx < credit_idx:
         title_end = min(title_end, grade_idx)
     title_tokens = rest[:title_end]
-    while title_tokens and title_tokens[-1] in {"R"}:
+    while title_tokens and title_tokens[-1] in {"R", "N", "L", "T", "O", "TEhrs:16.000"}:
         title_tokens.pop()
     title = " ".join(title_tokens).strip()
+    
+    # Convert to title case
+    title = title_case_course_title(title)
 
     try:
         credits = float(rest[credit_idx])
@@ -161,7 +230,7 @@ def parse_course(line: str, in_progress_mode: bool) -> Optional[Course]:
         return None
 
     code = f"{dept} {num}"
-    transfer = grade == "TA"
+    transfer = grade in ("TA", "TIP")
     return Course(code=code, title=title, credits=credits, grade=grade, transfer=transfer)
 
 
@@ -201,6 +270,45 @@ def term_label_from_code(code: str) -> Optional[str]:
 
 
 def parse_page_columns(page, split_columns: bool = True) -> List[TermBlock]:
+    """Parse page by extracting words from cropped columns."""
+    all_blocks = []
+    
+    if split_columns:
+        # Crop page into left and right halves with margin to avoid bleed
+        mid = page.width / 2
+        margin = 10
+        left_crop = page.crop((0, 0, mid - margin, page.height))
+        right_crop = page.crop((mid + margin, 0, page.width, page.height))
+        
+        for crop in [left_crop, right_crop]:
+            # Use extract_words to preserve spacing, then group into lines
+            words = crop.extract_words(x_tolerance=1, y_tolerance=2)
+            if not words:
+                continue
+            lines_dict = defaultdict(list)
+            for w in words:
+                key = round(w["top"] / 2) * 2
+                lines_dict[key].append(w)
+            lines = []
+            for y in sorted(lines_dict.keys()):
+                row = sorted(lines_dict[y], key=lambda w: w["x0"])
+                text = " ".join(w["text"] for w in row)
+                cleaned = clean_line(text)
+                if cleaned:
+                    lines.append(cleaned)
+            blocks = parse_lines(lines)
+            all_blocks.extend(blocks)
+    else:
+        text = page.extract_text() or ""
+        lines = [clean_line(l) for l in text.split("\n") if clean_line(l)]
+        blocks = parse_lines(lines)
+        all_blocks.extend(blocks)
+    
+    return all_blocks
+
+
+def parse_page_columns_words(page, split_columns: bool = True) -> List[TermBlock]:
+    """Fallback word-based extraction for comparison."""
     words = page.extract_words(x_tolerance=1, y_tolerance=2)
     columns = []
     column_sets = []
@@ -304,13 +412,35 @@ def parse_page_columns(page, split_columns: bool = True) -> List[TermBlock]:
                     current.status = "Transfer"
                 last_was_course = True
                 continue
-            last_was_course = False
-
-            if current and current.courses and not TERM_RE.search(line) and not HEADER_RE.search(line):
-                if TERM_TOTALS_RE.search(line) or TRAILING_MARKER_RE.search(line) or SUMMARY_LINE_RE.search(line):
+            
+            # If parsing failed, check if it's a title continuation
+            if current and current.courses and last_was_course:
+                # Skip if it looks like a term header, totals, or noise
+                if (TERM_RE.search(line) or HEADER_RE.search(line) or 
+                    TERM_TOTALS_RE.search(line) or TRAILING_MARKER_RE.search(line) or 
+                    SUMMARY_LINE_RE.search(line)):
+                    last_was_course = False
                     continue
-                if not line.startswith("Ehrs") and not line.startswith("GPA"):
-                    current.courses[-1].title = f"{current.courses[-1].title} {line}".strip()
+                # Skip Ehrs/GPA lines
+                if line.startswith("Ehrs") or line.startswith("GPA") or line.startswith("EHRS"):
+                    last_was_course = False
+                    continue
+                # Skip lines with more than 4 tokens (likely a new course line that failed to parse)
+                tokens = line.split()
+                if len(tokens) > 4:
+                    last_was_course = False
+                    continue
+                # Skip if contains credit pattern or multiple grade tokens
+                if CREDIT_RE.search(line) or sum(1 for tok in tokens if tok in GRADE_TOKENS) > 1:
+                    last_was_course = False
+                    continue
+                # Looks like a legitimate continuation - append to title
+                current.courses[-1].title = f"{current.courses[-1].title} {line}".strip()
+                # Re-apply title case
+                current.courses[-1].title = title_case_course_title(current.courses[-1].title)
+                continue
+            
+            last_was_course = False
 
         if current and current.courses:
             blocks.append(current)
@@ -380,19 +510,212 @@ def score_blocks(blocks: List[TermBlock]) -> int:
     return labeled * 10 + courses
 
 
+def merge_continuation_blocks(blocks: List[TermBlock]) -> List[TermBlock]:
+    """Merge unlabeled blocks into preceding labeled block (for page breaks)."""
+    if not blocks:
+        return blocks
+    merged: List[TermBlock] = []
+    for block in blocks:
+        if not block.label and merged and merged[-1].label:
+            # Continuation of previous term
+            merged[-1].courses.extend(block.courses)
+            if block.status == "In Progress":
+                merged[-1].status = "In Progress"
+        else:
+            merged.append(block)
+    return merged
+
+
+def extract_totals(pages) -> Optional[dict]:
+    """Scan all pages for TRANSCRIPT TOTALS section."""
+    totals: Dict[str, dict] = {}
+    for page in pages:
+        text = page.extract_text() or ""
+        for line in text.split("\n"):
+            line = clean_line(line)
+            
+            m = TOTALS_INSTITUTION_RE.search(line)
+            if m:
+                totals["institution"] = {
+                    "earnedHours": float(m.group(1)),
+                    "gpaHours": float(m.group(2)),
+                    "points": float(m.group(3)),
+                    "gpa": float(m.group(4)),
+                }
+                continue
+            
+            m = TOTALS_TRANSFER_RE.search(line)
+            if m:
+                totals["transfer"] = {
+                    "earnedHours": float(m.group(1)),
+                    "gpaHours": float(m.group(2)),
+                    "points": float(m.group(3)),
+                    "gpa": float(m.group(4)),
+                }
+                continue
+            
+            m = TOTALS_OVERALL_RE.search(line)
+            if m:
+                totals["overall"] = {
+                    "earnedHours": float(m.group(1)),
+                    "gpaHours": float(m.group(2)),
+                    "points": float(m.group(3)),
+                    "gpa": float(m.group(4)),
+                }
+                continue
+    
+    return totals if totals else None
+
+
+def parse_lines(lines: List[str]) -> List[TermBlock]:
+    """Parse a list of text lines into TermBlocks."""
+    blocks: List[TermBlock] = []
+    current: Optional[TermBlock] = None
+    pending_label: Optional[str] = None
+    pending_code: Optional[str] = None
+    in_progress_mode = False
+    last_was_course = False
+
+    for line in lines:
+        if not line:
+            continue
+
+        if IN_PROGRESS_RE.search(line):
+            in_progress_mode = True
+            continue
+
+        term_code_match = TERM_CODE_RE.search(line)
+        if term_code_match:
+            pending_code = term_code_match.group(1)
+
+        term_match = TERM_RE.search(line)
+        if term_match:
+            term, year = term_match.groups()
+            label = f"{term} {year}"
+            if current and not current.courses:
+                current.label = label
+            else:
+                if current and current.courses:
+                    blocks.append(current)
+                current = TermBlock(label=label, status="Evaluated", term_code=pending_code, in_progress_mode=in_progress_mode)
+            pending_label = None
+            pending_code = None
+            last_was_course = False
+            continue
+
+        if NOISE_RE.search(line):
+            last_was_course = False
+            continue
+
+        if HEADER_RE.search(line):
+            if current and current.courses:
+                blocks.append(current)
+                current = None
+            if current is None:
+                current = TermBlock(label=pending_label, status="Evaluated", term_code=pending_code, in_progress_mode=in_progress_mode)
+                pending_label = None
+                pending_code = None
+            last_was_course = False
+            continue
+
+        if TERM_TOTALS_RE.search(line):
+            if current and current.courses:
+                blocks.append(current)
+                current = None
+            last_was_course = False
+            continue
+
+        if SUMMARY_LINE_RE.search(line):
+            last_was_course = False
+            continue
+
+        tokens = line.split()
+        if len(tokens) == 1 and tokens[0] in {"R", "N", "L", "I"}:
+            last_was_course = False
+            continue
+        if len(tokens) == 1 and tokens[0] in GRADE_TOKENS:
+            if (
+                current
+                and current.courses
+                and last_was_course
+                and current.courses[-1].grade in ("", "IP")
+            ):
+                current.courses[-1].grade = tokens[0]
+            last_was_course = False
+            continue
+
+        course = parse_course(line, in_progress_mode)
+        if course:
+            if current is None:
+                current = TermBlock(label=pending_label, status="Evaluated", term_code=pending_code, in_progress_mode=in_progress_mode)
+                pending_label = None
+                pending_code = None
+            current.courses.append(course)
+            if course.grade == "IP" or in_progress_mode:
+                current.status = "In Progress"
+            elif course.transfer and current.status != "In Progress":
+                current.status = "Transfer"
+            last_was_course = True
+            continue
+        
+        # If parsing failed, check if it's a title continuation
+        if current and current.courses and last_was_course:
+            # Skip if it looks like a term header, totals, or noise
+            if (TERM_RE.search(line) or HEADER_RE.search(line) or 
+                TERM_TOTALS_RE.search(line) or TRAILING_MARKER_RE.search(line) or 
+                SUMMARY_LINE_RE.search(line)):
+                last_was_course = False
+                continue
+            # Skip Ehrs/GPA lines
+            if line.startswith("Ehrs") or line.startswith("GPA") or line.startswith("EHRS"):
+                last_was_course = False
+                continue
+            # Skip lines with more than 4 tokens (likely a new course line that failed to parse)
+            tokens = line.split()
+            if len(tokens) > 4:
+                last_was_course = False
+                continue
+            # Skip if contains credit pattern or multiple grade tokens
+            if CREDIT_RE.search(line) or sum(1 for tok in tokens if tok in GRADE_TOKENS) > 1:
+                last_was_course = False
+                continue
+            # Looks like a legitimate continuation - append to title
+            current.courses[-1].title = f"{current.courses[-1].title} {line}".strip()
+            # Re-apply title case
+            current.courses[-1].title = title_case_course_title(current.courses[-1].title)
+            continue
+        
+        last_was_course = False
+
+    if current and current.courses:
+        blocks.append(current)
+
+    return blocks
+
+
 def parse_pdf(path: str):
     blocks: List[TermBlock] = []
     blocks_single: List[TermBlock] = []
+    totals = None
+    
     with pdfplumber.open(path) as pdf:
+        # Extract using cropped columns (most accurate for TAMU transcripts)
         for page in pdf.pages:
             blocks.extend(parse_page_columns(page, split_columns=True))
             blocks_single.extend(parse_page_columns(page, split_columns=False))
+        
+        # Extract totals
+        totals = extract_totals(pdf.pages)
 
+    # Pick best strategy
     if score_blocks(blocks_single) > score_blocks(blocks):
         blocks = blocks_single
 
+    # Post-process blocks
+    blocks = merge_continuation_blocks(blocks)
     blocks = infer_missing_labels(blocks)
 
+    # Merge blocks with same label
     merged = {}
     for block in blocks:
         if not block.courses:
@@ -420,7 +743,12 @@ def parse_pdf(path: str):
             merged[label]["status"] = "Transfer"
 
     terms = sorted(merged.values(), key=lambda t: term_sort_key(t["label"]))
-    return {"terms": terms}
+    
+    result = {"terms": terms}
+    if totals:
+        result["totals"] = totals
+    
+    return result
 
 
 def main():

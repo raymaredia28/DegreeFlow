@@ -18,4 +18,6 @@ export const env = {
   googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
   sessionSecret: process.env.SESSION_SECRET ?? "",
+  tamuAiApiKey: process.env.TAMU_AI_CHAT_API_KEY ?? "",
+  tamuAiApiEndpoint: process.env.TAMU_AI_CHAT_API_ENDPOINT ?? "https://chat-api.tamu.ai",
 };

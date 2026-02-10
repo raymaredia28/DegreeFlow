@@ -3,6 +3,7 @@ import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mj
 import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import tamuLogo from './assets/tamu-logo.svg';
 import { TRANSCRIPT_DEMO } from './data/transcriptDemo';
+import { DegreeProgress } from './components/DegreeProgress';
 import {
   Calendar,
   AlertTriangle,
@@ -13,7 +14,8 @@ import {
   Search,
   Save,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Edit2
 } from 'lucide-react';
 
 const API_BASE = import.meta.env?.VITE_API_BASE ?? 'http://localhost:4000';
@@ -35,13 +37,13 @@ const fileToBase64 = (file) =>
 
 // Mock data
 const MOCK_STUDENT = {
-  name: 'John Doe',
-  uin: '123456789',
-  email: 'john.doe@tamu.edu',
+  name: 'Rayaan A. Maredia',
+  uin: '832006835',
+  email: 'rayaan.maredia@tamu.edu',
   major: 'Computer Science',
-  catalogYear: '2023-2024',
-  gpa: 3.45,
-  completedCredits: 45,
+  catalogYear: '2025-2026',
+  gpa: 3.82,
+  completedCredits: 98,
   totalRequired: 120,
   emphasisArea: 'Software Engineering'
 };
@@ -780,8 +782,8 @@ function App() {
   const [reviewTotals, setReviewTotals] = useState(null);
   const [isTranscriptDirty, setIsTranscriptDirty] = useState(false);
   const [isTranscriptSaving, setIsTranscriptSaving] = useState(false);
-  const [draggedReviewCourse, setDraggedReviewCourse] = useState(null);
-  const [dragOverTermLabel, setDragOverTermLabel] = useState(null);
+  const draggedReviewCourseRef = useRef(null);
+  const dragOverTermLabelRef = useRef(null);
   const reviewScrollRef = useRef(null);
   const [reviewContextMenu, setReviewContextMenu] = useState({
     open: false,
@@ -790,13 +792,28 @@ function App() {
     courseCode: '',
     fromTermLabel: ''
   });
-  const [selectedSemester, setSelectedSemester] = useState('Fall 2024');
+  const [selectedSemester, setSelectedSemester] = useState(() => {
+    const now = new Date();
+    const month = now.getMonth(); // 0-indexed
+    const year = now.getFullYear();
+    // Jan-May = Spring, Jun-Jul = Summer, Aug-Dec = Fall
+    if (month <= 4) return `Spring ${year}`;
+    if (month <= 6) return `Summer ${year}`;
+    return `Fall ${year}`;
+  });
   const [isFlowFullscreen, setIsFlowFullscreen] = useState(false);
   const [semesterPlans, setSemesterPlans] = useState(() => initSemesterPlans({}));
   const [searchQuery, setSearchQuery] = useState('');
   const [showCourseModal, setShowCourseModal] = useState(false);
   const [planError, setPlanError] = useState('');
-  const [selectedPlanYear, setSelectedPlanYear] = useState('2024-2025');
+  const [selectedPlanYear, setSelectedPlanYear] = useState(() => {
+    const now = new Date();
+    const month = now.getMonth(); // 0-indexed
+    const year = now.getFullYear();
+    // Academic year starts in Fall: Aug (7) onwards = current year, before Aug = previous year
+    const startYear = month >= 7 ? year : year - 1;
+    return `${startYear}-${startYear + 1}`;
+  });
   const [selectedTranscriptYear, setSelectedTranscriptYear] = useState('');
   const [transcriptError, setTranscriptError] = useState('');
   const [transcriptLoading, setTranscriptLoading] = useState(false);
@@ -804,6 +821,7 @@ function App() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState([]);
+  const [isChatLoading, setIsChatLoading] = useState(false);
   const transcriptYears = useMemo(() => normalizeTranscript(reviewTerms), [reviewTerms]);
   const transcriptIndex = useMemo(() => buildTranscriptIndex(transcriptTerms), [transcriptTerms]);
 
@@ -1152,27 +1170,44 @@ function App() {
     }
     setIsTranscriptDirty(false);
     setShowTranscriptReview(false);
-    setDraggedReviewCourse(null);
-    setDragOverTermLabel(null);
+    draggedReviewCourseRef.current = null;
+    dragOverTermLabelRef.current = null;
     setReviewContextMenu((prev) => ({ ...prev, open: false }));
+  };
+
+  const clearTermHighlight = () => {
+    const prev = dragOverTermLabelRef.current;
+    if (prev) {
+      const el = document.querySelector(`[data-term-label="${CSS.escape(prev)}"]`);
+      if (el) {
+        el.style.borderColor = '';
+        el.style.boxShadow = '';
+      }
+      dragOverTermLabelRef.current = null;
+    }
+  };
+
+  const highlightTerm = (termLabel) => {
+    if (dragOverTermLabelRef.current === termLabel) return;
+    clearTermHighlight();
+    const el = document.querySelector(`[data-term-label="${CSS.escape(termLabel)}"]`);
+    if (el) {
+      el.style.borderColor = '#500000';
+      el.style.boxShadow = '0 0 0 2px rgba(80, 0, 0, 0.3)';
+    }
+    dragOverTermLabelRef.current = termLabel;
   };
 
   const handleReviewDragOver = (event) => {
     const container = reviewScrollRef.current;
-    if (container) {
-      const rect = container.getBoundingClientRect();
-      const edge = 60;
-      const scrollSpeed = 18;
-      if (event.clientY < rect.top + edge) {
-        container.scrollTop -= scrollSpeed;
-      } else if (event.clientY > rect.bottom - edge) {
-        container.scrollTop += scrollSpeed;
-      }
-      // Only make the grid a drop target when dragging over the grid itself (gap), not over term divs.
-      // This way drops on term areas go to the term's onDrop.
-      if (event.target === container) {
-        event.preventDefault();
-      }
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const edge = 60;
+    const scrollSpeed = 18;
+    if (event.clientY < rect.top + edge) {
+      container.scrollTop -= scrollSpeed;
+    } else if (event.clientY > rect.bottom - edge) {
+      container.scrollTop += scrollSpeed;
     }
   };
 
@@ -1194,8 +1229,8 @@ function App() {
         if (parsed?.code && parsed?.fromTermLabel) return parsed;
       } catch (err) {
         // Fallback for older payloads that stored only the code.
-        if (draggedReviewCourse?.fromTermLabel) {
-          return { code: text, fromTermLabel: draggedReviewCourse.fromTermLabel };
+        if (draggedReviewCourseRef.current?.fromTermLabel) {
+          return { code: text, fromTermLabel: draggedReviewCourseRef.current.fromTermLabel };
         }
       }
     }
@@ -1207,44 +1242,44 @@ function App() {
     if (event.dataTransfer) {
       event.dataTransfer.dropEffect = 'move';
     }
-    setDragOverTermLabel(termLabel);
+    highlightTerm(termLabel);
   };
 
   const handleTermDragEnter = (termLabel, event) => {
     event.preventDefault();
-    setDragOverTermLabel(termLabel);
+    highlightTerm(termLabel);
   };
 
   const handleTermDragLeave = (termLabel, event) => {
     if (!event.currentTarget?.contains(event.relatedTarget)) {
-      setDragOverTermLabel((prev) => (prev === termLabel ? null : prev));
+      if (dragOverTermLabelRef.current === termLabel) {
+        clearTermHighlight();
+      }
     }
   };
 
   const handleTermDrop = (termLabel, event) => {
     event.preventDefault();
     event.stopPropagation();
-    const payload = parseReviewDragPayload(event) || draggedReviewCourse;
+    const payload = parseReviewDragPayload(event) || draggedReviewCourseRef.current;
     const courseCode = payload?.code;
     const fromTermLabel = payload?.fromTermLabel;
-    if (!courseCode || !fromTermLabel) {
-      setDraggedReviewCourse(null);
-      setDragOverTermLabel(null);
-      return;
-    }
+    clearTermHighlight();
+    draggedReviewCourseRef.current = null;
+    if (!courseCode || !fromTermLabel) return;
     moveReviewedCourse(courseCode, fromTermLabel, termLabel);
-    setDraggedReviewCourse(null);
-    setDragOverTermLabel(null);
   };
 
   const handleCourseDragStart = (course, termLabel, event) => {
     const payload = { code: course.code, fromTermLabel: termLabel };
-    setDraggedReviewCourse(payload);
+    draggedReviewCourseRef.current = payload;
     if (event.dataTransfer) {
       event.dataTransfer.effectAllowed = 'move';
       event.dataTransfer.setData('application/json', JSON.stringify(payload));
       event.dataTransfer.setData('text/plain', JSON.stringify(payload));
     }
+    // Visual feedback: make the dragged card semi-transparent
+    event.currentTarget.style.opacity = '0.6';
   };
 
   useEffect(() => {
@@ -1299,6 +1334,155 @@ function App() {
     } finally {
       setTranscriptLoading(false);
       setTranscriptLoadingMessage('');
+    }
+  };
+
+  const sendChatMessage = async (userMessage) => {
+    if (!userMessage.trim()) return;
+    
+    // Add user message to chat
+    const userMsg = { id: `user-${Date.now()}`, role: 'user', text: userMessage };
+    setChatMessages((prev) => [...prev, userMsg]);
+    setChatInput('');
+    setIsChatLoading(true);
+
+    try {
+      // Build comprehensive context about the student
+      const contextParts = [];
+      
+      // Student basic info
+      contextParts.push('STUDENT PROFILE:');
+      contextParts.push(`- Texas A&M University Computer Science student`);
+      contextParts.push(`- Major: ${MOCK_STUDENT.major}`);
+      contextParts.push(`- Catalog Year: ${MOCK_STUDENT.catalogYear}`);
+      
+      // Transcript summary
+      if (transcriptTerms.length > 0) {
+        const completedCourses = transcriptCourseList.filter(c => c.type === 'completed');
+        const inProgressCourses = transcriptCourseList.filter(c => c.type === 'in-progress');
+        const transferCourses = transcriptTerms.flatMap(t => 
+          t.courses.filter(c => c.transfer).map(c => c.code)
+        );
+        
+        contextParts.push('\nTRANSCRIPT DATA:');
+        contextParts.push(`- Current GPA: ${transcriptGpa}`);
+        contextParts.push(`- Credits Completed: ${transcriptCreditsSummary.completedCredits}`);
+        contextParts.push(`- Credits In Progress: ${transcriptCreditsSummary.inProgressCredits}`);
+        contextParts.push(`- Transfer Credits: ${transferCourses.length > 0 ? transferCourses.join(', ') : 'None'}`);
+        contextParts.push(`- Classification: ${classification}`);
+        
+        if (completedCourses.length > 0) {
+          contextParts.push('\nCOMPLETED COURSES:');
+          completedCourses.forEach(c => {
+            const term = transcriptTerms.find(t => 
+              t.courses.some(tc => tc.code === c.code)
+            );
+            const courseData = term?.courses.find(tc => tc.code === c.code);
+            contextParts.push(`- ${c.code}: ${courseData?.title || ''} (${courseData?.grade || 'N/A'}, ${courseData?.credits || 0} credits)`);
+          });
+        }
+        
+        if (inProgressCourses.length > 0) {
+          contextParts.push('\nIN PROGRESS COURSES:');
+          inProgressCourses.forEach(c => {
+            const term = transcriptTerms.find(t => 
+              t.courses.some(tc => tc.code === c.code)
+            );
+            const courseData = term?.courses.find(tc => tc.code === c.code);
+            contextParts.push(`- ${c.code}: ${courseData?.title || ''} (${courseData?.credits || 0} credits)`);
+          });
+        }
+      }
+      
+      // Planned courses
+      const allPlannedCourses = Object.entries(semesterPlans).filter(([_, courses]) => courses.length > 0);
+      if (allPlannedCourses.length > 0) {
+        contextParts.push('\nPLANNED COURSES:');
+        allPlannedCourses.forEach(([semester, courses]) => {
+          contextParts.push(`\n${semester}:`);
+          courses.forEach(code => {
+            const course = COURSES[code];
+            if (course) {
+              contextParts.push(`  - ${code}: ${course.title} (${course.credits} credits)`);
+            }
+          });
+        });
+      }
+      
+      // Degree requirements tracking
+      contextParts.push('\nDEGREE REQUIREMENTS:');
+      contextParts.push(`- Total Required: ${MOCK_STUDENT.totalRequired} credits`);
+      contextParts.push(`- Completed + In Progress + Planned: ${transcriptCreditsSummary.completedCredits + transcriptCreditsSummary.inProgressCredits + plannedCreditsSummary.plannedCredits} credits`);
+      contextParts.push(`- Remaining: ${MOCK_STUDENT.totalRequired - (transcriptCreditsSummary.completedCredits + transcriptCreditsSummary.inProgressCredits + plannedCreditsSummary.plannedCredits)} credits`);
+      
+      // System instructions
+      const systemMessage = {
+        role: 'system',
+        content: `You are DegreeFlow Assistant, an AI advisor for Texas A&M University Computer Science students. 
+
+IMPORTANT INSTRUCTIONS:
+1. You have access to the internet and can search for current Texas A&M course catalog information, prerequisites, and degree requirements.
+2. When asked about specific courses, look up the official TAMU course catalog for accurate information.
+3. Use the student's current transcript and planner data (provided below) to give personalized advice.
+4. Help with course planning, prerequisite checking, graduation requirements, and academic guidance.
+5. Format your responses with clear structure:
+   - Use **bold** for emphasis (e.g., **Important:** or **Course Name**)
+   - Use bullet points (•) or numbered lists for multiple items
+   - Use line breaks to separate sections
+   - Keep paragraphs short and scannable
+6. If you're unsure about something specific to TAMU CS, search for it online before responding.
+
+STUDENT CONTEXT:
+${contextParts.join('\n')}
+
+Now answer the student's question based on this context and any additional information you can find online about TAMU CS courses and requirements.`
+      };
+
+      // Build messages array with system context
+      const conversationMessages = chatMessages
+        .slice(-8) // Keep last 8 messages for context (leave room for system message)
+        .map(msg => ({ role: msg.role, content: msg.text }));
+      
+      const apiMessages = [
+        systemMessage,
+        ...conversationMessages,
+        { role: 'user', content: userMessage }
+      ];
+
+      const response = await fetch(`${API_BASE}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: apiMessages,
+          model: 'protected.gemini-2.0-flash-lite',
+          stream: false
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to get response from AI');
+      }
+
+      const data = await response.json();
+      const assistantText = data.choices?.[0]?.message?.content || 'Sorry, I could not generate a response.';
+      
+      // Add assistant response to chat
+      const assistantMsg = { 
+        id: `assistant-${Date.now()}`, 
+        role: 'assistant', 
+        text: assistantText 
+      };
+      setChatMessages((prev) => [...prev, assistantMsg]);
+    } catch (err) {
+      console.error('[chat] Error:', err);
+      const errorMsg = { 
+        id: `error-${Date.now()}`, 
+        role: 'assistant', 
+        text: 'Sorry, I encountered an error. Please try again.' 
+      };
+      setChatMessages((prev) => [...prev, errorMsg]);
+    } finally {
+      setIsChatLoading(false);
     }
   };
 
@@ -1767,6 +1951,12 @@ function App() {
           </div>
         </div>
 
+        {/* Degree Progress Validation */}
+        <DegreeProgress 
+          completedCourses={transcriptCourseList}
+          emphasisAreaCourses={['FINC 409', 'ACCT 209', 'MKTG 409', 'MGMT 309']}
+        />
+
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <div className="flex items-start">
             <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 mr-3" />
@@ -1812,6 +2002,35 @@ function App() {
   };
 
   const AcademicRecordPanel = () => {
+    const [editingCourse, setEditingCourse] = useState(null); // { termLabel, courseCode }
+    const [editingCredits, setEditingCredits] = useState('');
+
+    const updateCourseCredits = (termLabel, courseCode, newCredits) => {
+      const credits = parseFloat(newCredits);
+      if (isNaN(credits) || credits <= 0) {
+        alert('Please enter a valid credit value (e.g., 3, 4)');
+        return;
+      }
+
+      const updater = (prevTerms) =>
+        prevTerms.map(term => {
+          if (term.label !== termLabel) return term;
+          return {
+            ...term,
+            courses: term.courses.map(course => {
+              if (course.code !== courseCode) return course;
+              return { ...course, credits };
+            })
+          };
+        });
+
+      // Update both reviewTerms (what the panel displays) and transcriptTerms (what the dashboard uses)
+      setReviewTerms(updater);
+      setTranscriptTerms(updater);
+      setEditingCourse(null);
+      setEditingCredits('');
+    };
+
     const transcriptYear =
       transcriptYears.find((year) => year.year === selectedTranscriptYear) ||
       transcriptYears[0];
@@ -1900,6 +2119,26 @@ function App() {
               <Save className="w-4 h-4" />
               {isTranscriptSaving ? 'Saving...' : 'Update Record'}
             </button>
+            {reviewTerms.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm('Clear all academic record data? This will remove all parsed transcript courses.')) {
+                    setTranscriptTerms([]);
+                    setReviewTerms([]);
+                    setTranscriptTotals(null);
+                    setReviewTotals(null);
+                    setTranscriptPdfName('');
+                    setTranscriptError('');
+                    setIsTranscriptDirty(false);
+                    setSelectedTranscriptYear('');
+                  }
+                }}
+                className="px-3 py-2 rounded-lg text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50"
+              >
+                Clear Record
+              </button>
+            )}
             {isTranscriptDirty && !isTranscriptSaving && (
               <span className="text-xs text-amber-700 bg-amber-100 px-2 py-1 rounded-full">
                 Unsaved changes
@@ -1976,15 +2215,11 @@ function App() {
             {displayTerms.map((term) => {
               const termCourses = term.courses || [];
               const termCredits = termCourses.reduce((sum, c) => sum + c.credits, 0);
-              const isDragOver = dragOverTermLabel === term.label;
               return (
                 <div
                   key={term.label}
-                  className={`border rounded-lg p-4 bg-gray-50 transition ${
-                    isDragOver
-                      ? 'border-[#500000] ring-2 ring-[#500000]/30'
-                      : 'border-gray-200'
-                  }`}
+                  data-term-label={term.label}
+                  className="border border-gray-200 rounded-lg p-4 bg-gray-50 transition"
                   onDragOver={(event) => handleTermDragOver(term.label, event)}
                   onDragEnter={(event) => handleTermDragEnter(term.label, event)}
                   onDragLeave={(event) => handleTermDragLeave(term.label, event)}
@@ -2014,21 +2249,16 @@ function App() {
                         Drag courses here
                       </div>
                     ) : (
-                      termCourses.map((course) => {
-                        const isDragging =
-                          draggedReviewCourse?.code === course.code &&
-                          draggedReviewCourse?.fromTermLabel === term.label;
-                        return (
+                      termCourses.map((course) => (
                           <div
                             key={`${term.label}-${course.code}`}
-                            className={`rounded-md bg-white border border-gray-100 px-3 py-2 cursor-grab active:cursor-grabbing ${
-                              isDragging ? 'opacity-60' : ''
-                            }`}
+                            className="rounded-md bg-white border border-gray-100 px-3 py-2 cursor-grab active:cursor-grabbing"
                             draggable
                             onDragStart={(event) => handleCourseDragStart(course, term.label, event)}
-                            onDragEnd={() => {
-                              setDraggedReviewCourse(null);
-                              setDragOverTermLabel(null);
+                            onDragEnd={(event) => {
+                              event.currentTarget.style.opacity = '';
+                              draggedReviewCourseRef.current = null;
+                              clearTermHighlight();
                             }}
                             onDragOver={(event) => handleTermDragOver(term.label, event)}
                             onDrop={(event) => handleTermDrop(term.label, event)}
@@ -2045,9 +2275,62 @@ function App() {
                                 <p className="text-sm font-semibold text-gray-900">
                                   {course.grade}
                                 </p>
-                                <p className="text-xs text-gray-500">
-                                  {course.credits} cr
-                                </p>
+                                {editingCourse?.termLabel === term.label && editingCourse?.courseCode === course.code ? (
+                                  <div className="flex items-center gap-1">
+                                    <input
+                                      type="number"
+                                      value={editingCredits}
+                                      onChange={(e) => setEditingCredits(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          updateCourseCredits(term.label, course.code, editingCredits);
+                                        } else if (e.key === 'Escape') {
+                                          setEditingCourse(null);
+                                          setEditingCredits('');
+                                        }
+                                      }}
+                                      className="w-12 px-1 py-0.5 text-xs border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                      autoFocus
+                                      step="0.5"
+                                      min="0"
+                                      max="10"
+                                    />
+                                    <button
+                                      onClick={() => updateCourseCredits(term.label, course.code, editingCredits)}
+                                      className="text-green-600 hover:text-green-700"
+                                      title="Save"
+                                    >
+                                      <CheckCircle className="w-3 h-3" />
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setEditingCourse(null);
+                                        setEditingCredits('');
+                                      }}
+                                      className="text-red-600 hover:text-red-700"
+                                      title="Cancel"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-1">
+                                    <p className="text-xs text-gray-500">
+                                      {Number(course.credits).toFixed(0)} cr
+                                    </p>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingCourse({ termLabel: term.label, courseCode: course.code });
+                                        setEditingCredits(String(course.credits));
+                                      }}
+                                      className="text-gray-400 hover:text-blue-600 transition-colors"
+                                      title="Edit credits"
+                                    >
+                                      <Edit2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             </div>
                             {(course.transfer || course.honors) && (
@@ -2066,8 +2349,7 @@ function App() {
                               </div>
                             )}
                           </div>
-                        );
-                      })
+                      ))
                     )}
                   </div>
                 </div>
@@ -2142,31 +2424,54 @@ function App() {
                 Build Fall, Winter, and Spring schedules within each year
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {filteredPlanYears.map((year) => {
-                const selectable = isPlanYearSelectable(year);
-                return (
-                  <button
-                    key={year}
-                    onClick={() => {
-                      if (!selectable) return;
-                      setSelectedPlanYear(year);
-                      const [fallTerm] = getTermsForAcademicYear(year);
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm('Are you sure you want to clear all planned courses? This cannot be undone.')) {
+                  // Clear all semester plans with proper initialization
+                  setSemesterPlans(initSemesterPlans({}));
+                  setPlanError('');
+                  // Also clear selected courses
+                  setSelectedCourses([]);
+                  // Reset to first year
+                  if (filteredPlanYears.length > 0) {
+                    setSelectedPlanYear(filteredPlanYears[0]);
+                    const [fallTerm] = getTermsForAcademicYear(filteredPlanYears[0]);
+                    if (fallTerm) {
                       setSelectedSemester(fallTerm);
-                      setPlanError('');
-                    }}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium border ${
-                      selectedPlanYear === year
-                        ? 'text-white'
-                        : 'text-gray-700 border-gray-200 hover:bg-gray-100'
-                    }`}
-                    style={selectedPlanYear === year ? { backgroundColor: '#500000' } : {}}
-                  >
-                    {year}
-                  </button>
-                );
-              })}
-            </div>
+                    }
+                  }
+                }
+              }}
+              className="px-3 py-2 rounded-lg text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50"
+            >
+              Clear All Plans
+            </button>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            {filteredPlanYears.map((year) => {
+              const selectable = isPlanYearSelectable(year);
+              return (
+                <button
+                  key={year}
+                  onClick={() => {
+                    if (!selectable) return;
+                    setSelectedPlanYear(year);
+                    const [fallTerm] = getTermsForAcademicYear(year);
+                    setSelectedSemester(fallTerm);
+                    setPlanError('');
+                  }}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium border ${
+                    selectedPlanYear === year
+                      ? 'text-white'
+                      : 'text-gray-700 border-gray-200 hover:bg-gray-100'
+                  }`}
+                  style={selectedPlanYear === year ? { backgroundColor: '#500000' } : {}}
+                >
+                  {year}
+                </button>
+              );
+            })}
           </div>
 
           {(planError || validation.errors.length > 0) && (
@@ -2361,7 +2666,7 @@ function App() {
           </div>
         </div>
 
-        {AcademicRecordPanel()}
+        <AcademicRecordPanel />
 
         {showCourseModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -3008,8 +3313,8 @@ function App() {
       )}
 
       <main className={isFlowFullscreen ? 'p-0' : 'max-w-7xl mx-auto px-4 py-8'}>
-        {activeTab === 'dashboard' && DashboardTab()}
-        {activeTab === 'planner' && PlannerTab()}
+        {activeTab === 'dashboard' && <DashboardTab />}
+        {activeTab === 'planner' && <PlannerTab />}
         {activeTab === 'prerequisites' && (
           <PrerequisiteTab
             isFullscreen={isFlowFullscreen}
@@ -3043,15 +3348,63 @@ function App() {
               </div>
               <div className="h-56 px-4 py-3 text-xs text-gray-600 space-y-2 overflow-y-auto">
                 {chatMessages.length === 0 ? (
-                  <div className="text-gray-400">Messages will appear here.</div>
+                  <div className="text-center text-gray-400 mt-8">
+                    <p className="font-semibold mb-1">Welcome to DegreeFlow Assistant!</p>
+                    <p className="text-xs">Ask me anything about course planning, requirements, or your degree.</p>
+                  </div>
                 ) : (
-                  chatMessages.map((message) => (
-                    <div key={message.id} className="flex justify-end">
-                      <span className="max-w-[85%] rounded-lg bg-[#500000]/10 px-3 py-2 text-xs text-gray-800">
-                        {message.text}
+                  chatMessages.map((message) => {
+                    // Simple markdown-like formatting for assistant messages
+                    const formatText = (text) => {
+                      if (message.role !== 'assistant') return text;
+                      
+                      // Split by lines and process each
+                      return text.split('\n').map((line, idx) => {
+                        // Convert **text** to bold
+                        const parts = line.split(/(\*\*[^*]+\*\*)/g);
+                        const formatted = parts.map((part, i) => {
+                          if (part.startsWith('**') && part.endsWith('**')) {
+                            return <strong key={i}>{part.slice(2, -2)}</strong>;
+                          }
+                          return part;
+                        });
+                        
+                        return (
+                          <div key={idx} className={idx > 0 ? 'mt-2' : ''}>
+                            {formatted}
+                          </div>
+                        );
+                      });
+                    };
+
+                    return (
+                      <div
+                        key={message.id}
+                        className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                      >
+                        <div
+                          className={`max-w-[85%] rounded-lg px-3 py-2 text-xs ${
+                            message.role === 'user'
+                              ? 'bg-[#500000] text-white'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}
+                        >
+                          {message.role === 'user' ? message.text : formatText(message.text)}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                {isChatLoading && (
+                  <div className="flex justify-start">
+                    <span className="max-w-[85%] rounded-lg bg-gray-100 px-3 py-2 text-xs text-gray-500">
+                      <span className="inline-flex gap-1">
+                        <span className="animate-bounce">●</span>
+                        <span className="animate-bounce" style={{ animationDelay: '0.1s' }}>●</span>
+                        <span className="animate-bounce" style={{ animationDelay: '0.2s' }}>●</span>
                       </span>
-                    </div>
-                  ))
+                    </span>
+                  </div>
                 )}
               </div>
               <div className="border-t px-3 py-3">
@@ -3062,33 +3415,21 @@ function App() {
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
+                      if (e.key === 'Enter' && !isChatLoading) {
                         e.preventDefault();
-                        const trimmed = chatInput.trim();
-                        if (!trimmed) return;
-                        setChatMessages((prev) => [
-                          ...prev,
-                          { id: `${Date.now()}-${prev.length}`, text: trimmed }
-                        ]);
-                        setChatInput('');
+                        sendChatMessage(chatInput);
                       }
                     }}
-                    className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#500000]/20"
+                    disabled={isChatLoading}
+                    className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#500000]/20 disabled:bg-gray-50 disabled:cursor-not-allowed"
                   />
                   <button
                     type="button"
-                    onClick={() => {
-                      const trimmed = chatInput.trim();
-                      if (!trimmed) return;
-                      setChatMessages((prev) => [
-                        ...prev,
-                        { id: `${Date.now()}-${prev.length}`, text: trimmed }
-                      ]);
-                      setChatInput('');
-                    }}
-                    className="rounded-full bg-[#500000] px-3 py-2 text-xs font-semibold text-white hover:bg-[#3d0000]"
+                    onClick={() => sendChatMessage(chatInput)}
+                    disabled={isChatLoading || !chatInput.trim()}
+                    className="rounded-full bg-[#500000] px-3 py-2 text-xs font-semibold text-white hover:bg-[#3d0000] disabled:bg-gray-300 disabled:cursor-not-allowed"
                   >
-                    Send
+                    {isChatLoading ? '...' : 'Send'}
                   </button>
                 </div>
               </div>
