@@ -4,6 +4,7 @@ import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import tamuLogo from './assets/tamu-logo.svg';
 import { TRANSCRIPT_DEMO } from './data/transcriptDemo';
 import { DegreeProgress } from './components/DegreeProgress';
+import { useGoogleLogin } from '@react-oauth/google';
 import {
   Calendar,
   AlertTriangle,
@@ -948,6 +949,50 @@ function App() {
       loadStoredPlanner(studentId);
     }
   }, [studentId, loadStoredTranscript, loadStoredPlanner]);
+
+  const AUTH_STORAGE_KEY = 'tamuPlannerAuthUser';
+
+  const [authUser, setAuthUser] = useState(() => {
+    try {
+      const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const logout = () => {
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+    setAuthUser(null);
+  };
+
+  const googleLogin = useGoogleLogin({
+    scope: 'openid email profile',
+    onSuccess: async (tokenResponse) => {
+      // tokenResponse.access_token is available in implicit flow
+      const resp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
+      });
+
+      if (!resp.ok) throw new Error('Failed to fetch Google user profile');
+
+      const profile = await resp.json();
+
+      const user = {
+        provider: 'google',
+        name: profile.name || '',
+        email: profile.email || '',
+        picture: profile.picture || ''
+      };
+
+      setAuthUser(user);
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
+      setActiveTab('dashboard');
+    },
+    onError: () => {
+      alert('Google sign-in failed. Please try again.');
+    }
+  });
 
   useEffect(() => {
     if (transcriptYears.length === 0) {
@@ -3173,6 +3218,7 @@ Now answer the student's question based on this context and any additional infor
 
           <button
             type="button"
+            onClick={() => googleLogin()}
             className="w-full flex items-center justify-center gap-3 border border-gray-300 rounded-lg py-3 text-sm font-semibold text-gray-800 hover:bg-gray-50"
           >
             <span className="flex items-center justify-center w-6 h-6 rounded-full bg-white border border-gray-200 text-sm font-bold">
@@ -3271,13 +3317,41 @@ Now answer the student's question based on this context and any additional infor
                     <Save className="w-4 h-4" />
                     Save Plan
                   </button>
-                  <button
-                    className="flex items-center gap-2 border border-white/60 px-4 py-2 rounded-lg text-white hover:bg-white/10"
-                    type="button"
-                    onClick={() => setActiveTab('login')}
-                  >
-                    Login
-                  </button>
+                  {authUser ? (
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2 bg-white/10 border border-white/25 px-3 py-2 rounded-lg text-white">
+                        {authUser.picture ? (
+                          <img
+                            src={authUser.picture}
+                            alt="avatar"
+                            className="w-6 h-6 rounded-full bg-white"
+                          />
+                        ) : (
+                          <div className="w-6 h-6 rounded-full bg-white/80" />
+                        )}
+                        <div className="leading-tight">
+                          <div className="text-sm font-semibold">{authUser.name || 'Student'}</div>
+                          <div className="text-[11px] text-white/80">{authUser.email}</div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={logout}
+                        className="flex items-center gap-2 border border-white/60 px-4 py-2 rounded-lg text-white hover:bg-white/10"
+                      >
+                        Logout
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      className="flex items-center gap-2 border border-white/60 px-4 py-2 rounded-lg text-white hover:bg-white/10"
+                      type="button"
+                      onClick={() => setActiveTab('login')}
+                    >
+                      Login
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
