@@ -807,6 +807,13 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showCourseModal, setShowCourseModal] = useState(false);
   const [planError, setPlanError] = useState('');
+  const [toast, setToast] = useState(null); // { message, type: 'success' | 'error' | 'info' }
+  const toastTimerRef = useRef(null);
+  const showToast = useCallback((message, type = 'success', duration = 3000) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ message, type });
+    toastTimerRef.current = setTimeout(() => setToast(null), duration);
+  }, []);
   const [selectedPlanYear, setSelectedPlanYear] = useState(() => {
     const now = new Date();
     const month = now.getMonth(); // 0-indexed
@@ -875,12 +882,16 @@ function App() {
     async (terms) => {
       try {
         setStorageError('');
+        // Use the logged-in user's email, fall back to MOCK_STUDENT
+        const currentAuth = JSON.parse(localStorage.getItem('tamuPlannerAuthUser') || 'null');
+        const email = currentAuth?.email || MOCK_STUDENT.email;
+        const name = currentAuth?.name || MOCK_STUDENT.name;
         const response = await fetch(`${API_BASE}/storage/transcript`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            studentEmail: MOCK_STUDENT.email,
-            studentName: MOCK_STUDENT.name,
+            studentEmail: email,
+            studentName: name,
             terms
           })
         });
@@ -961,15 +972,70 @@ function App() {
     }
   });
 
+  // Load saved data for a user from the backend
+  const loadUserData = useCallback(async (email, name) => {
+    try {
+      const resp = await fetch(`${API_BASE}/storage/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, name })
+      });
+      if (!resp.ok) return;
+      const data = await resp.json();
+
+      if (data.studentId) {
+        localStorage.setItem('studentId', String(data.studentId));
+        setStudentId(String(data.studentId));
+      }
+
+      // Load saved transcript
+      if (data.transcript?.terms?.length > 0) {
+        setTranscriptTerms(data.transcript.terms);
+        setReviewTerms(data.transcript.terms);
+        setIsTranscriptDirty(false);
+        const normalized = normalizeTranscript(data.transcript.terms);
+        if (normalized.length > 0) {
+          setSelectedTranscriptYear(normalized[normalized.length - 1].year);
+        }
+      }
+
+      // Load saved planner state
+      if (data.planner) {
+        if (data.planner.semesterPlans) {
+          setSemesterPlans(initSemesterPlans(data.planner.semesterPlans));
+        }
+        if (data.planner.selectedPlanYear) {
+          setSelectedPlanYear(data.planner.selectedPlanYear);
+        }
+        if (data.planner.selectedTranscriptYear) {
+          setSelectedTranscriptYear(data.planner.selectedTranscriptYear);
+        }
+        if (data.planner.transcriptTotals) {
+          setTranscriptTotals(data.planner.transcriptTotals);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load user data:', err);
+    }
+  }, []);
+
   const logout = () => {
     localStorage.removeItem(AUTH_STORAGE_KEY);
+    localStorage.removeItem('studentId');
     setAuthUser(null);
+    setStudentId('');
+    // Clear loaded data on logout
+    setTranscriptTerms([]);
+    setReviewTerms([]);
+    setTranscriptTotals(null);
+    setTranscriptPdfName('');
+    setSemesterPlans(initSemesterPlans({}));
+    setSelectedTranscriptYear('');
   };
 
   const googleLogin = useGoogleLogin({
     scope: 'openid email profile',
     onSuccess: async (tokenResponse) => {
-      // tokenResponse.access_token is available in implicit flow
       const resp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
         headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
       });
@@ -987,12 +1053,23 @@ function App() {
 
       setAuthUser(user);
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
+
+      // Load saved data for this user from the backend
+      await loadUserData(user.email, user.name);
+
       setActiveTab('dashboard');
     },
     onError: () => {
       alert('Google sign-in failed. Please try again.');
     }
   });
+
+  // On app start, if user is already logged in (from localStorage), load their data
+  useEffect(() => {
+    if (authUser?.email && !studentId) {
+      loadUserData(authUser.email, authUser.name);
+    }
+  }, []); // Only run once on mount
 
   useEffect(() => {
     if (transcriptYears.length === 0) {
@@ -1202,11 +1279,11 @@ function App() {
   };
 
   const applyReviewedTranscript = async () => {
-    if (!reviewTerms.length) return;
+    // Allow saving even with empty reviewTerms (to persist a cleared record)
     setIsTranscriptSaving(true);
     const savedId = await saveTranscriptToStorage(reviewTerms);
     setIsTranscriptSaving(false);
-    if (!savedId) return;
+    if (!savedId && reviewTerms.length > 0) return; // Only bail on error if we had data
     setTranscriptTerms(reviewTerms);
     setTranscriptTotals(reviewTotals ?? transcriptTotals);
     const normalized = normalizeTranscript(reviewTerms);
@@ -1218,6 +1295,28 @@ function App() {
     draggedReviewCourseRef.current = null;
     dragOverTermLabelRef.current = null;
     setReviewContextMenu((prev) => ({ ...prev, open: false }));
+    showToast('Academic record updated!', 'success');
+  };
+
+  // Track unsaved planner changes
+  const [plannerDirty, setPlannerDirty] = useState(false);
+  const prevPlansRef = useRef(null);
+  useEffect(() => {
+    // Skip initial render
+    if (prevPlansRef.current === null) {
+      prevPlansRef.current = semesterPlans;
+      return;
+    }
+    if (prevPlansRef.current !== semesterPlans) {
+      setPlannerDirty(true);
+      prevPlansRef.current = semesterPlans;
+    }
+  }, [semesterPlans]);
+
+  const handleSavePlan = async () => {
+    await savePlanToStorage();
+    setPlannerDirty(false);
+    showToast('Plan saved successfully!', 'success');
   };
 
   const clearTermHighlight = () => {
@@ -1915,8 +2014,8 @@ Now answer the student's question based on this context and any additional infor
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex justify-between items-start">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">{MOCK_STUDENT.name}</h2>
-              <p className="text-gray-600">UIN: {MOCK_STUDENT.uin}</p>
+              <h2 className="text-2xl font-bold text-gray-900">{authUser?.name || MOCK_STUDENT.name}</h2>
+              <p className="text-gray-600">{authUser?.email || `UIN: ${MOCK_STUDENT.uin}`}</p>
               <p className="text-gray-600">
                 {MOCK_STUDENT.major} • Catalog Year: {MOCK_STUDENT.catalogYear}
               </p>
@@ -2109,103 +2208,116 @@ Now answer the student's question based on this context and any additional infor
 
     return (
       <div className="bg-white rounded-lg shadow p-6">
-        <div className="flex flex-col items-start gap-3 mb-4">
-          <div>
-            <h3 className="text-lg font-bold text-gray-900">Academic Record</h3>
-            <p className="text-sm text-gray-600">Transcript-aligned terms with grades</p>
-            <p className="text-xs text-gray-500">
-              Drag courses between terms to correct parsing, then update the record.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-100 cursor-pointer inline-flex items-center">
-              <input
-                type="file"
-                accept="application/pdf"
-                className="hidden"
-                onChange={(e) => handleTranscriptPdf(e.target.files?.[0])}
-              />
-              Upload Transcript PDF
-            </label>
+        {/* Header */}
+        <div className="mb-5">
+          <h3 className="text-lg font-bold text-gray-900">Academic Record</h3>
+          <p className="text-sm text-gray-600">
+            Transcript-aligned terms with grades. Drag courses between terms to correct parsing.
+          </p>
+        </div>
+
+        {/* Action buttons row */}
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <label className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-100 cursor-pointer inline-flex items-center gap-1.5">
+            <Plus className="w-4 h-4" />
+            <input
+              type="file"
+              accept="application/pdf"
+              className="hidden"
+              onChange={(e) => handleTranscriptPdf(e.target.files?.[0])}
+            />
+            Upload PDF
+          </label>
+          <button
+            type="button"
+            onClick={() => {
+              setTranscriptTerms(TRANSCRIPT_DEMO);
+              setReviewTerms(TRANSCRIPT_DEMO);
+              setTranscriptError('');
+              setTranscriptPdfName('');
+              setTranscriptTotals(null);
+              setReviewTotals(null);
+              setIsTranscriptDirty(false);
+              const normalized = normalizeTranscript(TRANSCRIPT_DEMO);
+              if (normalized.length > 0) {
+                setSelectedTranscriptYear(normalized[normalized.length - 1].year);
+              }
+            }}
+            className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-100"
+          >
+            Demo Data
+          </button>
+
+          <div className="w-px h-6 bg-gray-300 mx-1" />
+
+          <button
+            type="button"
+            onClick={applyReviewedTranscript}
+            disabled={isTranscriptSaving || (!isTranscriptDirty && reviewTerms.length === 0)}
+            className={`px-3 py-2 rounded-lg text-sm font-semibold inline-flex items-center gap-2 ${
+              isTranscriptSaving || (!isTranscriptDirty && reviewTerms.length === 0)
+                ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                : 'text-white'
+            }`}
+            style={
+              isTranscriptSaving || (!isTranscriptDirty && reviewTerms.length === 0)
+                ? {}
+                : { backgroundColor: '#500000' }
+            }
+          >
+            <Save className="w-4 h-4" />
+            {isTranscriptSaving ? 'Saving...' : 'Update Record'}
+          </button>
+
+          {(reviewTerms.length > 0 || transcriptTerms.length > 0) && (
             <button
               type="button"
               onClick={() => {
-                setTranscriptTerms(TRANSCRIPT_DEMO);
-                setReviewTerms(TRANSCRIPT_DEMO);
-                setTranscriptError('');
-                setTranscriptPdfName('');
-                setTranscriptTotals(null);
-                setReviewTotals(null);
-                setIsTranscriptDirty(false);
-                const normalized = normalizeTranscript(TRANSCRIPT_DEMO);
-                if (normalized.length > 0) {
-                  setSelectedTranscriptYear(normalized[normalized.length - 1].year);
+                if (window.confirm('Clear all academic record data? Press "Update Record" after to save this change.')) {
+                  setReviewTerms([]);
+                  setTranscriptTotals(null);
+                  setReviewTotals(null);
+                  setTranscriptPdfName('');
+                  setTranscriptError('');
+                  setIsTranscriptDirty(true);
+                  setSelectedTranscriptYear('');
                 }
               }}
-              className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-100"
+              className="px-3 py-2 rounded-lg text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50"
             >
-              Use demo data
+              Clear Record
             </button>
-            <button
-              type="button"
-              onClick={applyReviewedTranscript}
-              disabled={isTranscriptSaving || reviewTerms.length === 0}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold inline-flex items-center gap-2 ${
-                isTranscriptSaving || reviewTerms.length === 0
-                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                  : 'text-white'
-              }`}
-              style={
-                isTranscriptSaving || reviewTerms.length === 0
-                  ? {}
-                  : { backgroundColor: '#500000' }
-              }
-            >
-              <Save className="w-4 h-4" />
-              {isTranscriptSaving ? 'Saving...' : 'Update Record'}
-            </button>
-            {reviewTerms.length > 0 && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (window.confirm('Clear all academic record data? This will remove all parsed transcript courses.')) {
-                    setTranscriptTerms([]);
-                    setReviewTerms([]);
-                    setTranscriptTotals(null);
-                    setReviewTotals(null);
-                    setTranscriptPdfName('');
-                    setTranscriptError('');
-                    setIsTranscriptDirty(false);
-                    setSelectedTranscriptYear('');
-                  }
-                }}
-                className="px-3 py-2 rounded-lg text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50"
-              >
-                Clear Record
-              </button>
-            )}
-            {isTranscriptDirty && !isTranscriptSaving && (
-              <span className="text-xs text-amber-700 bg-amber-100 px-2 py-1 rounded-full">
-                Unsaved changes
-              </span>
-            )}
-            {transcriptLoading && (
-              <span className="text-sm text-gray-500">
-                {transcriptLoadingMessage || 'Parsing…'}
-              </span>
-            )}
-            {transcriptError && <span className="text-sm text-red-600">{transcriptError}</span>}
-            {storageError && <span className="text-sm text-red-600">{storageError}</span>}
-            {transcriptPdfName && (
-              <span className="text-sm text-gray-500">Selected: {transcriptPdfName}</span>
-            )}
+          )}
+
+          {isTranscriptDirty && !isTranscriptSaving && (
+            <span className="text-xs text-amber-700 bg-amber-100 px-2 py-1 rounded-full inline-flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" />
+              Unsaved — press Update Record to save
+            </span>
+          )}
+          {transcriptLoading && (
+            <span className="text-sm text-gray-500">
+              {transcriptLoadingMessage || 'Parsing…'}
+            </span>
+          )}
+          {transcriptError && <span className="text-sm text-red-600">{transcriptError}</span>}
+          {storageError && <span className="text-sm text-red-600">{storageError}</span>}
+          {transcriptPdfName && (
+            <span className="text-sm text-gray-500 italic">PDF: {transcriptPdfName}</span>
+          )}
+        </div>
+
+        {/* Year tabs row */}
+        {transcriptYearLabels.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 mb-5 border-b border-gray-200 pb-3">
+            <span className="text-xs font-medium text-gray-500 uppercase tracking-wide mr-1">Year:</span>
             {transcriptYearLabels.map((year) => (
               <button
                 key={year}
                 onClick={() => setSelectedTranscriptYear(year)}
-                className={`px-3 py-2 rounded-lg text-sm font-medium border ${
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
                   selectedTranscriptYear === year
-                    ? 'text-white'
+                    ? 'text-white border-transparent'
                     : 'text-gray-700 border-gray-200 hover:bg-gray-100'
                 }`}
                 style={selectedTranscriptYear === year ? { backgroundColor: '#500000' } : {}}
@@ -2214,7 +2326,7 @@ Now answer the student's question based on this context and any additional infor
               </button>
             ))}
           </div>
-        </div>
+        )}
 
         {transcriptTotals?.overall && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
@@ -2462,36 +2574,55 @@ Now answer the student's question based on this context and any additional infor
     return (
       <div className="space-y-6">
         <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <div>
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <div className="min-w-0">
               <h3 className="text-lg font-bold text-gray-900">Plan by Academic Year</h3>
               <p className="text-sm text-gray-600">
                 Build Fall, Winter, and Spring schedules within each year
               </p>
+              {plannerDirty && (
+                <p className="text-xs text-amber-700 mt-1 flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3" />
+                  You have unsaved changes
+                </p>
+              )}
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                if (window.confirm('Are you sure you want to clear all planned courses? This cannot be undone.')) {
-                  // Clear all semester plans with proper initialization
-                  setSemesterPlans(initSemesterPlans({}));
-                  setPlanError('');
-                  // Also clear selected courses
-                  setSelectedCourses([]);
-                  // Reset to first year
-                  if (filteredPlanYears.length > 0) {
-                    setSelectedPlanYear(filteredPlanYears[0]);
-                    const [fallTerm] = getTermsForAcademicYear(filteredPlanYears[0]);
-                    if (fallTerm) {
-                      setSelectedSemester(fallTerm);
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                type="button"
+                onClick={handleSavePlan}
+                disabled={!studentId}
+                className={`px-3 py-2 rounded-lg text-sm font-semibold inline-flex items-center gap-2 ${
+                  !studentId
+                    ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                    : 'text-white'
+                }`}
+                style={!studentId ? {} : { backgroundColor: '#500000' }}
+              >
+                <Save className="w-4 h-4" />
+                Save Plan
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm('Are you sure you want to clear all planned courses? This cannot be undone.')) {
+                    setSemesterPlans(initSemesterPlans({}));
+                    setPlanError('');
+                    setSelectedCourses([]);
+                    if (filteredPlanYears.length > 0) {
+                      setSelectedPlanYear(filteredPlanYears[0]);
+                      const [fallTerm] = getTermsForAcademicYear(filteredPlanYears[0]);
+                      if (fallTerm) {
+                        setSelectedSemester(fallTerm);
+                      }
                     }
                   }
-                }
-              }}
-              className="px-3 py-2 rounded-lg text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50"
-            >
-              Clear All Plans
-            </button>
+                }}
+                className="px-3 py-2 rounded-lg text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50"
+              >
+                Clear All
+              </button>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 mb-4">
             {filteredPlanYears.map((year) => {
@@ -3308,15 +3439,6 @@ Now answer the student's question based on this context and any additional infor
                   </div>
                 </button>
                 <div className="flex gap-2">
-                  <button
-                    className="flex items-center gap-2 bg-white px-4 py-2 rounded-lg hover:bg-gray-100"
-                    style={{ color: '#500000' }}
-                    type="button"
-                    onClick={savePlanToStorage}
-                  >
-                    <Save className="w-4 h-4" />
-                    Save Plan
-                  </button>
                   {authUser ? (
                     <div className="flex items-center gap-3">
                       <div className="flex items-center gap-2 bg-white/10 border border-white/25 px-3 py-2 rounded-lg text-white">
@@ -3367,7 +3489,15 @@ Now answer the student's question based on this context and any additional infor
                 ].map((tab) => (
                   <button
                     key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={() => {
+                      // Warn if leaving planner with unsaved changes
+                      if (activeTab === 'planner' && tab.id !== 'planner' && plannerDirty) {
+                        if (!window.confirm('You have unsaved planner changes. Leave without saving?')) {
+                          return;
+                        }
+                      }
+                      setActiveTab(tab.id);
+                    }}
                     className={`py-4 px-2 border-b-2 font-medium capitalize ${
                       activeTab === tab.id
                         ? 'text-gray-900'
@@ -3516,6 +3646,29 @@ Now answer the student's question based on this context and any additional infor
             aria-label="Toggle chat assistant"
           >
             {isChatOpen ? '›' : '‹'}
+          </button>
+        </div>
+      )}
+      {/* Toast notification */}
+      {toast && (
+        <div
+          className={`fixed bottom-6 left-6 z-[9999] flex items-center gap-3 px-5 py-3 rounded-xl shadow-lg transition-all animate-slide-in ${
+            toast.type === 'success'
+              ? 'bg-green-600 text-white'
+              : toast.type === 'error'
+              ? 'bg-red-600 text-white'
+              : 'bg-gray-800 text-white'
+          }`}
+        >
+          {toast.type === 'success' && <CheckCircle className="w-5 h-5 flex-shrink-0" />}
+          {toast.type === 'error' && <X className="w-5 h-5 flex-shrink-0" />}
+          {toast.type === 'info' && <AlertTriangle className="w-5 h-5 flex-shrink-0" />}
+          <span className="text-sm font-medium">{toast.message}</span>
+          <button
+            onClick={() => setToast(null)}
+            className="ml-2 text-white/70 hover:text-white"
+          >
+            <X className="w-4 h-4" />
           </button>
         </div>
       )}

@@ -120,3 +120,36 @@ storageRouter.get("/storage/planner/:studentId", async (req, res) => {
   }
   return res.json(state);
 });
+
+// Login/lookup: find or create student by email, return id + any saved data
+const loginSchema = z.object({
+  email: z.string().email(),
+  name: z.string().optional(),
+});
+
+storageRouter.post("/storage/login", async (req, res) => {
+  const parsed = loginSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload", issues: parsed.error.issues });
+  }
+
+  const student = await getOrCreateStudent({
+    email: parsed.data.email,
+    name: parsed.data.name,
+  });
+
+  // Load existing transcript and planner data
+  const transcript = await getTranscriptForStudent(student.user_id);
+  const planner = await getPlannerState(student.user_id);
+
+  return res.json({
+    studentId: student.user_id,
+    student: {
+      firstName: student.first_name,
+      lastName: student.last_name,
+      email: student.email,
+    },
+    transcript: transcript.length > 0 ? { terms: transcript } : null,
+    planner: planner?.payload ?? null,
+  });
+});
