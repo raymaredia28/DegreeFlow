@@ -166,6 +166,14 @@ export async function saveTranscriptTerms(studentId: number, terms: TranscriptTe
       if (!codeMatch) return;
       const [, department, courseNumber] = codeMatch;
 
+      // Sanity-check credits: a single course should never exceed 10 credit hours.
+      // If the value looks like it was set from the course number (e.g. 312 for CSCE 312)
+      // fall back to 0 so the user can correct it manually.
+      const sanitizedCredits =
+        Number.isFinite(course.credits) && course.credits >= 0 && course.credits <= 10
+          ? course.credits
+          : 0;
+
       let courseRecord = db.courses.find(
         (c) => c.department === department && c.course_number === courseNumber
       );
@@ -175,9 +183,14 @@ export async function saveTranscriptTerms(studentId: number, terms: TranscriptTe
           department,
           course_number: courseNumber,
           title: course.title,
-          credits: course.credits
+          credits: sanitizedCredits
         };
         db.courses.push(courseRecord);
+      } else {
+        // Always update title and credits from the latest parse so stale/bad
+        // data from a previous (possibly incorrect) parse is overwritten.
+        courseRecord.title = course.title;
+        courseRecord.credits = sanitizedCredits;
       }
 
       const status = term.status
@@ -224,12 +237,18 @@ export async function getTranscriptForStudent(studentId: number) {
       });
     }
     const term = termsMap.get(label);
+    // Sanity-check credits on read as well
+    const credits =
+      Number.isFinite(course.credits) && course.credits >= 0 && course.credits <= 10
+        ? course.credits
+        : 0;
+
     term?.courses.push({
       code: `${course.department} ${course.course_number}`,
       title: course.title,
-      credits: course.credits,
+      credits,
       grade: entry.grade,
-      transfer: entry.grade === "TA"
+      transfer: entry.grade === "TA" || entry.grade === "TIP"
     });
     if (term && entry.status === "In Progress") {
       term.status = "In Progress";

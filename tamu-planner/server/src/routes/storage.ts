@@ -41,6 +41,7 @@ const parsePayloadSchema = z.object({
   dataBase64: z.string()
 });
 
+// ── Transcript parser: Python pdfplumber ─────────────────────────────────────
 storageRouter.post("/storage/parse-transcript", async (req, res) => {
   const parsed = parsePayloadSchema.safeParse(req.body);
   if (!parsed.success) {
