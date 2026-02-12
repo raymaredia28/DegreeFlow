@@ -1,0 +1,720 @@
+[
+  {
+    "name": "CSCE Emphasis - Math",
+    "catalog_year": "2025-2026",
+    "groups": [
+      {
+        "name": "Math Emphasis (12 credits)",
+        "rules": {
+          "minCredits": 12,
+          "items": [
+            {
+              "pool": [
+                "MATH 401",
+                "MATH 407",
+                "MATH 409",
+                "MATH 410",
+                "MATH 411",
+                "MATH 412",
+                "MATH 414",
+                "MATH 415",
+                "MATH 416",
+                "MATH 417",
+                "MATH 419",
+                "MATH 423",
+                "MATH 425",
+                "MATH 427",
+                "MATH 431",
+                "MATH 433",
+                "MATH 436",
+                "MATH 437",
+                "MATH 439",
+                "MATH 442",
+                "MATH 446",
+                "MATH 447",
+                "MATH 460",
+                "MATH 467",
+                "MATH 469",
+                "MATH 470",
+                "MATH 471",
+                "MATH 472",
+                "MATH 478",
+                "MATH 489",
+                "MATH 490"
+              ],
+              "minCredits": 6,
+              "exclude": ["MATH 403"]
+            },
+            {
+              "pool": ["MATH 251", "MATH 302", "MATH 308"],
+              "maxCount": 2
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "CSCE Emphasis - Business",
+    "catalog_year": "2025-2026",
+    "groups": [
+      {
+        "name": "Business Emphasis (12 credits)",
+        "rules": {
+          "minCredits": 12,
+          "allOf": ["ACCT 209", "FINC 409", "MGMT 309", "MKTG 409"]
+        }
+      }
+    ]
+  },
+  {
+    "name": "CSCE Emphasis - Art",
+    "catalog_year": "2025-2026",
+    "groups": [
+      {
+        "name": "Art Emphasis (16 credits)",
+        "rules": {
+          "minCredits": 16,
+          "allOf": ["ARTS 104"],
+          "items": [
+            {
+              "pool": [
+                "ARTS 103",
+                "ARTS 149",
+                "ARTS 150",
+                "ARTS 210",
+                "ARTS 303",
+                "ARTS 304",
+                "ARTS 312",
+                "ARTS 330",
+                "ARTS 340",
+                "ARTS 342",
+                "ARTS 343",
+                "ARTS 349",
+                "ARTS 403",
+                "ARTS 489",
+                "VIST 339",
+                "VIST 474"
+              ],
+              "minCount": 5
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "CSCE Emphasis - Foreign Languages",
+    "catalog_year": "2025-2026",
+    "groups": [
+      {
+        "name": "Foreign Language Emphasis (12 credits)",
+        "rules": {
+          "minCredits": 12,
+          "items": [
+            {
+              "anyOf": [
+                "AALO 285",
+                "AALO 289",
+                "AALO 485",
+                "AALO 489",
+                "AFST 201",
+                "AFST 225",
+                "AFST 285",
+                "AFST 289",
+                "AFST 291",
+                "AFST 302",
+                "AFST 303",
+                "AFST 324",
+                "AFST 325",
+                "AFST 326",
+                "AFST 377",
+                "AFST 391",
+                "AFST 401",
+                "AFST 422",
+                "AFST 481",
+                "AFST 484",
+                "AFST 485",
+                "AFST 489",
+                "AFST 491",
+                "ARAB 101",
+                "ARAB 102",
+                "ARAB 104",
+                "ARAB 201",
+                "ARAB 202",
+                "ARAB 204",
+                "ARAB 215",
+                "ARAB 221",
+                "ARAB 222",
+                "ARAB 258",
+                "ARAB 285",
+                "ARAB 289",
+                "ARAB 301",
+                "ARAB 302",
+                "ARAB 321",
+                "ARAB 322",
+                "ARAB 323",
+                "ARAB 475",
+                "ARAB 485",
+                "ARAB 489",
+                "ARAB 491",
+                "ASIA 285",
+                "ASIA 289",
+                "ASIA 401",
+                "ASIA 463",
+                "ASIA 485",
+                "ASIA 489",
+                "ASIA 491",
+                "CHIN 101",
+                "CHIN 102",
+                "CHIN 201",
+                "CHIN 202",
+                "CHIN 250",
+                "CHIN 285",
+                "CHIN 289",
+                "CHIN 301",
+                "CHIN 302",
+                "CHIN 316",
+                "CHIN 405",
+                "CHIN 485",
+                "CHIN 489",
+                "CHIN 491",
+                "CLAS 101",
+                "CLAS 102",
+                "CLAS 121",
+                "CLAS 122",
+                "CLAS 211",
+                "CLAS 220",
+                "CLAS 221",
+                "CLAS 222",
+                "CLAS 250",
+                "CLAS 261",
+                "CLAS 262",
+                "CLAS 285",
+                "CLAS 289",
+                "CLAS 291",
+                "CLAS 311",
+                "CLAS 312",
+                "CLAS 313",
+                "CLAS 320",
+                "CLAS 321",
+                "CLAS 322",
+                "CLAS 330",
+                "CLAS 352",
+                "CLAS 371",
+                "CLAS 372",
+                "CLAS 410",
+                "CLAS 418",
+                "CLAS 485",
+                "CLAS 489",
+                "CLAS 491",
+                "EURO 285",
+                "EURO 289",
+                "EURO 291",
+                "EURO 484",
+                "EURO 485",
+                "EURO 489",
+                "EURO 491",
+                "FREN 101",
+                "FREN 102",
+                "FREN 201",
+                "FREN 202",
+                "FREN 221",
+                "FREN 222",
+                "FREN 285",
+                "FREN 289",
+                "FREN 300",
+                "FREN 301",
+                "FREN 306",
+                "FREN 311",
+                "FREN 321",
+                "FREN 322",
+                "FREN 336",
+                "FREN 375",
+                "FREN 418",
+                "FREN 422",
+                "FREN 481",
+                "FREN 485",
+                "FREN 489",
+                "FREN 491",
+                "GERM 101",
+                "GERM 102",
+                "GERM 104",
+                "GERM 121",
+                "GERM 122",
+                "GERM 201",
+                "GERM 202",
+                "GERM 204",
+                "GERM 221",
+                "GERM 222",
+                "GERM 285",
+                "GERM 289",
+                "GERM 310",
+                "GERM 311",
+                "GERM 315",
+                "GERM 316",
+                "GERM 321",
+                "GERM 322",
+                "GERM 331",
+                "GERM 332",
+                "GERM 333",
+                "GERM 334",
+                "GERM 336",
+                "GERM 362",
+                "GERM 410",
+                "GERM 411",
+                "GERM 437",
+                "GERM 440",
+                "GERM 441",
+                "GERM 485",
+                "GERM 489",
+                "GERM 491",
+                "GLST 201",
+                "GLST 205",
+                "GLST 209",
+                "GLST 210",
+                "GLST 285",
+                "GLST 289",
+                "GLST 300",
+                "GLST 402",
+                "GLST 403",
+                "GLST 406",
+                "GLST 407",
+                "GLST 413",
+                "GLST 444",
+                "GLST 481",
+                "GLST 484",
+                "GLST 485",
+                "GLST 489",
+                "GLST 491",
+                "GLST 497",
+                "HBRW 101",
+                "HBRW 102",
+                "HBRW 285",
+                "HBRW 289",
+                "HISP 201",
+                "HISP 204",
+                "HISP 205",
+                "HISP 206",
+                "HISP 250",
+                "HISP 260",
+                "HISP 285",
+                "HISP 289",
+                "HISP 291",
+                "HISP 363",
+                "HISP 409",
+                "HISP 413",
+                "HISP 414",
+                "HISP 485",
+                "HISP 489",
+                "HISP 491",
+                "ITAL 101",
+                "ITAL 102",
+                "ITAL 201",
+                "ITAL 202",
+                "ITAL 221",
+                "ITAL 222",
+                "ITAL 251",
+                "ITAL 285",
+                "ITAL 289",
+                "ITAL 303",
+                "ITAL 321",
+                "ITAL 322",
+                "ITAL 452",
+                "ITAL 453",
+                "ITAL 456",
+                "ITAL 485",
+                "ITAL 489",
+                "ITAL 491",
+                "JAPN 101",
+                "JAPN 102",
+                "JAPN 201",
+                "JAPN 202",
+                "JAPN 285",
+                "JAPN 289",
+                "JAPN 291",
+                "JAPN 301",
+                "JAPN 302",
+                "JAPN 325",
+                "JAPN 401",
+                "JAPN 402",
+                "JAPN 485",
+                "JAPN 489",
+                "JAPN 491",
+                "JWST 285",
+                "JWST 289",
+                "JWST 291",
+                "JWST 301",
+                "JWST 485",
+                "JWST 489",
+                "JWST 491",
+                "MODL 285",
+                "MODL 289",
+                "MODL 485",
+                "MODL 489",
+                "PORT 101",
+                "PORT 102",
+                "PORT 201",
+                "PORT 202",
+                "RELS 200",
+                "RELS 202",
+                "RELS 209",
+                "RELS 220",
+                "RELS 285",
+                "RELS 289",
+                "RELS 291",
+                "RELS 312",
+                "RELS 321",
+                "RELS 350",
+                "RELS 356",
+                "RELS 367",
+                "RELS 390",
+                "RELS 418",
+                "RELS 420",
+                "RELS 481",
+                "RELS 484",
+                "RELS 485",
+                "RELS 489",
+                "RELS 491",
+                "RUSS 101",
+                "RUSS 102",
+                "RUSS 201",
+                "RUSS 202",
+                "RUSS 211",
+                "RUSS 221",
+                "RUSS 222",
+                "RUSS 285",
+                "RUSS 289",
+                "RUSS 301",
+                "RUSS 302",
+                "RUSS 322",
+                "RUSS 410",
+                "RUSS 485",
+                "RUSS 489",
+                "RUSS 491",
+                "SPAN 101",
+                "SPAN 102",
+                "SPAN 112",
+                "SPAN 201",
+                "SPAN 202",
+                "SPAN 203",
+                "SPAN 208",
+                "SPAN 218",
+                "SPAN 221",
+                "SPAN 222",
+                "SPAN 285",
+                "SPAN 289",
+                "SPAN 301",
+                "SPAN 302",
+                "SPAN 303",
+                "SPAN 304",
+                "SPAN 305",
+                "SPAN 306",
+                "SPAN 307",
+                "SPAN 311",
+                "SPAN 312",
+                "SPAN 318",
+                "SPAN 320",
+                "SPAN 331",
+                "SPAN 332",
+                "SPAN 341",
+                "SPAN 342",
+                "SPAN 350",
+                "SPAN 352",
+                "SPAN 403",
+                "SPAN 407",
+                "SPAN 410",
+                "SPAN 411",
+                "SPAN 412",
+                "SPAN 413",
+                "SPAN 414",
+                "SPAN 417",
+                "SPAN 421",
+                "SPAN 423",
+                "SPAN 445",
+                "SPAN 450",
+                "SPAN 452",
+                "SPAN 460",
+                "SPAN 461",
+                "SPAN 462",
+                "SPAN 483",
+                "SPAN 484",
+                "SPAN 485",
+                "SPAN 489",
+                "SPAN 491"
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "CSCE Emphasis - Cybersecurity",
+    "catalog_year": "2025-2026",
+    "groups": [
+      {
+        "name": "Cybersecurity Emphasis (12 credits)",
+        "rules": {
+          "minCredits": 12,
+          "pool": [
+            "CYBR 484",
+            "CYBR 485",
+            "CYBR 491",
+            "ECEN 424",
+            "ECEN 484",
+            "ECEN 485",
+            "ESET 269",
+            "ESET 315",
+            "ESET 349",
+            "ESET 415",
+            "ESET 419",
+            "ESET 420",
+            "ESET 455",
+            "ESET 456",
+            "FIVS 123",
+            "FIVS 205",
+            "GEOG 392",
+            "ISTM 310",
+            "ISTM 315",
+            "ISTM 320",
+            "MATH 470",
+            "MATH 471",
+            "POLS 447",
+            "ITSV 303",
+            "ITSV 308",
+            "ITSV 316"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "CSCE Emphasis - Game",
+    "catalog_year": "2025-2026",
+    "groups": [
+      {
+        "name": "Game Emphasis (12 credits)",
+        "rules": {
+          "minCredits": 12,
+          "pool": [
+            "VIST 386",
+            "VIST 487",
+            "COMM 230",
+            "JOUR 230",
+            "COMM 453",
+            "VIST 370",
+            "VIST 374"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "CSCE Emphasis - Neuroscience",
+    "catalog_year": "2025-2026",
+    "groups": [
+      {
+        "name": "Neuroscience Emphasis (12 credits)",
+        "rules": {
+          "minCredits": 12,
+          "pool": [
+            "BIOL 388",
+            "BIOL 435",
+            "NRSC 289",
+            "NRSC 401",
+            "VIBS 401",
+            "NRSC 407",
+            "VIBS 407",
+            "NRSC 434",
+            "BIOL 434",
+            "NRSC 485",
+            "NRSC 489",
+            "NRSC 491",
+            "PBSI 235",
+            "PBSI 311",
+            "PBSI 320",
+            "PBSI 332",
+            "PBSI 333",
+            "PBSI 340",
+            "PBSI 350",
+            "PBSI 360",
+            "PHIL 320",
+            "VIBS 277",
+            "VIBS 450"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "CSCE Emphasis - STEM Areas",
+    "catalog_year": "2025-2026",
+    "groups": [
+      {
+        "name": "STEM Emphasis (12 credits)",
+        "rules": {
+          "manual": true,
+          "note": "12 upper-level credits from a STEM department (service courses excluded, no double counting). Add explicit course list or tags to enforce."
+        }
+      }
+    ]
+  },
+  {
+    "name": "CSCE Emphasis - Liberal Arts & Social Sciences",
+    "catalog_year": "2025-2026",
+    "groups": [
+      {
+        "name": "Liberal Arts/Social Sciences Emphasis (12 credits)",
+        "rules": {
+          "manual": true,
+          "note": "12 upper-level credits with clear computing alignment (e.g., digital humanities, technical writing, computer music). Add allowed course list to enforce."
+        }
+      }
+    ]
+  },
+  {
+    "name": "CSCE Emphasis - Other / Double Degree",
+    "catalog_year": "2025-2026",
+    "groups": [
+      {
+        "name": "Other / Double Degree (12 credits)",
+        "rules": {
+          "manual": true,
+          "note": "Use credits from another degree/major; adviser approval required; no double counting."
+        }
+      }
+    ]
+  },
+  {
+    "name": "Minor - Mathematics",
+    "catalog_year": "2025-2026",
+    "groups": [
+      {
+        "name": "Math Minor (13 credits)",
+        "rules": {
+          "items": [
+            {
+              "anyOf": ["MATH 148", "MATH 152", "MATH 172"]
+            },
+            {
+              "pool": [
+                "MATH 221",
+                "MATH 251",
+                "MATH 253",
+                "MATH 401",
+                "MATH 407",
+                "MATH 409",
+                "MATH 410",
+                "MATH 411",
+                "MATH 412",
+                "MATH 414",
+                "MATH 415",
+                "MATH 416",
+                "MATH 417",
+                "MATH 419",
+                "MATH 423",
+                "MATH 425",
+                "MATH 427",
+                "MATH 431",
+                "MATH 433",
+                "MATH 436",
+                "MATH 437",
+                "MATH 439",
+                "MATH 442",
+                "MATH 446",
+                "MATH 447",
+                "MATH 460",
+                "MATH 467",
+                "MATH 469",
+                "MATH 470",
+                "MATH 471",
+                "MATH 472",
+                "MATH 478",
+                "MATH 489",
+                "MATH 490"
+              ],
+              "minCredits": 9
+            },
+            {
+              "pool": [
+                "MATH 401",
+                "MATH 407",
+                "MATH 409",
+                "MATH 410",
+                "MATH 411",
+                "MATH 412",
+                "MATH 414",
+                "MATH 415",
+                "MATH 416",
+                "MATH 417",
+                "MATH 419",
+                "MATH 423",
+                "MATH 425",
+                "MATH 427",
+                "MATH 431",
+                "MATH 433",
+                "MATH 436",
+                "MATH 437",
+                "MATH 439",
+                "MATH 442",
+                "MATH 446",
+                "MATH 447",
+                "MATH 460",
+                "MATH 467",
+                "MATH 469",
+                "MATH 470",
+                "MATH 471",
+                "MATH 472",
+                "MATH 478",
+                "MATH 489",
+                "MATH 490"
+              ],
+              "minCount": 1,
+              "countOnly": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "Minor - Statistics",
+    "catalog_year": "2025-2026",
+    "groups": [
+      {
+        "name": "Statistics Minor",
+        "rules": {
+          "items": [
+            { "allOf": ["STAT 211", "STAT 212"] },
+            {
+              "pool": [
+                "STAT 315",
+                "STAT 335",
+                "CSCE 320",
+                "STAT 404",
+                "STAT 406",
+                "STAT 407",
+                "STAT 408",
+                "STAT 414",
+                "STAT 415",
+                "STAT 421",
+                "STAT 424",
+                "MATH 424",
+                "STAT 426",
+                "STAT 436",
+                "STAT 438",
+                "STAT 445",
+                "STAT 446",
+                "STAT 459",
+                "STAT 485",
+                "STAT 489"
+              ],
+              "minCount": 3
+            }
+          ]
+        }
+      }
+    ]
+  }
+]

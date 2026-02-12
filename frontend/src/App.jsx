@@ -3,6 +3,8 @@ import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mj
 import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import tamuLogo from './assets/tamu-logo.svg';
 import { TRANSCRIPT_DEMO } from './data/transcriptDemo';
+import EMPHASIS_SEED from './data/emphasis_areas.json';
+import MINOR_SEED from './data/minors.json';
 import {
   Calendar,
   AlertTriangle,
@@ -16,6 +18,8 @@ import {
   ChevronUp
 } from 'lucide-react';
 
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4000';
+
 // Mock data
 const MOCK_STUDENT = {
   name: 'John Doe',
@@ -25,8 +29,15 @@ const MOCK_STUDENT = {
   gpa: 3.45,
   completedCredits: 45,
   totalRequired: 120,
-  emphasisArea: 'Software Engineering'
+  emphasisArea: 'Undecided',
+  minor: 'None'
 };
+
+const EMPHASIS_OPTIONS = [
+  'Undecided',
+  ...EMPHASIS_SEED.map((item) => item.emphasis_name)
+];
+const MINOR_OPTIONS = ['None', ...MINOR_SEED.map((item) => item.minor_name)];
 
 const COURSES = {
   'CSCE 121': {
@@ -568,6 +579,10 @@ function App() {
   };
 
   const [activeTab, setActiveTab] = useState('planner');
+  const [selectedEmphasis, setSelectedEmphasis] = useState(
+    MOCK_STUDENT.emphasisArea || 'Undecided'
+  );
+  const [selectedMinor, setSelectedMinor] = useState(MOCK_STUDENT.minor || 'None');
   const [transcriptTerms, setTranscriptTerms] = useState([]);
   const [transcriptPdfName, setTranscriptPdfName] = useState('');
   const [transcriptTotals, setTranscriptTotals] = useState(null);
@@ -598,8 +613,82 @@ function App() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState([]);
+  const [requirementsResult, setRequirementsResult] = useState(null);
+  const [reqLoading, setReqLoading] = useState(false);
+  const [reqError, setReqError] = useState('');
+  const [reqWarning, setReqWarning] = useState('');
   const transcriptYears = useMemo(() => normalizeTranscript(transcriptTerms), [transcriptTerms]);
   const transcriptIndex = useMemo(() => buildTranscriptIndex(transcriptTerms), [transcriptTerms]);
+
+  const evaluateRequirementsLocal = async () => {
+    setReqLoading(true);
+    setReqError('');
+    setReqWarning('');
+    try {
+      // Build combined course list: transcript + planned (skip duplicates, prefer transcript)
+      const combined = new Map();
+      transcriptCourseList.forEach((course) => {
+        const meta = COURSES[course.code] || {};
+        combined.set(course.code, {
+          code: course.code,
+          department: course.code.split(' ')[0],
+          course_number: course.code.split(' ')[1],
+          credits: Number(course.credits) || Number(meta.credits) || 0,
+          grade: course.grade || null,
+          status: course.grade === 'IP' ? 'in-progress' : 'completed'
+        });
+      });
+
+      Object.entries(semesterPlans).forEach(([, codes]) => {
+        (codes || []).forEach((code) => {
+          if (combined.has(code)) return;
+          const meta = COURSES[code] || {};
+          combined.set(code, {
+            code,
+            department: code.split(' ')[0],
+            course_number: code.split(' ')[1],
+            credits: Number(meta.credits) || 0,
+            grade: null,
+            status: 'planned'
+          });
+        });
+      });
+
+      const selectedEmphasisId =
+        selectedEmphasis && selectedEmphasis !== 'Undecided'
+          ? EMPHASIS_SEED.find((e) => e.emphasis_name === selectedEmphasis)?.emphasis_id || null
+          : null;
+      const selectedMinorId =
+        selectedMinor && selectedMinor !== 'None'
+          ? MINOR_SEED.find((m) => m.minor_name === selectedMinor)?.minor_id || null
+          : null;
+
+      const payload = {
+        catalogYear: '2023-2024',
+        emphasisId: selectedEmphasisId,
+        minorId: selectedMinorId,
+        courses: Array.from(combined.values())
+      };
+
+      const res = await fetch(`${API_BASE}/api/requirements/evaluate-local`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const msg = await res.json().catch(() => ({}));
+        throw new Error(msg.error || `Evaluate failed (${res.status})`);
+      }
+      const data = await res.json();
+      console.log('requirements evaluation result', data);
+      setRequirementsResult(data);
+      if (data.warnings?.length) setReqWarning(data.warnings.join(' | '));
+    } catch (err) {
+      setReqError(err.message);
+    } finally {
+      setReqLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (transcriptYears.length === 0) {
@@ -1236,16 +1325,18 @@ function App() {
   const DashboardTab = () => {
     const hasTranscriptData =
       transcriptTerms.length > 0 || Boolean(transcriptTotals?.overall?.earnedHours);
-    const earnedHours = hasTranscriptData
+    const evaluationDone = Boolean(requirementsResult);
+    const earnedHours = evaluationDone
       ? transcriptTotals?.overall?.earnedHours ?? transcriptCreditsSummary.completedCredits
-      : null;
-    const completionPercentage = earnedHours
+      : 0;
+    const completionPercentage = evaluationDone
       ? Math.min((earnedHours / MOCK_STUDENT.totalRequired) * 100, 100)
       : 0;
-    const trackedCredits =
-      transcriptCreditsSummary.completedCredits +
-      transcriptCreditsSummary.inProgressCredits +
-      plannedCreditsSummary.plannedCredits;
+    const trackedCredits = evaluationDone
+      ? transcriptCreditsSummary.completedCredits +
+        transcriptCreditsSummary.inProgressCredits +
+        plannedCreditsSummary.plannedCredits
+      : 0;
 
     return (
       <div className="space-y-6">
@@ -1257,9 +1348,39 @@ function App() {
               <p className="text-gray-600">
                 {MOCK_STUDENT.major} • Catalog Year: {MOCK_STUDENT.catalogYear}
               </p>
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md">
+                <label className="text-sm text-gray-700">
+                  Emphasis
+                  <select
+                    className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#500000]"
+                    value={selectedEmphasis}
+                    onChange={(e) => setSelectedEmphasis(e.target.value)}
+                  >
+                    {EMPHASIS_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-sm text-gray-700">
+                  Minor
+                  <select
+                    className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#500000]"
+                    value={selectedMinor}
+                    onChange={(e) => setSelectedMinor(e.target.value)}
+                  >
+                    {MINOR_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
               <p className="text-gray-600">
-                {hasTranscriptData ? classification : '—'} •{' '}
-                {hasTranscriptData ? earnedHours : '—'} earned credits
+                {evaluationDone && hasTranscriptData ? classification : '—'} •{' '}
+                {evaluationDone ? earnedHours : '—'} earned credits
               </p>
             </div>
             <div className="text-right">
@@ -1277,7 +1398,7 @@ function App() {
               <div>
                 <p className="text-sm text-gray-600">Credits Completed</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {earnedHours ?? '—'}/{MOCK_STUDENT.totalRequired}
+                  {evaluationDone ? earnedHours : 0}/{MOCK_STUDENT.totalRequired}
                 </p>
               </div>
               <CheckCircle className="w-8 h-8 text-green-500" />
@@ -1289,7 +1410,9 @@ function App() {
               ></div>
             </div>
             <p className="mt-2 text-xs text-gray-500">
-              Transcript totals (overall earned hours)
+              {evaluationDone
+                ? 'Transcript totals (overall earned hours)'
+                : 'Run Evaluate to populate progress'}
             </p>
           </div>
 
@@ -1298,7 +1421,7 @@ function App() {
               <div>
                 <p className="text-sm text-gray-600">In Progress</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {transcriptCreditsSummary.inProgressCredits} credits
+                  {evaluationDone ? transcriptCreditsSummary.inProgressCredits : 0} credits
                 </p>
               </div>
               <Calendar className="w-8 h-8 text-blue-500" />
@@ -1311,7 +1434,7 @@ function App() {
               <div>
                 <p className="text-sm text-gray-600">Planned Credits</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {plannedCreditsSummary.plannedCredits}
+                  {evaluationDone ? plannedCreditsSummary.plannedCredits : 0}
                 </p>
               </div>
               <Plus className="w-8 h-8 text-amber-500" />
@@ -1333,6 +1456,69 @@ function App() {
           </div>
         </div>
 
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Requirements Check</h3>
+              <p className="text-sm text-gray-600">
+                Evaluate the current plan + transcript using the backend rules.
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Emphasis: {selectedEmphasis} • Minor: {selectedMinor}
+              </p>
+            </div>
+            <button
+              onClick={evaluateRequirementsLocal}
+              disabled={reqLoading}
+              className="rounded-md bg-[#500000] text-white px-4 py-2 text-sm disabled:opacity-60"
+            >
+              {reqLoading ? 'Evaluating…' : 'Evaluate'}
+            </button>
+          </div>
+
+          {reqError && <p className="text-sm text-red-600 mb-2">{reqError}</p>}
+          {reqWarning && !reqError && <p className="text-sm text-amber-700 mb-2">{reqWarning}</p>}
+
+          {requirementsResult && (
+            <div className="mt-2 border-t pt-4">
+              <h4 className="text-sm font-semibold text-gray-900 mb-2">
+                {requirementsResult.requirementSet?.name}{' '}
+                {requirementsResult.requirementSet?.catalog_year &&
+                  `(${requirementsResult.requirementSet.catalog_year})`}
+              </h4>
+              <div className="space-y-2">
+                {requirementsResult.groups?.map((group) => (
+                  <div
+                    key={group.name}
+                    className="flex items-start justify-between rounded-md border border-gray-200 px-3 py-2"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">{group.name}</p>
+                      <p className="text-xs text-gray-600">
+                        Earned {group.earnedCredits || 0}
+                        {group.requiredCredits ? ` / ${group.requiredCredits} credits` : ''}{' '}
+                        {group.missing?.length
+                          ? `• Missing: ${group.missing.join(', ')}`
+                          : ''}
+                      </p>
+                      {group.warnings?.length > 0 && (
+                        <p className="text-xs text-amber-700 mt-1">
+                          {group.warnings.join(' | ')}
+                        </p>
+                      )}
+                    </div>
+                    {group.satisfied ? (
+                      <CheckCircle className="w-5 h-5 text-green-500" />
+                    ) : (
+                      <AlertTriangle className="w-5 h-5 text-amber-500" />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <div className="flex items-start">
             <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 mr-3" />
@@ -1346,33 +1532,43 @@ function App() {
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-bold mb-4">Degree Requirements Progress</h3>
-          <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-gray-700">Core CS Courses</span>
-              <span className="text-sm font-semibold text-green-600">8/12 completed</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-700">Math Requirements</span>
-              <span className="text-sm font-semibold text-green-600">3/4 completed</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-700">Emphasis Area (SWE)</span>
-              <span className="text-sm font-semibold text-yellow-600">1/3 completed</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-700">Technical Electives</span>
-              <span className="text-sm font-semibold text-gray-600">0/9 credits</span>
+        {evaluationDone ? (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="text-lg font-bold mb-4">Degree Requirements Progress</h3>
+            <div className="space-y-3">
+              {requirementsResult?.groups?.map((group) => (
+                <div key={group.name} className="flex justify-between items-center">
+                  <span className="text-gray-700">{group.name}</span>
+                  <span
+                    className={`text-sm font-semibold ${
+                      group.satisfied
+                        ? 'text-green-600'
+                        : group.earnedCredits > 0
+                        ? 'text-amber-600'
+                        : 'text-gray-600'
+                    }`}
+                  >
+                    {group.earnedCredits || 0}
+                    {group.requiredCredits ? ` / ${group.requiredCredits} credits` : ''}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
-        </div>
-        {/* Areas evaluation bars */}
-        <AreasEvaluation
-          areas={REQUIREMENT_AREAS}
-          transcriptCourseList={transcriptCourseList}
-          semesterPlans={semesterPlans}
-        />
+        ) : (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="text-lg font-bold mb-2">Degree Requirements Progress</h3>
+            <p className="text-sm text-gray-600">Click Evaluate to load progress.</p>
+          </div>
+        )}
+
+        {evaluationDone && (
+          <AreasEvaluation
+            areas={REQUIREMENT_AREAS}
+            transcriptCourseList={transcriptCourseList}
+            semesterPlans={semesterPlans}
+          />
+        )}
       </div>
     );
   };

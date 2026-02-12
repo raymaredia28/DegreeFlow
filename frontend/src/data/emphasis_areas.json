@@ -1,0 +1,11 @@
+[
+  { "emphasis_id": 1, "emphasis_name": "Business" },
+  { "emphasis_id": 2, "emphasis_name": "Statistics" },
+  { "emphasis_id": 3, "emphasis_name": "Math" },
+  { "emphasis_id": 4, "emphasis_name": "Art" },
+  { "emphasis_id": 5, "emphasis_name": "Foreign Languages" },
+  { "emphasis_id": 6, "emphasis_name": "Cybersecurity" },
+  { "emphasis_id": 7, "emphasis_name": "Game" },
+  { "emphasis_id": 8, "emphasis_name": "Neuroscience" },
+  { "emphasis_id": 9, "emphasis_name": "Other" }
+]

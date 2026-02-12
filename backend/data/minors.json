@@ -1,0 +1,18 @@
+[
+  {
+    "minor_id": 1,
+    "name": "Mathematics",
+    "catalog_year": "2025-2026",
+    "required_credits": 16,
+    "description": "Math minor: one Calculus II option plus 9 additional upper-level math hours.",
+    "notes": "Select one of MATH 148/152/172, plus 9 hours from approved upper-level math list."
+  },
+  {
+    "minor_id": 2,
+    "name": "Statistics",
+    "catalog_year": "2025-2026",
+    "required_credits": null,
+    "description": "Statistics minor: STAT 211 and STAT 212 required, plus three additional STAT electives from the approved list.",
+    "notes": "Pick 3 STAT electives from the approved upper-level list after completing STAT 211 and STAT 212."
+  }
+]

@@ -1,0 +1,147 @@
+[
+  {
+    "emphasis_id": 1,
+    "name": "Math",
+    "catalog_year": "2025-2026",
+    "min_credits": 12,
+    "description": "12 credits of math beyond what is already used elsewhere in the CSCE degree plan.",
+    "rules": {
+      "allowed_departments": ["MATH"],
+      "min_level": 400,
+      "excluded_courses": ["MATH 403"],
+      "special_allow": ["CSCE 442"],
+      "max_lower_level_overflow": {
+        "courses": ["MATH 251", "MATH 302", "MATH 308"],
+        "max_credits": 6
+      },
+      "mutual_exclusions": [
+        {
+          "if_taken": "CSCE 442",
+          "cannot_take": ["MATH 417"]
+        }
+      ]
+    },
+    "notes": "Credits must be in addition to degree-plan math; Math minor alone doesn’t satisfy the full 12 emphasis hours, but this emphasis can also fulfill the Math minor credits with grades of C or better."
+  },
+  {
+    "emphasis_id": 2,
+    "name": "Business",
+    "catalog_year": "2025-2026",
+    "min_credits": 12,
+    "description": "Follow Business minor courses; emphasis can be completed without finishing the minor.",
+    "rules": {
+      "required_courses": ["ACCT 209", "FINC 409", "MGMT 309", "MKTG 409"],
+      "recommended_minor": "Business",
+      "degree_plan_overlap": {
+        "general_elective": ["MGMT 209"],
+        "not_used_in_plan": ["ISYS 209"]
+      }
+    },
+    "notes": "Only two additional classes beyond degree-plan overlap are typically needed to finish the Business minor."
+  },
+  {
+    "emphasis_id": 3,
+    "name": "Art",
+    "catalog_year": "2025-2026",
+    "min_credits": 12,
+    "description": "Complete the Minor in Art (Department of Visualization).",
+    "rules": {
+      "required_minor": "Art",
+      "track_guidance": "Use traditional media emphasis if aiming for the Visualization MS program."
+    },
+    "notes": "All courses should come from the official Art minor plan."
+  },
+  {
+    "emphasis_id": 4,
+    "name": "Foreign Languages",
+    "catalog_year": "2025-2026",
+    "min_credits": 12,
+    "description": "12 hours of foreign language courses (100–200 level allowed).",
+    "rules": {
+      "allowed_departments": ["Foreign Language"],
+      "allow_lower_division": true,
+      "distinct_from_degree_language_req": true
+    },
+    "notes": "These hours are separate from the core foreign language requirement already satisfied elsewhere."
+  },
+  {
+    "emphasis_id": 5,
+    "name": "Cybersecurity",
+    "catalog_year": "2025-2026",
+    "min_credits": 12,
+    "description": "12 hours from the approved non-CSCE Cybersecurity minor list (interdisciplinary track recommended).",
+    "rules": {
+      "source_minor": "Cybersecurity",
+      "track": "Interdisciplinary",
+      "course_list_source": "Non-CSCE courses approved for the Cybersecurity minor"
+    },
+    "notes": "Emphasis typically requires at least one more class than the Cybersecurity minor; declaring the minor can improve access to courses."
+  },
+  {
+    "emphasis_id": 6,
+    "name": "Game",
+    "catalog_year": "2025-2026",
+    "min_credits": 12,
+    "description": "12 hours from the approved non-CSCE Game minor course list.",
+    "rules": {
+      "source_minor": "Game",
+      "course_list_source": "Non-CSCE courses approved for the Game minor"
+    },
+    "notes": "Declaring the Game minor may ease access to VIST classes."
+  },
+  {
+    "emphasis_id": 7,
+    "name": "Neuroscience",
+    "catalog_year": "2025-2026",
+    "min_credits": 12,
+    "description": "12 hours from the approved Neuroscience minor non-CSCE course list.",
+    "rules": {
+      "source_minor": "Neuroscience",
+      "course_list_source": "Non-CSCE courses approved for the Neuroscience minor"
+    },
+    "notes": "Declaring the Neuroscience minor may ease access to courses."
+  },
+  {
+    "emphasis_id": 8,
+    "name": "STEM Areas",
+    "catalog_year": "2025-2026",
+    "min_credits": 12,
+    "description": "Sequence of upper-level courses from a STEM department (service courses excluded).",
+    "rules": {
+      "allowed_domains": ["STEM"],
+      "exclude_service_courses": true,
+      "no_double_counting": true
+    },
+    "notes": "Courses cannot double count toward other degree requirements."
+  },
+  {
+    "emphasis_id": 9,
+    "name": "Liberal Arts & Social Sciences",
+    "catalog_year": "2025-2026",
+    "min_credits": 12,
+    "description": "Upper-level courses in liberal arts/social sciences with a clear computing tie-in (e.g., digital humanities, technical writing, computer music).",
+    "rules": {
+      "allowed_domains": ["Liberal Arts", "Social Sciences"],
+      "require_computing_alignment": true,
+      "examples": [
+        "Music courses involving computing in performance/composition",
+        "English courses in digital humanities or technical writing"
+      ],
+      "no_double_counting": true
+    },
+    "notes": "Student must justify the relationship to computing; include upper-division courses."
+  },
+  {
+    "emphasis_id": 10,
+    "name": "Other / Double Degree / Post-baccalaureate",
+    "catalog_year": "2025-2026",
+    "min_credits": 12,
+    "description": "Use credits from another degree/major when applicable.",
+    "rules": {
+      "source": "Other degree or post-baccalaureate work",
+      "adviser_approval": true,
+      "no_double_counting": true
+    },
+    "notes": "Apply credits from the other program if available and adviser-approved."
+  }
+]
