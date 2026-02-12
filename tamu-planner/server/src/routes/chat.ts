@@ -33,7 +33,7 @@ chatRouter.post("/chat/completions", async (req, res) => {
   }
 
   try {
-    const response = await fetch(`${env.tamuAiApiEndpoint}/api/chat/completions`, {
+    const response = await fetch(`${env.tamuAiApiEndpoint}/api/v1/chat/completions`, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${env.tamuAiApiKey}`,
@@ -75,7 +75,7 @@ chatRouter.get("/chat/models", async (_req, res) => {
   }
 
   try {
-    const response = await fetch(`${env.tamuAiApiEndpoint}/api/models`, {
+    const response = await fetch(`${env.tamuAiApiEndpoint}/api/v1/models`, {
       method: "GET",
       headers: {
         "Authorization": `Bearer ${env.tamuAiApiKey}`,
