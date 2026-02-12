@@ -16,7 +16,9 @@ import {
   Save,
   ChevronDown,
   ChevronUp,
-  Edit2
+  Edit2,
+  PanelRightClose,
+  PanelRightOpen
 } from 'lucide-react';
 
 const API_BASE = import.meta.env?.VITE_API_BASE ?? 'http://localhost:4000';
@@ -258,6 +260,22 @@ const normalizeTranscript = (terms) => {
 };
 
 GlobalWorkerOptions.workerSrc = pdfWorker;
+
+// Convert ALL-CAPS course titles to Title Case for display
+const toTitleCase = (str) => {
+  if (!str) return str;
+  // Only convert if the string is mostly uppercase
+  if (str !== str.toUpperCase()) return str;
+  const lowercase = new Set(['a','an','and','as','at','but','by','for','from','in','into','of','on','or','the','to','with']);
+  const roman = new Set(['I','II','III','IV','V','VI','VII','VIII','IX','X']);
+  return str.split(' ').map((word, i) => {
+    const upper = word.toUpperCase();
+    if (roman.has(upper)) return upper;
+    if (i === 0) return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    if (lowercase.has(word.toLowerCase())) return word.toLowerCase();
+    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+  }).join(' ');
+};
 
 const DEMO_COURSE_LOOKUP = new Map(
   TRANSCRIPT_DEMO.flatMap((term) =>
@@ -510,7 +528,7 @@ const parseTranscriptLines = (lines) => {
       const credits = Number(creditsStr);
       const grade = gradeRaw;
       const demoCourse = DEMO_COURSE_LOOKUP.get(code);
-      const resolvedTitle = demoCourse?.title ?? title.trim();
+      const resolvedTitle = toTitleCase(demoCourse?.title ?? title.trim());
       const resolvedCredits =
         Number.isFinite(credits) && credits > 0 ? credits : demoCourse?.credits ?? 0;
       currentTerm.courses.push({
@@ -518,9 +536,9 @@ const parseTranscriptLines = (lines) => {
         title: resolvedTitle,
         credits: resolvedCredits,
         grade,
-        transfer: grade === 'TA'
+        transfer: grade === 'TA' || grade === 'TIP'
       });
-      if (grade === 'IP') {
+      if (grade === 'IP' || grade === 'TIP') {
         currentTerm.status = 'In Progress';
       } else if (grade === 'TA' && currentTerm.status !== 'In Progress') {
         currentTerm.status = 'Transfer';
@@ -542,7 +560,7 @@ const parseTranscriptLines = (lines) => {
       ? withoutGrade.replace(String(credits), '').trim()
       : withoutGrade.trim();
     const demoCourse = DEMO_COURSE_LOOKUP.get(code);
-    const resolvedTitle = demoCourse?.title ?? (title || code);
+    const resolvedTitle = toTitleCase(demoCourse?.title ?? (title || code));
     const resolvedCredits =
       Number.isFinite(credits) && credits > 0 ? credits : demoCourse?.credits ?? 0;
 
@@ -551,9 +569,9 @@ const parseTranscriptLines = (lines) => {
       title: resolvedTitle,
       credits: resolvedCredits,
       grade,
-      transfer: grade === 'TA'
+      transfer: grade === 'TA' || grade === 'TIP'
     });
-    if (grade === 'IP') {
+    if (grade === 'IP' || grade === 'TIP') {
       currentTerm.status = 'In Progress';
     } else if (grade === 'TA' && currentTerm.status !== 'In Progress') {
       currentTerm.status = 'Transfer';
@@ -672,12 +690,14 @@ const FLOWCHART_COURSES = {
   'CSCE 482': { title: 'Senior Capstone Design', prereqs: ['CSCE 411', 'CSCE 331'] }
 };
 
-const buildTranscriptIndex = (terms) => {
+const buildTranscriptIndex = (terms, excludedTransfers = new Set()) => {
   const map = new Map();
   terms.forEach((term) => {
     term.courses.forEach((course) => {
       if (!course.code) return;
-      const isInProgress = course.grade === 'IP';
+      // Skip transfer courses the user has excluded from degree evaluation
+      if (course.transfer && excludedTransfers.has(course.code)) return;
+      const isInProgress = course.grade === 'IP' || course.grade === 'TIP';
       const status = isInProgress ? 'in-progress' : 'completed';
       const existing = map.get(course.code);
       if (!existing || existing.status !== 'in-progress') {
@@ -823,15 +843,43 @@ function App() {
     return `${startYear}-${startYear + 1}`;
   });
   const [selectedTranscriptYear, setSelectedTranscriptYear] = useState('');
+  // Set of transfer course codes excluded from degree evaluation (user-toggled)
+  const [excludedTransferCourses, setExcludedTransferCourses] = useState(() => new Set());
   const [transcriptError, setTranscriptError] = useState('');
   const [transcriptLoading, setTranscriptLoading] = useState(false);
   const [transcriptLoadingMessage, setTranscriptLoadingMessage] = useState('');
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatWidth, setChatWidth] = useState(320);
+  const [chatHeight, setChatHeight] = useState(400);
+  const [isResizingChat, setIsResizingChat] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState([]);
   const [isChatLoading, setIsChatLoading] = useState(false);
   const transcriptYears = useMemo(() => normalizeTranscript(reviewTerms), [reviewTerms]);
-  const transcriptIndex = useMemo(() => buildTranscriptIndex(transcriptTerms), [transcriptTerms]);
+
+  const handleChatResize = useCallback((e) => {
+    if (!isResizingChat) return;
+    const newWidth = Math.min(500, Math.max(280, window.innerWidth - e.clientX - 12));
+    const newHeight = Math.min(600, Math.max(280, window.innerHeight - e.clientY - 24));
+    setChatWidth(newWidth);
+    setChatHeight(newHeight);
+  }, [isResizingChat]);
+  useEffect(() => {
+    if (!isResizingChat) return;
+    const onMove = (e) => handleChatResize(e);
+    const onUp = () => setIsResizingChat(false);
+    document.body.style.cursor = 'nwse-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [isResizingChat, handleChatResize]);
+  const transcriptIndex = useMemo(() => buildTranscriptIndex(transcriptTerms, excludedTransferCourses), [transcriptTerms, excludedTransferCourses]);
 
   const loadStoredTranscript = useCallback(async (id) => {
     if (!id) return;
@@ -1086,29 +1134,44 @@ function App() {
       setSelectedTranscriptYear(transcriptYears[transcriptYears.length - 1].year);
     }
   }, [transcriptYears, selectedTranscriptYear]);
+  // Sanitize credits: a single course should never exceed 10 credit hours.
+  // Bad data from a previous AI parse may have set the course number as credits.
+  const sanitizeCredits = (c) => {
+    const cr = Number(c);
+    return Number.isFinite(cr) && cr >= 0 && cr <= 10 ? cr : 0;
+  };
+
   const transcriptCourseList = useMemo(
     () =>
       transcriptTerms.flatMap((term) =>
         (term.courses || []).map((course) => ({
           ...course,
+          credits: sanitizeCredits(course.credits),
           termLabel: term.label
         }))
       ),
     [transcriptTerms]
   );
+  // Filtered list that excludes transfer courses the user toggled off
+  const effectiveTranscriptCourseList = useMemo(
+    () => transcriptCourseList.filter(
+      (course) => !(course.transfer && excludedTransferCourses.has(course.code))
+    ),
+    [transcriptCourseList, excludedTransferCourses]
+  );
   const transcriptCourseCodes = useMemo(
-    () => new Set(transcriptCourseList.map((course) => course.code)),
-    [transcriptCourseList]
+    () => new Set(effectiveTranscriptCourseList.map((course) => course.code)),
+    [effectiveTranscriptCourseList]
   );
   const transcriptCreditsSummary = useMemo(() => {
     let completedCredits = 0;
     let inProgressCredits = 0;
     let totalTranscriptCredits = 0;
 
-    transcriptCourseList.forEach((course) => {
+    effectiveTranscriptCourseList.forEach((course) => {
       const credits = Number(course.credits) || 0;
       totalTranscriptCredits += credits;
-      if (course.grade === 'IP') {
+      if (course.grade === 'IP' || course.grade === 'TIP') {
         inProgressCredits += credits;
       } else {
         completedCredits += credits;
@@ -1116,7 +1179,7 @@ function App() {
     });
 
     return { completedCredits, inProgressCredits, totalTranscriptCredits };
-  }, [transcriptCourseList]);
+  }, [effectiveTranscriptCourseList]);
   const plannedCreditsSummary = useMemo(() => {
     let plannedCredits = 0;
     let plannedCourses = 0;
@@ -1156,7 +1219,7 @@ function App() {
 
     transcriptCourseList.forEach((course) => {
       if (course.transfer) return;
-      if (!course.grade || course.grade === 'IP') return;
+      if (!course.grade || course.grade === 'IP' || course.grade === 'TIP') return;
       const points = gradePoints[course.grade];
       if (points === undefined) return;
       const credits = Number(course.credits) || 0;
@@ -1237,11 +1300,13 @@ function App() {
   const isCourseInProgress = (courseCode) =>
     transcriptIndex.get(courseCode)?.status === 'in-progress' ||
     COURSES[courseCode]?.status === 'in-progress';
+  const isCoursePlanned = (courseCode) =>
+    Object.values(semesterPlans).some((courses) => courses?.includes(courseCode));
 
   const deriveTermStatus = (courses = []) => {
     let status = 'Evaluated';
     for (const course of courses) {
-      if (course?.grade === 'IP') return 'In Progress';
+      if (course?.grade === 'IP' || course?.grade === 'TIP') return 'In Progress';
       if (course?.transfer || course?.grade === 'TA') status = 'Transfer';
     }
     return status;
@@ -1449,11 +1514,13 @@ function App() {
     setTranscriptPdfName(file.name);
     setTranscriptError('');
     setTranscriptLoading(true);
+
+    const endpoint = `${API_BASE}/storage/parse-transcript`;
     setTranscriptLoadingMessage('Uploading transcript…');
+
     try {
-      console.log('[transcript] Sending to backend parser:', file.name);
       const dataBase64 = await fileToBase64(file);
-      const response = await fetch(`${API_BASE}/storage/parse-transcript`, {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileName: file.name, dataBase64 })
@@ -1468,9 +1535,9 @@ function App() {
         return;
       }
       setTranscriptTerms(result.terms);
-      setTranscriptTotals(null);
+      setTranscriptTotals(result.totals ?? null);
       setReviewTerms(result.terms);
-      setReviewTotals(null);
+      setReviewTotals(result.totals ?? null);
       setIsTranscriptDirty(false);
       setShowTranscriptReview(false);
     } catch (err) {
@@ -2095,50 +2162,169 @@ Now answer the student's question based on this context and any additional infor
           </div>
         </div>
 
-        {/* Degree Progress Validation */}
+        {/* Degree Progress Validation — includes planned courses */}
         <DegreeProgress 
-          completedCourses={transcriptCourseList}
+          completedCourses={(() => {
+            // Merge effective transcript courses with planned courses so the
+            // DegreeProgress component sees everything the student intends to take.
+            const plannedEntries = [];
+            const seen = new Set(effectiveTranscriptCourseList.map(c => c.code));
+            Object.values(semesterPlans).forEach(courses => {
+              (courses || []).forEach(code => {
+                if (seen.has(code)) return;
+                seen.add(code);
+                const meta = COURSES[code];
+                plannedEntries.push({
+                  code,
+                  title: meta?.title || code,
+                  credits: meta?.credits ?? 0,
+                  grade: 'IP', // treat planned as "in progress" for evaluation
+                  transfer: false
+                });
+              });
+            });
+            return [...effectiveTranscriptCourseList, ...plannedEntries];
+          })()}
           emphasisAreaCourses={['FINC 409', 'ACCT 209', 'MKTG 409', 'MGMT 309']}
         />
 
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <div className="flex items-start">
-            <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 mr-3" />
-            <div>
-              <h3 className="font-semibold text-yellow-900">Action Required</h3>
-              <p className="text-sm text-yellow-800 mt-1">
-                You need to complete CSCE 399 (High Impact Experience) before graduation. Plan to
-                register by Fall 2025.
-              </p>
-            </div>
-          </div>
-        </div>
+        {/* Action items — only show warnings for courses that are NOT completed, in progress, or planned */}
+        {(() => {
+          const actionItems = [];
+          // CSCE 399 check
+          const csce399Status = isCourseCompleted('CSCE 399')
+            ? 'completed'
+            : isCourseInProgress('CSCE 399')
+            ? 'in-progress'
+            : isCoursePlanned('CSCE 399')
+            ? 'planned'
+            : 'missing';
+          if (csce399Status === 'missing') {
+            actionItems.push({
+              type: 'warning',
+              title: 'CSCE 399 — High Impact Experience',
+              message: 'You need to complete CSCE 399 before graduation. Add it to your planner or register soon.'
+            });
+          } else if (csce399Status === 'planned') {
+            actionItems.push({
+              type: 'info',
+              title: 'CSCE 399 — High Impact Experience',
+              message: 'CSCE 399 is in your planner. Make sure to register for it when the time comes.'
+            });
+          } else if (csce399Status === 'in-progress') {
+            actionItems.push({
+              type: 'success',
+              title: 'CSCE 399 — High Impact Experience',
+              message: 'Currently in progress. You\'re on track!'
+            });
+          }
+          // CSCE 482 check
+          const csce482Status = isCourseCompleted('CSCE 482')
+            ? 'completed'
+            : isCourseInProgress('CSCE 482')
+            ? 'in-progress'
+            : isCoursePlanned('CSCE 482')
+            ? 'planned'
+            : 'missing';
+          if (csce482Status === 'missing') {
+            actionItems.push({
+              type: 'warning',
+              title: 'CSCE 482 — Senior Capstone Design',
+              message: 'You need to complete CSCE 482 before graduation. Add it to your planner.'
+            });
+          } else if (csce482Status === 'in-progress') {
+            actionItems.push({
+              type: 'success',
+              title: 'CSCE 482 — Senior Capstone Design',
+              message: 'Currently in progress. You\'re on track!'
+            });
+          } else if (csce482Status === 'planned') {
+            actionItems.push({
+              type: 'info',
+              title: 'CSCE 482 — Senior Capstone Design',
+              message: 'CSCE 482 is in your planner.'
+            });
+          }
 
+          if (actionItems.length === 0) return null;
+
+          return actionItems.map((item, idx) => (
+            <div
+              key={idx}
+              className={`border rounded-lg p-4 ${
+                item.type === 'warning'
+                  ? 'bg-yellow-50 border-yellow-200'
+                  : item.type === 'info'
+                  ? 'bg-blue-50 border-blue-200'
+                  : 'bg-green-50 border-green-200'
+              }`}
+            >
+              <div className="flex items-start">
+                {item.type === 'warning' && <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 mr-3 flex-shrink-0" />}
+                {item.type === 'info' && <Calendar className="w-5 h-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" />}
+                {item.type === 'success' && <CheckCircle className="w-5 h-5 text-green-600 mt-0.5 mr-3 flex-shrink-0" />}
+                <div>
+                  <h3 className={`font-semibold ${
+                    item.type === 'warning' ? 'text-yellow-900' : item.type === 'info' ? 'text-blue-900' : 'text-green-900'
+                  }`}>{item.title}</h3>
+                  <p className={`text-sm mt-1 ${
+                    item.type === 'warning' ? 'text-yellow-800' : item.type === 'info' ? 'text-blue-800' : 'text-green-800'
+                  }`}>{item.message}</p>
+                </div>
+              </div>
+            </div>
+          ));
+        })()}
+
+        {/* Degree Requirements Progress — live data from transcript + planner */}
         <div className="bg-white rounded-lg shadow p-6">
           <h3 className="text-lg font-bold mb-4">Degree Requirements Progress</h3>
           <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-gray-700">Core CS Courses</span>
-              <span className="text-sm font-semibold text-green-600">8/12 completed</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-700">Math Requirements</span>
-              <span className="text-sm font-semibold text-green-600">3/4 completed</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-700">Emphasis Area (SWE)</span>
-              <span className="text-sm font-semibold text-yellow-600">1/3 completed</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-700">Technical Electives</span>
-              <span className="text-sm font-semibold text-gray-600">0/9 credits</span>
-            </div>
+            {(() => {
+              // Define requirement groups with their courses
+              const groups = [
+                {
+                  label: 'Core CS Courses',
+                  courses: ['CSCE 121', 'CSCE 221', 'CSCE 222', 'CSCE 312', 'CSCE 313', 'CSCE 314', 'CSCE 331', 'CSCE 411', 'CSCE 482', 'CSCE 399']
+                },
+                {
+                  label: 'Math Requirements',
+                  courses: ['MATH 151', 'MATH 152', 'MATH 304', 'STAT 211']
+                },
+                {
+                  label: 'Emphasis Area (SWE)',
+                  courses: ['CSCE 431', 'CSCE 314', 'CSCE 331']
+                }
+              ];
+
+              return groups.map((group) => {
+                const total = group.courses.length;
+                const completed = group.courses.filter(c => isCourseCompleted(c)).length;
+                const inProgress = group.courses.filter(c => isCourseInProgress(c)).length;
+                const planned = group.courses.filter(c => !isCourseCompleted(c) && !isCourseInProgress(c) && isCoursePlanned(c)).length;
+                const done = completed + inProgress + planned;
+                const color = done >= total ? 'text-green-600' : done > 0 ? 'text-yellow-600' : 'text-gray-600';
+                const parts = [];
+                if (completed > 0) parts.push(`${completed} done`);
+                if (inProgress > 0) parts.push(`${inProgress} in progress`);
+                if (planned > 0) parts.push(`${planned} planned`);
+                const summary = parts.length > 0 ? parts.join(', ') : 'Not started';
+                return (
+                  <div key={group.label} className="flex justify-between items-center">
+                    <span className="text-gray-700">{group.label}</span>
+                    <span className={`text-sm font-semibold ${color}`}>
+                      {summary} ({completed}/{total})
+                    </span>
+                  </div>
+                );
+              });
+            })()}
           </div>
         </div>
         {/* Areas evaluation bars */}
         <AreasEvaluation
           areas={REQUIREMENT_AREAS}
-          transcriptCourseList={transcriptCourseList}
+          transcriptCourseList={effectiveTranscriptCourseList}
           semesterPlans={semesterPlans}
         />
       </div>
@@ -2426,11 +2612,11 @@ Now answer the student's question based on this context and any additional infor
                                 <p className="text-sm font-semibold text-gray-900">
                                   {course.code}
                                 </p>
-                                <p className="text-xs text-gray-600">{course.title}</p>
+                                <p className="text-xs text-gray-600">{toTitleCase(course.title)}</p>
                               </div>
                               <div className="text-right">
                                 <p className="text-sm font-semibold text-gray-900">
-                                  {course.grade}
+                                  {course.grade === 'TIP' ? 'TA / IP' : course.grade}
                                 </p>
                                 {editingCourse?.termLabel === term.label && editingCourse?.courseCode === course.code ? (
                                   <div className="flex items-center gap-1">
@@ -2490,18 +2676,53 @@ Now answer the student's question based on this context and any additional infor
                                 )}
                               </div>
                             </div>
-                            {(course.transfer || course.honors) && (
-                              <div className="mt-2 flex items-center justify-end gap-2">
-                                {course.honors && (
-                                  <span className="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-700">
-                                    Honors
-                                  </span>
-                                )}
+                            {(course.transfer || course.honors || course.grade === 'IP' || course.grade === 'TIP') && (
+                              <div className="mt-2 flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {course.honors && (
+                                    <span className="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-700">
+                                      Honors
+                                    </span>
+                                  )}
+                                  {course.transfer && (
+                                    <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 flex items-center gap-1">
+                                      <CheckCircle className="w-3 h-3" />
+                                      Transfer
+                                    </span>
+                                  )}
+                                  {(course.grade === 'IP' || course.grade === 'TIP') && (
+                                    <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700">
+                                      In Progress
+                                    </span>
+                                  )}
+                                </div>
                                 {course.transfer && (
-                                  <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 flex items-center gap-1">
-                                    <CheckCircle className="w-3 h-3" />
-                                    Transfer
-                                  </span>
+                                  <label
+                                    className="flex items-center gap-1.5 cursor-pointer select-none"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={!excludedTransferCourses.has(course.code)}
+                                      onChange={(e) => {
+                                        e.stopPropagation();
+                                        setExcludedTransferCourses((prev) => {
+                                          const next = new Set(prev);
+                                          if (next.has(course.code)) {
+                                            next.delete(course.code);
+                                          } else {
+                                            next.add(course.code);
+                                          }
+                                          return next;
+                                        });
+                                        setIsTranscriptDirty(true);
+                                      }}
+                                      className="w-3.5 h-3.5 rounded border-gray-300 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
+                                    />
+                                    <span className={`text-xs ${excludedTransferCourses.has(course.code) ? 'text-gray-400 line-through' : 'text-gray-600'}`}>
+                                      Count toward degree
+                                    </span>
+                                  </label>
                                 )}
                               </div>
                             )}
@@ -3358,48 +3579,8 @@ Now answer the student's question based on this context and any additional infor
             Continue with Google
           </button>
 
-          <div className="flex items-center gap-3 my-6">
-            <div className="flex-1 h-px bg-gray-200"></div>
-            <span className="text-xs uppercase text-gray-400">or</span>
-            <div className="flex-1 h-px bg-gray-200"></div>
-          </div>
-
-          <form className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">NetID</label>
-              <input
-                type="text"
-                placeholder="netid123"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#500000]/30"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-              <input
-                type="password"
-                placeholder="••••••••"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#500000]/30"
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <button
-                type="button"
-                className="text-sm text-[#500000] font-semibold hover:underline"
-              >
-                Forgot password?
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2 rounded-lg text-white text-sm font-semibold"
-                style={{ backgroundColor: '#500000' }}
-              >
-                Sign in with NetID
-              </button>
-            </div>
-          </form>
-
           <div className="mt-6 text-sm text-gray-600 flex items-center justify-between">
-            <span>New here? Use Google to sign up.</span>
+            <span>Continue without signing in to explore the planner.</span>
             <button
               type="button"
               onClick={() => setActiveTab('planner')}
@@ -3459,7 +3640,11 @@ Now answer the student's question based on this context and any additional infor
 
                       <button
                         type="button"
-                        onClick={logout}
+                        onClick={() => {
+                          if (window.confirm('Are you sure you want to log out?')) {
+                            logout();
+                          }
+                        }}
                         className="flex items-center gap-2 border border-white/60 px-4 py-2 rounded-lg text-white hover:bg-white/10"
                       >
                         Logout
@@ -3517,40 +3702,80 @@ Now answer the student's question based on this context and any additional infor
       )}
 
       <main className={isFlowFullscreen ? 'p-0' : 'max-w-7xl mx-auto px-4 py-8'}>
-        {activeTab === 'dashboard' && <DashboardTab />}
-        {activeTab === 'planner' && <PlannerTab />}
-        {activeTab === 'prerequisites' && (
-          <PrerequisiteTab
-            isFullscreen={isFlowFullscreen}
-            onFullscreenChange={setIsFlowFullscreen}
-          />
-        )}
-        {activeTab === 'login' && <LoginPage />}
+        <div key={activeTab} className="animate-fade-in">
+          {activeTab === 'dashboard' && <DashboardTab />}
+          {activeTab === 'planner' && <PlannerTab />}
+          {activeTab === 'prerequisites' && (
+            <PrerequisiteTab
+              isFullscreen={isFlowFullscreen}
+              onFullscreenChange={setIsFlowFullscreen}
+            />
+          )}
+          {activeTab === 'login' && <LoginPage />}
+        </div>
       </main>
 
       {!isFlowFullscreen && (
         <div className="fixed right-0 bottom-6 z-50 flex items-end">
           <div
-            className={`mr-3 w-80 rounded-2xl border border-gray-200 bg-white shadow-xl transition-all duration-300 ease-out ${
+            className={`mr-3 rounded-2xl border border-gray-200 bg-white shadow-xl transition-all duration-300 ease-out flex relative ${
               isChatOpen
                 ? 'opacity-100 translate-x-0 pointer-events-auto'
                 : 'opacity-0 translate-x-6 pointer-events-none'
             }`}
+            style={isChatOpen ? { width: chatWidth, height: chatHeight } : { width: 320, height: 400 }}
           >
-              <div className="flex items-center justify-between border-b px-4 py-3">
+              <div
+                role="button"
+                tabIndex={0}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setIsResizingChat(true);
+                }}
+                className={`absolute -top-3 -left-3 w-7 h-7 rounded-full bg-white border-2 border-gray-200 shadow-md cursor-nwse-resize hover:border-[#500000]/40 hover:shadow-lg flex items-center justify-center z-20 transition-shadow ${
+                  isResizingChat ? 'border-[#500000]/60 shadow-lg ring-2 ring-[#500000]/20' : ''
+                }`}
+                aria-label="Drag to resize chat panel"
+              >
+                <span className="flex -rotate-45 gap-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                </span>
+              </div>
+              <div className="flex-1 min-w-0 flex flex-col min-h-0">
+              <div className="flex items-center justify-between border-b px-4 py-3 flex-shrink-0">
                 <div>
                   <p className="text-sm font-semibold text-gray-900">DegreeFlow Assistant</p>
                   <p className="text-xs text-gray-500">Ask anything about your plan</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setIsChatOpen(false)}
-                  className="text-xs text-gray-500 hover:text-gray-800"
-                >
-                  Close
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                    setChatWidth((w) => (w <= 320 ? 420 : 320));
+                    setChatHeight((h) => (h <= 400 ? 500 : 400));
+                  }}
+                    className="p-1.5 rounded text-gray-500 hover:text-gray-800 hover:bg-gray-100"
+                    title={chatWidth <= 320 ? 'Expand chat' : 'Shrink chat'}
+                    aria-label={chatWidth <= 320 ? 'Expand chat' : 'Shrink chat'}
+                  >
+                    {chatWidth <= 320 ? (
+                      <PanelRightOpen className="w-4 h-4" />
+                    ) : (
+                      <PanelRightClose className="w-4 h-4" />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsChatOpen(false)}
+                    className="text-xs text-gray-500 hover:text-gray-800"
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
-              <div className="h-56 px-4 py-3 text-xs text-gray-600 space-y-2 overflow-y-auto">
+              <div className="flex-1 min-h-0 px-4 py-3 text-xs text-gray-600 space-y-2 overflow-y-auto">
                 {chatMessages.length === 0 ? (
                   <div className="text-center text-gray-400 mt-8">
                     <p className="font-semibold mb-1">Welcome to DegreeFlow Assistant!</p>
@@ -3611,7 +3836,7 @@ Now answer the student's question based on this context and any additional infor
                   </div>
                 )}
               </div>
-              <div className="border-t px-3 py-3">
+              <div className="border-t px-3 py-3 flex-shrink-0">
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
@@ -3638,6 +3863,7 @@ Now answer the student's question based on this context and any additional infor
                 </div>
               </div>
             </div>
+          </div>
 
           <button
             type="button"
