@@ -18,6 +18,12 @@
       "first_name": "Rayaan",
       "last_name": "Maredia",
       "email": "raymaredia28@gmail.com"
+    },
+    {
+      "user_id": 4,
+      "first_name": "Rayaan",
+      "last_name": "Maredia",
+      "email": "raymaredia28@tamu.edu"
     }
   ],
   "emphasis_areas": [],
@@ -915,7 +921,7 @@
       "status": "In Progress"
     },
     {
-      "entry_id": 52,
+      "entry_id": 154,
       "user_id": 2,
       "course_id": 24,
       "student_emphasis_id": null,
@@ -925,7 +931,7 @@
       "status": "Transfer"
     },
     {
-      "entry_id": 53,
+      "entry_id": 155,
       "user_id": 2,
       "course_id": 1,
       "student_emphasis_id": null,
@@ -935,7 +941,7 @@
       "status": "Transfer"
     },
     {
-      "entry_id": 54,
+      "entry_id": 156,
       "user_id": 2,
       "course_id": 3,
       "student_emphasis_id": null,
@@ -945,7 +951,7 @@
       "status": "Transfer"
     },
     {
-      "entry_id": 55,
+      "entry_id": 157,
       "user_id": 2,
       "course_id": 6,
       "student_emphasis_id": null,
@@ -955,7 +961,7 @@
       "status": "Transfer"
     },
     {
-      "entry_id": 56,
+      "entry_id": 158,
       "user_id": 2,
       "course_id": 7,
       "student_emphasis_id": null,
@@ -965,7 +971,7 @@
       "status": "Transfer"
     },
     {
-      "entry_id": 57,
+      "entry_id": 159,
       "user_id": 2,
       "course_id": 8,
       "student_emphasis_id": null,
@@ -975,7 +981,7 @@
       "status": "Transfer"
     },
     {
-      "entry_id": 58,
+      "entry_id": 160,
       "user_id": 2,
       "course_id": 25,
       "student_emphasis_id": null,
@@ -985,7 +991,7 @@
       "status": "Transfer"
     },
     {
-      "entry_id": 59,
+      "entry_id": 161,
       "user_id": 2,
       "course_id": 26,
       "student_emphasis_id": null,
@@ -995,7 +1001,7 @@
       "status": "Evaluated"
     },
     {
-      "entry_id": 60,
+      "entry_id": 162,
       "user_id": 2,
       "course_id": 27,
       "student_emphasis_id": null,
@@ -1005,7 +1011,7 @@
       "status": "Evaluated"
     },
     {
-      "entry_id": 61,
+      "entry_id": 163,
       "user_id": 2,
       "course_id": 28,
       "student_emphasis_id": null,
@@ -1015,7 +1021,7 @@
       "status": "Evaluated"
     },
     {
-      "entry_id": 62,
+      "entry_id": 164,
       "user_id": 2,
       "course_id": 29,
       "student_emphasis_id": null,
@@ -1025,7 +1031,7 @@
       "status": "Evaluated"
     },
     {
-      "entry_id": 63,
+      "entry_id": 165,
       "user_id": 2,
       "course_id": 30,
       "student_emphasis_id": null,
@@ -1035,7 +1041,7 @@
       "status": "Evaluated"
     },
     {
-      "entry_id": 64,
+      "entry_id": 166,
       "user_id": 2,
       "course_id": 31,
       "student_emphasis_id": null,
@@ -1045,7 +1051,7 @@
       "status": "Evaluated"
     },
     {
-      "entry_id": 65,
+      "entry_id": 167,
       "user_id": 2,
       "course_id": 32,
       "student_emphasis_id": null,
@@ -1055,7 +1061,7 @@
       "status": "Evaluated"
     },
     {
-      "entry_id": 66,
+      "entry_id": 168,
       "user_id": 2,
       "course_id": 33,
       "student_emphasis_id": null,
@@ -1065,7 +1071,7 @@
       "status": "Evaluated"
     },
     {
-      "entry_id": 67,
+      "entry_id": 169,
       "user_id": 2,
       "course_id": 2,
       "student_emphasis_id": null,
@@ -1075,7 +1081,7 @@
       "status": "Evaluated"
     },
     {
-      "entry_id": 68,
+      "entry_id": 170,
       "user_id": 2,
       "course_id": 4,
       "student_emphasis_id": null,
@@ -1085,7 +1091,7 @@
       "status": "Evaluated"
     },
     {
-      "entry_id": 69,
+      "entry_id": 171,
       "user_id": 2,
       "course_id": 5,
       "student_emphasis_id": null,
@@ -1095,7 +1101,7 @@
       "status": "Evaluated"
     },
     {
-      "entry_id": 70,
+      "entry_id": 172,
       "user_id": 2,
       "course_id": 54,
       "student_emphasis_id": null,
@@ -1105,7 +1111,7 @@
       "status": "Transfer"
     },
     {
-      "entry_id": 71,
+      "entry_id": 173,
       "user_id": 2,
       "course_id": 11,
       "student_emphasis_id": null,
@@ -1115,7 +1121,7 @@
       "status": "Transfer"
     },
     {
-      "entry_id": 72,
+      "entry_id": 174,
       "user_id": 2,
       "course_id": 35,
       "student_emphasis_id": null,
@@ -1125,7 +1131,7 @@
       "status": "Evaluated"
     },
     {
-      "entry_id": 73,
+      "entry_id": 175,
       "user_id": 2,
       "course_id": 9,
       "student_emphasis_id": null,
@@ -1135,7 +1141,7 @@
       "status": "Evaluated"
     },
     {
-      "entry_id": 74,
+      "entry_id": 176,
       "user_id": 2,
       "course_id": 10,
       "student_emphasis_id": null,
@@ -1145,7 +1151,7 @@
       "status": "Evaluated"
     },
     {
-      "entry_id": 75,
+      "entry_id": 177,
       "user_id": 2,
       "course_id": 36,
       "student_emphasis_id": null,
@@ -1155,7 +1161,7 @@
       "status": "Evaluated"
     },
     {
-      "entry_id": 76,
+      "entry_id": 178,
       "user_id": 2,
       "course_id": 37,
       "student_emphasis_id": null,
@@ -1165,7 +1171,7 @@
       "status": "Evaluated"
     },
     {
-      "entry_id": 77,
+      "entry_id": 179,
       "user_id": 2,
       "course_id": 38,
       "student_emphasis_id": null,
@@ -1175,7 +1181,7 @@
       "status": "Evaluated"
     },
     {
-      "entry_id": 78,
+      "entry_id": 180,
       "user_id": 2,
       "course_id": 12,
       "student_emphasis_id": null,
@@ -1185,7 +1191,7 @@
       "status": "Evaluated"
     },
     {
-      "entry_id": 79,
+      "entry_id": 181,
       "user_id": 2,
       "course_id": 13,
       "student_emphasis_id": null,
@@ -1195,7 +1201,7 @@
       "status": "Evaluated"
     },
     {
-      "entry_id": 80,
+      "entry_id": 182,
       "user_id": 2,
       "course_id": 14,
       "student_emphasis_id": null,
@@ -1205,7 +1211,7 @@
       "status": "Evaluated"
     },
     {
-      "entry_id": 81,
+      "entry_id": 183,
       "user_id": 2,
       "course_id": 15,
       "student_emphasis_id": null,
@@ -1215,7 +1221,7 @@
       "status": "Evaluated"
     },
     {
-      "entry_id": 82,
+      "entry_id": 184,
       "user_id": 2,
       "course_id": 16,
       "student_emphasis_id": null,
@@ -1225,7 +1231,7 @@
       "status": "Evaluated"
     },
     {
-      "entry_id": 83,
+      "entry_id": 185,
       "user_id": 2,
       "course_id": 39,
       "student_emphasis_id": null,
@@ -1235,7 +1241,7 @@
       "status": "Evaluated"
     },
     {
-      "entry_id": 84,
+      "entry_id": 186,
       "user_id": 2,
       "course_id": 40,
       "student_emphasis_id": null,
@@ -1245,7 +1251,7 @@
       "status": "Evaluated"
     },
     {
-      "entry_id": 85,
+      "entry_id": 187,
       "user_id": 2,
       "course_id": 18,
       "student_emphasis_id": null,
@@ -1255,7 +1261,7 @@
       "status": "Evaluated"
     },
     {
-      "entry_id": 86,
+      "entry_id": 188,
       "user_id": 2,
       "course_id": 19,
       "student_emphasis_id": null,
@@ -1265,672 +1271,52 @@
       "status": "Evaluated"
     },
     {
-      "entry_id": 87,
+      "entry_id": 189,
       "user_id": 2,
       "course_id": 41,
       "student_emphasis_id": null,
       "term": "Spring",
       "year": 2025,
-      "grade": "B",
-      "status": "Evaluated"
+      "grade": "IP",
+      "status": "In Progress"
     },
     {
-      "entry_id": 88,
+      "entry_id": 190,
       "user_id": 2,
       "course_id": 21,
       "student_emphasis_id": null,
       "term": "Spring",
       "year": 2025,
-      "grade": "A",
-      "status": "Evaluated"
+      "grade": "IP",
+      "status": "In Progress"
     },
     {
-      "entry_id": 89,
+      "entry_id": 191,
       "user_id": 2,
       "course_id": 22,
       "student_emphasis_id": null,
       "term": "Spring",
       "year": 2025,
-      "grade": "A",
-      "status": "Evaluated"
+      "grade": "IP",
+      "status": "In Progress"
     },
     {
-      "entry_id": 90,
+      "entry_id": 192,
       "user_id": 2,
       "course_id": 42,
       "student_emphasis_id": null,
       "term": "Spring",
       "year": 2025,
-      "grade": "A",
-      "status": "Evaluated"
+      "grade": "IP",
+      "status": "In Progress"
     },
     {
-      "entry_id": 91,
+      "entry_id": 193,
       "user_id": 2,
       "course_id": 23,
       "student_emphasis_id": null,
       "term": "Spring",
       "year": 2025,
-      "grade": "B",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 92,
-      "user_id": 2,
-      "course_id": 43,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2025,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 93,
-      "user_id": 2,
-      "course_id": 44,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2025,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 94,
-      "user_id": 2,
-      "course_id": 45,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2025,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 95,
-      "user_id": 2,
-      "course_id": 46,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2025,
-      "grade": "S",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 96,
-      "user_id": 2,
-      "course_id": 47,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2025,
-      "grade": "B",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 97,
-      "user_id": 2,
-      "course_id": 48,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2026,
-      "grade": "TA",
-      "status": "In Progress"
-    },
-    {
-      "entry_id": 98,
-      "user_id": 2,
-      "course_id": 49,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2026,
-      "grade": "TIP",
-      "status": "In Progress"
-    },
-    {
-      "entry_id": 99,
-      "user_id": 2,
-      "course_id": 50,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2026,
-      "grade": "IP",
-      "status": "In Progress"
-    },
-    {
-      "entry_id": 100,
-      "user_id": 2,
-      "course_id": 51,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2026,
-      "grade": "IP",
-      "status": "In Progress"
-    },
-    {
-      "entry_id": 101,
-      "user_id": 2,
-      "course_id": 52,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2026,
-      "grade": "A",
-      "status": "In Progress"
-    },
-    {
-      "entry_id": 102,
-      "user_id": 2,
-      "course_id": 53,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2026,
-      "grade": "IP",
-      "status": "In Progress"
-    },
-    {
-      "entry_id": 103,
-      "user_id": 3,
-      "course_id": 24,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2020,
-      "grade": "TA",
-      "status": "Transfer"
-    },
-    {
-      "entry_id": 104,
-      "user_id": 3,
-      "course_id": 1,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2020,
-      "grade": "TA",
-      "status": "Transfer"
-    },
-    {
-      "entry_id": 105,
-      "user_id": 3,
-      "course_id": 3,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2021,
-      "grade": "TA",
-      "status": "Transfer"
-    },
-    {
-      "entry_id": 106,
-      "user_id": 3,
-      "course_id": 6,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2021,
-      "grade": "TA",
-      "status": "Transfer"
-    },
-    {
-      "entry_id": 107,
-      "user_id": 3,
-      "course_id": 7,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2021,
-      "grade": "TA",
-      "status": "Transfer"
-    },
-    {
-      "entry_id": 108,
-      "user_id": 3,
-      "course_id": 8,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2022,
-      "grade": "TA",
-      "status": "Transfer"
-    },
-    {
-      "entry_id": 109,
-      "user_id": 3,
-      "course_id": 25,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2022,
-      "grade": "TA",
-      "status": "Transfer"
-    },
-    {
-      "entry_id": 110,
-      "user_id": 3,
-      "course_id": 26,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2022,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 111,
-      "user_id": 3,
-      "course_id": 27,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2022,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 112,
-      "user_id": 3,
-      "course_id": 28,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2022,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 113,
-      "user_id": 3,
-      "course_id": 29,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2022,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 114,
-      "user_id": 3,
-      "course_id": 30,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2022,
-      "grade": "S",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 115,
-      "user_id": 3,
-      "course_id": 31,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2022,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 116,
-      "user_id": 3,
-      "course_id": 32,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2022,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 117,
-      "user_id": 3,
-      "course_id": 33,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2023,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 118,
-      "user_id": 3,
-      "course_id": 2,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2023,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 119,
-      "user_id": 3,
-      "course_id": 4,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2023,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 120,
-      "user_id": 3,
-      "course_id": 5,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2023,
-      "grade": "B",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 121,
-      "user_id": 3,
-      "course_id": 54,
-      "student_emphasis_id": null,
-      "term": "Summer",
-      "year": 2023,
-      "grade": "TA",
-      "status": "Transfer"
-    },
-    {
-      "entry_id": 122,
-      "user_id": 3,
-      "course_id": 11,
-      "student_emphasis_id": null,
-      "term": "Summer",
-      "year": 2023,
-      "grade": "TA",
-      "status": "Transfer"
-    },
-    {
-      "entry_id": 123,
-      "user_id": 3,
-      "course_id": 35,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2023,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 124,
-      "user_id": 3,
-      "course_id": 9,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2023,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 125,
-      "user_id": 3,
-      "course_id": 10,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2023,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 126,
-      "user_id": 3,
-      "course_id": 36,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2023,
-      "grade": "B",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 127,
-      "user_id": 3,
-      "course_id": 37,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2023,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 128,
-      "user_id": 3,
-      "course_id": 38,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2024,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 129,
-      "user_id": 3,
-      "course_id": 12,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2024,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 130,
-      "user_id": 3,
-      "course_id": 13,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2024,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 131,
-      "user_id": 3,
-      "course_id": 14,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2024,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 132,
-      "user_id": 3,
-      "course_id": 15,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2024,
-      "grade": "B",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 133,
-      "user_id": 3,
-      "course_id": 16,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2024,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 134,
-      "user_id": 3,
-      "course_id": 39,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2024,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 135,
-      "user_id": 3,
-      "course_id": 40,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2024,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 136,
-      "user_id": 3,
-      "course_id": 18,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2024,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 137,
-      "user_id": 3,
-      "course_id": 19,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2024,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 138,
-      "user_id": 3,
-      "course_id": 41,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2025,
-      "grade": "B",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 139,
-      "user_id": 3,
-      "course_id": 21,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2025,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 140,
-      "user_id": 3,
-      "course_id": 22,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2025,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 141,
-      "user_id": 3,
-      "course_id": 42,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2025,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 142,
-      "user_id": 3,
-      "course_id": 23,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2025,
-      "grade": "B",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 143,
-      "user_id": 3,
-      "course_id": 44,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2025,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 144,
-      "user_id": 3,
-      "course_id": 46,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2025,
-      "grade": "S",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 145,
-      "user_id": 3,
-      "course_id": 47,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2025,
-      "grade": "B",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 146,
-      "user_id": 3,
-      "course_id": 43,
-      "student_emphasis_id": null,
-      "term": "Winter",
-      "year": 2025,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 147,
-      "user_id": 3,
-      "course_id": 45,
-      "student_emphasis_id": null,
-      "term": "Winter",
-      "year": 2025,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 148,
-      "user_id": 3,
-      "course_id": 48,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2026,
-      "grade": "TA",
-      "status": "In Progress"
-    },
-    {
-      "entry_id": 149,
-      "user_id": 3,
-      "course_id": 49,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2026,
-      "grade": "TIP",
-      "status": "In Progress"
-    },
-    {
-      "entry_id": 150,
-      "user_id": 3,
-      "course_id": 50,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2026,
-      "grade": "IP",
-      "status": "In Progress"
-    },
-    {
-      "entry_id": 151,
-      "user_id": 3,
-      "course_id": 51,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2026,
-      "grade": "IP",
-      "status": "In Progress"
-    },
-    {
-      "entry_id": 152,
-      "user_id": 3,
-      "course_id": 52,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2026,
-      "grade": "A",
-      "status": "In Progress"
-    },
-    {
-      "entry_id": 153,
-      "user_id": 3,
-      "course_id": 53,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2026,
       "grade": "IP",
       "status": "In Progress"
     }
@@ -3242,7 +2628,7 @@
       "id": "planner_1770739845349_tln2gt",
       "user_id": 3,
       "created_at": "2026-02-10T16:10:45.349Z",
-      "updated_at": "2026-02-10T16:20:28.814Z",
+      "updated_at": "2026-02-12T14:46:31.518Z",
       "payload": {
         "semesterPlans": {
           "Fall 2021": [],
@@ -3453,15 +2839,15 @@
             "courses": [
               {
                 "code": "CHEM 119",
-                "title": "FUND OF CHEMISTRY I TEhrs:16.000",
+                "title": "Fund of Chemistry I T",
                 "credits": 4,
                 "grade": "TA",
                 "transfer": true
               },
               {
                 "code": "ENGL 103",
-                "title": "INTROTO COMP & RHET mo so oom Engineering - General Engineering",
-                "credits": 103,
+                "title": "Intro to Comp & Rhet",
+                "credits": 3,
                 "grade": "TA",
                 "transfer": true
               }
@@ -3473,8 +2859,8 @@
             "courses": [
               {
                 "code": "ENGL 104",
-                "title": "COMPOSITION & RHETORIC  3000 0.000",
-                "credits": 0,
+                "title": "Composition & Rhetoric",
+                "credits": 3,
                 "grade": "TA",
                 "transfer": true
               }
@@ -3486,15 +2872,15 @@
             "courses": [
               {
                 "code": "ECON 202",
-                "title": "PRINOF ECONOMICS Tm 2000 0000 Ehrs: 12000 GPA-Hrs: 12000 Qpis: 46000 GPA:3833",
-                "credits": 202,
+                "title": "Prin of Economics",
+                "credits": 3,
                 "grade": "TA",
                 "transfer": true
               },
               {
                 "code": "ENGL 231",
-                "title": "SURVEY OF ENGLISH LITI mo so 000 i",
-                "credits": 231,
+                "title": "Survey of English Lit I",
+                "credits": 3,
                 "grade": "TA",
                 "transfer": true
               }
@@ -3506,14 +2892,14 @@
             "courses": [
               {
                 "code": "ENGL 232",
-                "title": "SURVEY OF ENGLISH LITI T3000 000 CSCE 120 PROGRM DESIGN & so A 12000",
-                "credits": 232,
+                "title": "Survey of English Lit II",
+                "credits": 3,
                 "grade": "TA",
                 "transfer": true
               },
               {
                 "code": "POLS 206",
-                "title": "AMER NATNL GOVT",
+                "title": "Amer Natnl Govt",
                 "credits": 3,
                 "grade": "TA",
                 "transfer": true
@@ -3526,49 +2912,49 @@
             "courses": [
               {
                 "code": "CHEM 107",
-                "title": "GEN CHEM FOR ENGINEERS",
+                "title": "Gen Chem for Engineers",
                 "credits": 3,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "CHEM 117",
-                "title": "GEN CHEM FOR ENGR LAB",
+                "title": "Gen Chem for Engr Lab",
                 "credits": 1,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "DCED 202",
-                "title": "DANCE APPRECIATION",
+                "title": "Dance Appreciation",
                 "credits": 3,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "ENGR 102",
-                "title": "ENGR LAB I COMPUTATION",
+                "title": "Engr Lab I Computation",
                 "credits": 2,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "FYEX 101",
-                "title": "HULLABALOO U",
+                "title": "Hullabaloo U",
                 "credits": 0,
                 "grade": "S",
                 "transfer": false
               },
               {
                 "code": "MATH 151",
-                "title": "ENGINEERING MATH I",
+                "title": "Engineering Math I",
                 "credits": 4,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "POLS 207",
-                "title": "STATE & LOCAL GOVT",
+                "title": "State & Local Govt",
                 "credits": 3,
                 "grade": "A",
                 "transfer": false
@@ -3581,29 +2967,29 @@
             "courses": [
               {
                 "code": "MATH 152",
-                "title": "ENGINEERING MATH II",
+                "title": "Engineering Math II",
                 "credits": 4,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "PERF 201",
-                "title": "MUS & HUMN EXPERIENCE 3000 A 12000",
-                "credits": 201,
+                "title": "Mus & Human Experience",
+                "credits": 3,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "PHYS 206",
-                "title": "NEWIONINMECHANICS 3000 A 12000",
-                "credits": 206,
+                "title": "Newtonian Mechanics Engr & Sci",
+                "credits": 3,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "PHYS 216",
-                "title": "EX PHYS ENGRLAB II 20m  com",
-                "credits": 8,
+                "title": "Ex Phys Engr Lab II Mechanics",
+                "credits": 2,
                 "grade": "B",
                 "transfer": false
               }
@@ -3622,8 +3008,8 @@
               },
               {
                 "code": "GEOG 203",
-                "title": "PLANET EARTH mmo oom Ehrs: 13000 GPA-Hrs: 13000 Qpis: 49.000 GPA:",
-                "credits": 3.769,
+                "title": "Planet Earth",
+                "credits": 3,
                 "grade": "TA",
                 "transfer": true
               }
@@ -3635,35 +3021,35 @@
             "courses": [
               {
                 "code": "CSCE 120",
-                "title": "PROGRAM DESIGN & CONCEPTS",
+                "title": "Program Design & Concepts",
                 "credits": 3,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "CSCE 181",
-                "title": "INTROTO COMPUTING Loo  som",
-                "credits": 181,
+                "title": "Intro to Computing",
+                "credits": 1,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "CSCE 222",
-                "title": "DISCRETE STRUC COMPUTING 3000  12000",
-                "credits": 222,
+                "title": "Discrete Struc Computing",
+                "credits": 3,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "MATH 251",
-                "title": "ENGINEERING MATH III",
+                "title": "Engineering Math III",
                 "credits": 3,
                 "grade": "B",
                 "transfer": false
               },
               {
                 "code": "MATH 304",
-                "title": "LINEAR ALGEBRA",
+                "title": "Linear Algebra",
                 "credits": 3,
                 "grade": "A",
                 "transfer": false
@@ -3676,29 +3062,29 @@
             "courses": [
               {
                 "code": "CSCE 221",
-                "title": "DATA STRUC & ALGORITHMS",
+                "title": "Data Struc & Algorithms",
                 "credits": 4,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "CSCE 312",
-                "title": "COMPUTERORGNIZATION 4000 A 16.000",
-                "credits": 312,
+                "title": "Computer Organization",
+                "credits": 4,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "CSCE 314",
-                "title": "PROGRMMING LANGUAGES 3000 A 12000",
-                "credits": 314,
+                "title": "Programming Languages",
+                "credits": 3,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "STAT 211",
-                "title": "PRIN OF STATISTICS I 50  120m",
-                "credits": 4,
+                "title": "Prin of Statistics I",
+                "credits": 3,
                 "grade": "A",
                 "transfer": false
               }
@@ -3710,43 +3096,43 @@
             "courses": [
               {
                 "code": "CSCE 313",
-                "title": "INTROTO COMPUTER SYSTEM 4000  12000",
-                "credits": 313,
+                "title": "Intro to Computer System",
+                "credits": 4,
                 "grade": "B",
                 "transfer": false
               },
               {
                 "code": "CSCE 331",
-                "title": "FOUNDTIONSSOFTWARE 4000 A 16000",
-                "credits": 331,
+                "title": "Foundations Software Engineer",
+                "credits": 4,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "CSCE 481",
-                "title": "SEMINAR",
+                "title": "Seminar",
                 "credits": 1,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "FINC 409",
-                "title": "SURVEY OF FINANCE PRIN T",
+                "title": "Survey of Finance Prin T",
                 "credits": 3,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "GEOL 101",
-                "title": "PRINCIPLES OF GEOLOGY — 30W  12000",
-                "credits": 101,
+                "title": "Principles of Geology",
+                "credits": 3,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "GEOL 102",
-                "title": "PRINCIPLES OF GEOLOGY LAB 1000  4000",
-                "credits": 4,
+                "title": "Principles of Geology Lab",
+                "credits": 1,
                 "grade": "A",
                 "transfer": false
               }
@@ -3758,35 +3144,35 @@
             "courses": [
               {
                 "code": "CSCE 310",
-                "title": "DATABASE SYSTEMS",
+                "title": "Database Systems",
                 "credits": 3,
                 "grade": "B",
                 "transfer": false
               },
               {
                 "code": "CSCE 411",
-                "title": "DESIGN ANALY ALGORITHMS 3000",
-                "credits": 411,
+                "title": "Design Analy Algorithms",
+                "credits": 3,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "CSCE 413",
-                "title": "SOFTWARE SECURITY 3000",
-                "credits": 413,
+                "title": "Software Securitcy",
+                "credits": 3,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "CSCE 448",
-                "title": "COMPUTATIONAL PHOTOGRAPHY",
+                "title": "Computational Photography",
                 "credits": 3,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "MKTG 409",
-                "title": "PRINCIPLES OF MARKETING .000",
+                "title": "Principles of Marketing",
                 "credits": 3,
                 "grade": "B",
                 "transfer": false
@@ -3798,44 +3184,38 @@
             "status": "Evaluated",
             "courses": [
               {
-                "code": "COMM 203",
-                "title": "PUBLIC SPEAKING",
+                "code": "ACCT 209",
+                "title": "Survey of Acct Prin O",
                 "credits": 3,
                 "grade": "A",
                 "transfer": false
               },
               {
-                "code": "CSCE 399",
-                "title": "HIGH-IMPACT EXPERIENCE",
-                "credits": 0,
-                "grade": "S",
-                "transfer": false
-              },
-              {
-                "code": "CSCE 464",
-                "title": "WIRELESS AND MOBILE SYS",
-                "credits": 3,
-                "grade": "B",
-                "transfer": false
-              }
-            ]
-          },
-          {
-            "label": "Winter 2025",
-            "status": "Evaluated",
-            "courses": [
-              {
-                "code": "ACCT 209",
-                "title": "SURVEY OF ACCT PRIN O",
+                "code": "COMM 203",
+                "title": "Public Speaking",
                 "credits": 3,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "CSCE 305",
-                "title": "COMPUTATIONAL DATA SCIENCE",
+                "title": "Computational Data Science",
                 "credits": 3,
                 "grade": "A",
+                "transfer": false
+              },
+              {
+                "code": "CSCE 399",
+                "title": "High-impact Experience",
+                "credits": 0,
+                "grade": "S",
+                "transfer": false
+              },
+              {
+                "code": "CSCE 464",
+                "title": "Wireless and Mobile Sys",
+                "credits": 3,
+                "grade": "B",
                 "transfer": false
               }
             ]
@@ -3846,42 +3226,42 @@
             "courses": [
               {
                 "code": "HIST 105",
-                "title": "HISTORY OF THE U S",
+                "title": "History of the U S",
                 "credits": 3,
                 "grade": "TA",
                 "transfer": true
               },
               {
                 "code": "HIST 106",
-                "title": "HISTORY OF THE U",
+                "title": "History of the U S",
                 "credits": 3,
                 "grade": "TIP",
-                "transfer": false
+                "transfer": true
               },
               {
                 "code": "CSCE 432",
-                "title": "ACCESSIBLE COMPUTING",
+                "title": "Accessible Computing",
                 "credits": 3,
                 "grade": "IP",
                 "transfer": false
               },
               {
                 "code": "CSCE 436",
-                "title": "COMP HUMAN INTERACTION",
+                "title": "Comp Human Interaction",
                 "credits": 3,
                 "grade": "IP",
                 "transfer": false
               },
               {
                 "code": "CSCE 482",
-                "title": "SR CAPSTONE DESIGN",
+                "title": "Sr Capstone Design",
                 "credits": 3,
                 "grade": "A",
                 "transfer": false
               },
               {
                 "code": "MGMT 309",
-                "title": "SURVEY OF MANAGEMENT",
+                "title": "Survey of Management",
                 "credits": 3,
                 "grade": "IP",
                 "transfer": false
@@ -3890,8 +3270,8 @@
           }
         ],
         "transcriptTotals": null,
-        "selectedPlanYear": "2025-2026",
-        "selectedTranscriptYear": "2025-2026"
+        "selectedPlanYear": "2021-2022",
+        "selectedTranscriptYear": "2023-2024"
       }
     }
   ]
