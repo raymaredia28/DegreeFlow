@@ -131,7 +131,7 @@
       "course_id": 15,
       "department": "CSCE",
       "course_number": "313",
-      "title": "Intro to Computer System",
+      "title": "Intro to Computer Systems",
       "credits": 4
     },
     {
@@ -180,7 +180,7 @@
       "course_id": 22,
       "department": "CSCE",
       "course_number": "413",
-      "title": "Software Securitcy",
+      "title": "Software Security",
       "credits": 3
     },
     {
@@ -194,7 +194,7 @@
       "course_id": 24,
       "department": "CHEM",
       "course_number": "119",
-      "title": "Fund of Chemistry I T",
+      "title": "Fund of Chemistry I",
       "credits": 4
     },
     {
@@ -306,7 +306,7 @@
       "course_id": 40,
       "department": "FINC",
       "course_number": "409",
-      "title": "Survey of Finance Prin T",
+      "title": "Survey of Finance Prin",
       "credits": 3
     },
     {
@@ -1677,8 +1677,8 @@
       "student_emphasis_id": null,
       "term": "Spring",
       "year": 2025,
-      "grade": "B",
-      "status": "Evaluated"
+      "grade": "IP",
+      "status": "In Progress"
     },
     {
       "entry_id": 230,
@@ -1687,8 +1687,8 @@
       "student_emphasis_id": null,
       "term": "Spring",
       "year": 2025,
-      "grade": "A",
-      "status": "Evaluated"
+      "grade": "IP",
+      "status": "In Progress"
     },
     {
       "entry_id": 231,
@@ -1697,8 +1697,8 @@
       "student_emphasis_id": null,
       "term": "Spring",
       "year": 2025,
-      "grade": "A",
-      "status": "Evaluated"
+      "grade": "IP",
+      "status": "In Progress"
     },
     {
       "entry_id": 232,
@@ -1707,8 +1707,8 @@
       "student_emphasis_id": null,
       "term": "Spring",
       "year": 2025,
-      "grade": "A",
-      "status": "Evaluated"
+      "grade": "IP",
+      "status": "In Progress"
     },
     {
       "entry_id": 233,
@@ -1717,116 +1717,6 @@
       "student_emphasis_id": null,
       "term": "Spring",
       "year": 2025,
-      "grade": "B",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 234,
-      "user_id": 3,
-      "course_id": 43,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2025,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 235,
-      "user_id": 3,
-      "course_id": 44,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2025,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 236,
-      "user_id": 3,
-      "course_id": 45,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2025,
-      "grade": "A",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 237,
-      "user_id": 3,
-      "course_id": 46,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2025,
-      "grade": "S",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 238,
-      "user_id": 3,
-      "course_id": 47,
-      "student_emphasis_id": null,
-      "term": "Fall",
-      "year": 2025,
-      "grade": "B",
-      "status": "Evaluated"
-    },
-    {
-      "entry_id": 239,
-      "user_id": 3,
-      "course_id": 48,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2026,
-      "grade": "TA",
-      "status": "In Progress"
-    },
-    {
-      "entry_id": 240,
-      "user_id": 3,
-      "course_id": 49,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2026,
-      "grade": "TIP",
-      "status": "In Progress"
-    },
-    {
-      "entry_id": 241,
-      "user_id": 3,
-      "course_id": 50,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2026,
-      "grade": "IP",
-      "status": "In Progress"
-    },
-    {
-      "entry_id": 242,
-      "user_id": 3,
-      "course_id": 51,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2026,
-      "grade": "IP",
-      "status": "In Progress"
-    },
-    {
-      "entry_id": 243,
-      "user_id": 3,
-      "course_id": 52,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2026,
-      "grade": "A",
-      "status": "In Progress"
-    },
-    {
-      "entry_id": 244,
-      "user_id": 3,
-      "course_id": 53,
-      "student_emphasis_id": null,
-      "term": "Spring",
-      "year": 2026,
       "grade": "IP",
       "status": "In Progress"
     }
@@ -3138,7 +3028,7 @@
       "id": "planner_1770739845349_tln2gt",
       "user_id": 3,
       "created_at": "2026-02-10T16:10:45.349Z",
-      "updated_at": "2026-02-12T15:56:28.580Z",
+      "updated_at": "2026-02-17T15:38:52.575Z",
       "payload": {
         "semesterPlans": {
           "Fall 2021": [],
@@ -3349,7 +3239,7 @@
             "courses": [
               {
                 "code": "CHEM 119",
-                "title": "Fund of Chemistry I T",
+                "title": "Fund of Chemistry I",
                 "credits": 4,
                 "grade": "TA",
                 "transfer": true
@@ -3424,50 +3314,43 @@
                 "code": "CHEM 107",
                 "title": "Gen Chem for Engineers",
                 "credits": 3,
-                "grade": "A",
-                "transfer": false
+                "grade": "A"
               },
               {
                 "code": "CHEM 117",
                 "title": "Gen Chem for Engr Lab",
                 "credits": 1,
-                "grade": "A",
-                "transfer": false
+                "grade": "A"
               },
               {
                 "code": "DCED 202",
                 "title": "Dance Appreciation",
                 "credits": 3,
-                "grade": "A",
-                "transfer": false
+                "grade": "A"
               },
               {
                 "code": "ENGR 102",
                 "title": "Engr Lab I Computation",
                 "credits": 2,
-                "grade": "A",
-                "transfer": false
+                "grade": "A"
               },
               {
                 "code": "FYEX 101",
                 "title": "Hullabaloo U",
                 "credits": 0,
-                "grade": "S",
-                "transfer": false
+                "grade": "S"
               },
               {
                 "code": "MATH 151",
                 "title": "Engineering Math I",
                 "credits": 4,
-                "grade": "A",
-                "transfer": false
+                "grade": "A"
               },
               {
                 "code": "POLS 207",
                 "title": "State & Local Govt",
                 "credits": 3,
-                "grade": "A",
-                "transfer": false
+                "grade": "A"
               }
             ]
           },
@@ -3479,29 +3362,25 @@
                 "code": "MATH 152",
                 "title": "Engineering Math II",
                 "credits": 4,
-                "grade": "A",
-                "transfer": false
+                "grade": "A"
               },
               {
                 "code": "PERF 201",
                 "title": "Mus & Human Experience",
                 "credits": 3,
-                "grade": "A",
-                "transfer": false
+                "grade": "A"
               },
               {
                 "code": "PHYS 206",
                 "title": "Newtonian Mechanics Engr & Sci",
                 "credits": 3,
-                "grade": "A",
-                "transfer": false
+                "grade": "A"
               },
               {
                 "code": "PHYS 216",
                 "title": "Ex Phys Engr Lab II Mechanics",
                 "credits": 2,
-                "grade": "B",
-                "transfer": false
+                "grade": "B"
               }
             ]
           },
@@ -3533,36 +3412,31 @@
                 "code": "CSCE 120",
                 "title": "Program Design & Concepts",
                 "credits": 3,
-                "grade": "A",
-                "transfer": false
+                "grade": "A"
               },
               {
                 "code": "CSCE 181",
                 "title": "Intro to Computing",
                 "credits": 1,
-                "grade": "A",
-                "transfer": false
+                "grade": "A"
               },
               {
                 "code": "CSCE 222",
                 "title": "Discrete Struc Computing",
                 "credits": 3,
-                "grade": "A",
-                "transfer": false
+                "grade": "A"
               },
               {
                 "code": "MATH 251",
                 "title": "Engineering Math III",
                 "credits": 3,
-                "grade": "B",
-                "transfer": false
+                "grade": "B"
               },
               {
                 "code": "MATH 304",
                 "title": "Linear Algebra",
                 "credits": 3,
-                "grade": "A",
-                "transfer": false
+                "grade": "A"
               }
             ]
           },
@@ -3574,29 +3448,25 @@
                 "code": "CSCE 221",
                 "title": "Data Struc & Algorithms",
                 "credits": 4,
-                "grade": "A",
-                "transfer": false
+                "grade": "A"
               },
               {
                 "code": "CSCE 312",
                 "title": "Computer Organization",
                 "credits": 4,
-                "grade": "A",
-                "transfer": false
+                "grade": "A"
               },
               {
                 "code": "CSCE 314",
                 "title": "Programming Languages",
                 "credits": 3,
-                "grade": "A",
-                "transfer": false
+                "grade": "A"
               },
               {
                 "code": "STAT 211",
                 "title": "Prin of Statistics I",
                 "credits": 3,
-                "grade": "A",
-                "transfer": false
+                "grade": "A"
               }
             ]
           },
@@ -3606,201 +3476,82 @@
             "courses": [
               {
                 "code": "CSCE 313",
-                "title": "Intro to Computer System",
+                "title": "Intro to Computer Systems",
                 "credits": 4,
-                "grade": "B",
-                "transfer": false
+                "grade": "B"
               },
               {
                 "code": "CSCE 331",
                 "title": "Foundations Software Engineer",
                 "credits": 4,
-                "grade": "A",
-                "transfer": false
+                "grade": "A"
               },
               {
                 "code": "CSCE 481",
                 "title": "Seminar",
                 "credits": 1,
-                "grade": "A",
-                "transfer": false
+                "grade": "A"
               },
               {
                 "code": "FINC 409",
-                "title": "Survey of Finance Prin T",
+                "title": "Survey of Finance Prin",
                 "credits": 3,
-                "grade": "A",
-                "transfer": false
+                "grade": "A"
               },
               {
                 "code": "GEOL 101",
                 "title": "Principles of Geology",
                 "credits": 3,
-                "grade": "A",
-                "transfer": false
+                "grade": "A"
               },
               {
                 "code": "GEOL 102",
                 "title": "Principles of Geology Lab",
                 "credits": 1,
-                "grade": "A",
-                "transfer": false
+                "grade": "A"
               }
             ]
           },
           {
             "label": "Spring 2025",
-            "status": "Evaluated",
+            "status": "In Progress",
             "courses": [
               {
                 "code": "CSCE 310",
                 "title": "Database Systems",
                 "credits": 3,
-                "grade": "B",
-                "transfer": false
+                "grade": "IP"
               },
               {
                 "code": "CSCE 411",
                 "title": "Design Analy Algorithms",
                 "credits": 3,
-                "grade": "A",
-                "transfer": false
+                "grade": "IP"
               },
               {
                 "code": "CSCE 413",
-                "title": "Software Securitcy",
+                "title": "Software Security",
                 "credits": 3,
-                "grade": "A",
-                "transfer": false
+                "grade": "IP"
               },
               {
                 "code": "CSCE 448",
                 "title": "Computational Photography",
                 "credits": 3,
-                "grade": "A",
-                "transfer": false
+                "grade": "IP"
               },
               {
                 "code": "MKTG 409",
                 "title": "Principles of Marketing",
                 "credits": 3,
-                "grade": "B",
-                "transfer": false
-              }
-            ]
-          },
-          {
-            "label": "Fall 2025",
-            "status": "Evaluated",
-            "courses": [
-              {
-                "code": "ACCT 209",
-                "title": "Survey of Acct Prin O",
-                "credits": 3,
-                "grade": "A",
-                "transfer": false
-              },
-              {
-                "code": "COMM 203",
-                "title": "Public Speaking",
-                "credits": 3,
-                "grade": "A",
-                "transfer": false
-              },
-              {
-                "code": "CSCE 305",
-                "title": "Computational Data Science",
-                "credits": 3,
-                "grade": "A",
-                "transfer": false
-              },
-              {
-                "code": "CSCE 399",
-                "title": "High-impact Experience",
-                "credits": 0,
-                "grade": "S",
-                "transfer": false
-              },
-              {
-                "code": "CSCE 464",
-                "title": "Wireless and Mobile Sys",
-                "credits": 3,
-                "grade": "B",
-                "transfer": false
-              }
-            ]
-          },
-          {
-            "label": "Spring 2026",
-            "status": "In Progress",
-            "courses": [
-              {
-                "code": "HIST 105",
-                "title": "History of the U S",
-                "credits": 3,
-                "grade": "TA",
-                "transfer": true
-              },
-              {
-                "code": "HIST 106",
-                "title": "History of the U S",
-                "credits": 3,
-                "grade": "TIP",
-                "transfer": true
-              },
-              {
-                "code": "CSCE 432",
-                "title": "Accessible Computing",
-                "credits": 3,
-                "grade": "IP",
-                "transfer": false
-              },
-              {
-                "code": "CSCE 436",
-                "title": "Comp Human Interaction",
-                "credits": 3,
-                "grade": "IP",
-                "transfer": false
-              },
-              {
-                "code": "CSCE 482",
-                "title": "Sr Capstone Design",
-                "credits": 3,
-                "grade": "A",
-                "transfer": false
-              },
-              {
-                "code": "MGMT 309",
-                "title": "Survey of Management",
-                "credits": 3,
-                "grade": "IP",
-                "transfer": false
+                "grade": "IP"
               }
             ]
           }
         ],
-        "transcriptTotals": {
-          "institution": {
-            "earnedHours": 98,
-            "gpaHours": 98,
-            "points": 374,
-            "gpa": 3.816
-          },
-          "transfer": {
-            "earnedHours": 31,
-            "gpaHours": 0,
-            "points": 0,
-            "gpa": 0
-          },
-          "overall": {
-            "earnedHours": 129,
-            "gpaHours": 98,
-            "points": 374,
-            "gpa": 3.816
-          }
-        },
+        "transcriptTotals": null,
         "selectedPlanYear": "2025-2026",
-        "selectedTranscriptYear": "2025-2026"
+        "selectedTranscriptYear": "2024-2025"
       }
     }
   ]
