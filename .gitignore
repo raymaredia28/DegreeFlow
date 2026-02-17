@@ -1,4 +1,9 @@
 node_modules/
 dist/
+
+# Environment files (contain secrets)
 .env
 .env.local
+.env.*.local
+tamu-planner/.env.local
+tamu-planner/server/.env
