@@ -3,8 +3,6 @@ import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mj
 import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import tamuLogo from './assets/tamu-logo.svg';
 import { TRANSCRIPT_DEMO } from './data/transcriptDemo';
-import EMPHASIS_SEED from './data/emphasis_areas.json';
-import MINOR_SEED from './data/minors.json';
 import {
   Calendar,
   AlertTriangle,
@@ -31,132 +29,6 @@ const MOCK_STUDENT = {
   totalRequired: 120,
   emphasisArea: 'Undecided',
   minor: 'None'
-};
-
-const EMPHASIS_OPTIONS = [
-  'Undecided',
-  ...EMPHASIS_SEED.map((item) => item.emphasis_name)
-];
-const MINOR_OPTIONS = ['None', ...MINOR_SEED.map((item) => item.minor_name)];
-
-const COURSES = {
-  'CSCE 121': {
-    title: 'Intro to Program Design',
-    credits: 4,
-    difficulty: 3,
-    prereqs: [],
-    status: 'completed',
-    grade: 'A'
-  },
-  'CSCE 221': {
-    title: 'Data Structures & Algorithms',
-    credits: 4,
-    difficulty: 5,
-    prereqs: ['CSCE 121'],
-    status: 'completed',
-    grade: 'B+'
-  },
-  'CSCE 222': {
-    title: 'Discrete Structures',
-    credits: 3,
-    difficulty: 4,
-    prereqs: ['MATH 151'],
-    status: 'completed',
-    grade: 'A-'
-  },
-  'CSCE 312': {
-    title: 'Computer Organization',
-    credits: 4,
-    difficulty: 5,
-    prereqs: ['CSCE 221'],
-    status: 'in-progress'
-  },
-  'CSCE 313': {
-    title: 'Intro to Computer Systems',
-    credits: 4,
-    difficulty: 4,
-    prereqs: ['CSCE 221'],
-    status: 'available'
-  },
-  'CSCE 314': {
-    title: 'Programming Languages',
-    credits: 3,
-    difficulty: 4,
-    prereqs: ['CSCE 221'],
-    status: 'available'
-  },
-  'CSCE 331': {
-    title: 'Foundations of Software Eng',
-    credits: 3,
-    difficulty: 4,
-    prereqs: ['CSCE 221'],
-    status: 'available'
-  },
-  'CSCE 411': {
-    title: 'Design/Analysis of Algorithms',
-    credits: 3,
-    difficulty: 5,
-    prereqs: ['CSCE 221', 'CSCE 222'],
-    status: 'available'
-  },
-  'CSCE 421': {
-    title: 'Machine Learning',
-    credits: 3,
-    difficulty: 5,
-    prereqs: ['CSCE 221', 'MATH 304'],
-    status: 'locked'
-  },
-  'CSCE 310': {
-    title: 'Database Systems',
-    credits: 3,
-    difficulty: 3,
-    prereqs: ['CSCE 221'],
-    status: 'available'
-  },
-  'CSCE 420': {
-    title: 'Artificial Intelligence',
-    credits: 3,
-    difficulty: 4,
-    prereqs: ['CSCE 221'],
-    status: 'available'
-  },
-  'CSCE 463': {
-    title: 'Networks & Distributed Processing',
-    credits: 3,
-    difficulty: 4,
-    prereqs: ['CSCE 313'],
-    status: 'locked'
-  },
-  'MATH 151': {
-    title: 'Calculus I',
-    credits: 4,
-    difficulty: 4,
-    prereqs: [],
-    status: 'completed',
-    grade: 'B'
-  },
-  'MATH 152': {
-    title: 'Calculus II',
-    credits: 4,
-    difficulty: 4,
-    prereqs: ['MATH 151'],
-    status: 'completed',
-    grade: 'B+'
-  },
-  'MATH 304': {
-    title: 'Linear Algebra',
-    credits: 3,
-    difficulty: 4,
-    prereqs: ['MATH 151'],
-    status: 'available'
-  },
-  'CSCE 399': {
-    title: 'High Impact Experience',
-    credits: 1,
-    difficulty: 2,
-    prereqs: [],
-    status: 'available'
-  }
 };
 
 // Requirement areas used for the evaluation bars on the Dashboard.
@@ -614,25 +486,127 @@ function App() {
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState([]);
   const [requirementsResult, setRequirementsResult] = useState(null);
+  const [degreeResult, setDegreeResult] = useState(null);
   const [reqLoading, setReqLoading] = useState(false);
   const [reqError, setReqError] = useState('');
   const [reqWarning, setReqWarning] = useState('');
+  const autoEvalDone = useRef(false);
+  const [minorResult, setMinorResult] = useState(null);
+  const [coursesIndex, setCoursesIndex] = useState(new Map());
+  const [emphasisOptions, setEmphasisOptions] = useState(['Undecided']);
+  const [minorOptions, setMinorOptions] = useState(['None']);
+  const [emphases, setEmphases] = useState([]);
+  const [minors, setMinors] = useState([]);
+
+  // Derived catalog lookup keyed by course code (string -> meta)
+  const COURSES = useMemo(() => {
+    const out = {};
+    coursesIndex.forEach((meta, code) => {
+      out[code] = meta;
+    });
+    return out;
+  }, [coursesIndex]);
   const transcriptYears = useMemo(() => normalizeTranscript(transcriptTerms), [transcriptTerms]);
   const transcriptIndex = useMemo(() => buildTranscriptIndex(transcriptTerms), [transcriptTerms]);
+
+  const buildCourseIndex = (courses) => {
+    const map = new Map();
+    courses.forEach((c) => {
+      const normalizeCredits = () => {
+        const cr = c.credits;
+        if (typeof cr === 'number') return cr;
+        if (typeof cr === 'string') {
+          const parsed = Number(cr);
+          return Number.isFinite(parsed) ? parsed : 0;
+        }
+        if (cr && typeof cr === 'object') {
+          const val = cr.max ?? cr.min ?? 0;
+          return Number.isFinite(val) ? val : 0;
+        }
+        return 0;
+      };
+      const primary =
+        c.code ||
+        (c.codes && c.codes[0]) ||
+        (c.primary_subject && c.primary_number
+          ? `${c.primary_subject} ${c.primary_number}`
+          : c.department?.code && c.primary_number
+          ? `${c.department.code} ${c.primary_number}`
+          : null);
+      const aliases = c.aliases || c.codes || [];
+      [primary, ...aliases].filter(Boolean).forEach((code) => {
+        map.set(code.toUpperCase(), {
+          title: c.title || c.name || '',
+          credits: normalizeCredits(),
+          department:
+            typeof c.department === 'string'
+              ? c.department
+              : c.department?.code || c.primary_subject || '',
+          course_number: c.primary_number || c.course_number || '',
+          prereqs: Array.isArray(c.prereq_courses || c.prereqs)
+            ? c.prereq_courses || c.prereqs
+            : [],
+          status: 'available',
+          difficulty: c.difficulty || 0
+        });
+      });
+    });
+    return map;
+  };
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [coursesRes, emphasesRes, minorsRes] = await Promise.all([
+          fetch(`${API_BASE}/api/courses`),
+          fetch(`${API_BASE}/api/emphases`),
+          fetch(`${API_BASE}/api/minors`)
+        ]);
+        if (coursesRes.ok) {
+          const { courses } = await coursesRes.json();
+          setCoursesIndex(buildCourseIndex(courses || []));
+        }
+        if (emphasesRes.ok) {
+          const { emphases } = await emphasesRes.json();
+          setEmphases(emphases || []);
+          const names = (emphases || [])
+            .map((e) => e.emphasis_name || e.name)
+            .filter(Boolean);
+          setEmphasisOptions(['Undecided', ...names]);
+        }
+        if (minorsRes.ok) {
+          const { minors } = await minorsRes.json();
+          setMinors(minors || []);
+          const names = (minors || [])
+            .map((m) => m.minor_name || m.name)
+            .filter(Boolean);
+          setMinorOptions(['None', ...names]);
+        }
+      } catch (err) {
+        console.warn('Failed to load catalog data', err);
+      }
+    };
+    load();
+  }, []);
 
   const evaluateRequirementsLocal = async () => {
     setReqLoading(true);
     setReqError('');
     setReqWarning('');
     try {
-      // Build combined course list: transcript + planned (skip duplicates, prefer transcript)
+      if (coursesIndex.size === 0) {
+        throw new Error('Catalog not loaded yet. Try again in a moment.');
+      }
+      // Build combined course list: transcript (completed + in-progress) + planned (manual adds too)
       const combined = new Map();
       transcriptCourseList.forEach((course) => {
-        const meta = COURSES[course.code] || {};
-        combined.set(course.code, {
-          code: course.code,
-          department: course.code.split(' ')[0],
-          course_number: course.code.split(' ')[1],
+        const code = normalizeCode(course.code);
+        if (!code) return;
+        const meta = coursesIndex.get(code) || {};
+        combined.set(code, {
+          code,
+          department: code.split(' ')[0],
+          course_number: code.split(' ')[1],
           credits: Number(course.credits) || Number(meta.credits) || 0,
           grade: course.grade || null,
           status: course.grade === 'IP' ? 'in-progress' : 'completed'
@@ -640,9 +614,11 @@ function App() {
       });
 
       Object.entries(semesterPlans).forEach(([, codes]) => {
-        (codes || []).forEach((code) => {
-          if (combined.has(code)) return;
-          const meta = COURSES[code] || {};
+        (codes || []).forEach((raw) => {
+          const code = normalizeCode(raw);
+          if (!code) return;
+          if (combined.has(code)) return; // prefer transcript/in-progress copy
+          const meta = coursesIndex.get(code) || {};
           combined.set(code, {
             code,
             department: code.split(' ')[0],
@@ -656,15 +632,38 @@ function App() {
 
       const selectedEmphasisId =
         selectedEmphasis && selectedEmphasis !== 'Undecided'
-          ? EMPHASIS_SEED.find((e) => e.emphasis_name === selectedEmphasis)?.emphasis_id || null
+          ? emphases.find((e) => (e.emphasis_name || e.name) === selectedEmphasis)?.emphasis_id ||
+            null
           : null;
       const selectedMinorId =
         selectedMinor && selectedMinor !== 'None'
-          ? MINOR_SEED.find((m) => m.minor_name === selectedMinor)?.minor_id || null
+          ? minors.find((m) => (m.minor_name || m.name) === selectedMinor)?.minor_id || null
           : null;
 
+      // Degree-level evaluation (no emphasis/minor)
+      const degreePayload = {
+        catalogYear: null, // backend will pick latest/first set
+        emphasisId: null,
+        minorId: null,
+        courses: Array.from(combined.values())
+      };
+
+      console.log('Sending degree evaluation payload', degreePayload);
+
+      const degreeRes = await fetch(`${API_BASE}/api/requirements/evaluate-local`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(degreePayload)
+      });
+      if (!degreeRes.ok) {
+        const msg = await degreeRes.json().catch(() => ({}));
+        throw new Error(msg.error || `Degree evaluate failed (${degreeRes.status})`);
+      }
+      const degreeData = await degreeRes.json();
+      setDegreeResult(degreeData);
+
       const payload = {
-        catalogYear: '2023-2024',
+        catalogYear: null,
         emphasisId: selectedEmphasisId,
         minorId: selectedMinorId,
         courses: Array.from(combined.values())
@@ -682,13 +681,47 @@ function App() {
       const data = await res.json();
       console.log('requirements evaluation result', data);
       setRequirementsResult(data);
+      // Evaluate minor separately (if selected) to show minor-specific progress
+      if (selectedMinorId) {
+        const minorPayload = { ...payload, emphasisId: null, minorId: selectedMinorId };
+        const minorRes = await fetch(`${API_BASE}/api/requirements/evaluate-local`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(minorPayload)
+        });
+        if (minorRes.ok) {
+          const minorData = await minorRes.json();
+          setMinorResult(minorData);
+        } else {
+          setMinorResult(null);
+        }
+      } else {
+        setMinorResult(null);
+      }
       if (data.warnings?.length) setReqWarning(data.warnings.join(' | '));
     } catch (err) {
       setReqError(err.message);
+      setMinorResult(null);
     } finally {
       setReqLoading(false);
     }
   };
+
+  // Auto-run evaluation when catalog loads and when key inputs change
+  useEffect(() => {
+    if (coursesIndex.size === 0) return;
+    autoEvalDone.current = true;
+    evaluateRequirementsLocal();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coursesIndex, selectedEmphasis, selectedMinor, transcriptTerms, semesterPlans]);
+
+  // Ensure modal state and errors clear when leaving Planner tab
+  useEffect(() => {
+    if (activeTab !== 'planner') {
+      setShowCourseModal(false);
+      setPlanError('');
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (transcriptYears.length === 0) {
@@ -957,22 +990,26 @@ function App() {
     }
   };
 
+  const normalizeCode = (code) => code?.replace(/\s+/g, ' ').trim().toUpperCase();
+
   const addCourseToSemester = (courseCode, semester) => {
-    if (isCourseCompleted(courseCode)) {
-      setPlanError(`${courseCode} has already been taken.`);
+    const normalized = normalizeCode(courseCode);
+    if (!normalized) return;
+    if (isCourseCompleted(normalized)) {
+      setPlanError(`${normalized} has already been taken.`);
       return;
     }
-    if (isCourseInProgress(courseCode)) {
-      setPlanError(`${courseCode} is currently in progress.`);
+    if (isCourseInProgress(normalized)) {
+      setPlanError(`${normalized} is currently in progress.`);
       return;
     }
-    if (isCourseSelectedInOtherSemester(courseCode, semester)) {
-      setPlanError(`${courseCode} is already selected in another term.`);
+    if (isCourseSelectedInOtherSemester(normalized, semester)) {
+      setPlanError(`${normalized} is already selected in another term.`);
       return;
     }
     setSemesterPlans((prev) => ({
       ...prev,
-      [semester]: [...(prev[semester] || []), courseCode]
+      [semester]: [...(prev[semester] || []), normalized]
     }));
     setPlanError('');
     setShowCourseModal(false);
@@ -1033,13 +1070,15 @@ function App() {
   };
 
   const filteredCourses = useMemo(() => {
+    const q = (searchQuery || '').toLowerCase();
+    if (q.length === 0) return [];
     return Object.entries(COURSES).filter(([code, course]) => {
-      const matchesSearch =
-        code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        course.title.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesSearch && (course.status === 'available' || course.status === 'locked');
+      const title = (course.title || '').toLowerCase();
+      const status = course.status || 'available';
+      const matchesSearch = code.toLowerCase().includes(q) || title.includes(q);
+      return matchesSearch && (status === 'available' || status === 'locked');
     });
-  }, [searchQuery]);
+  }, [searchQuery, COURSES]);
 
   const AreasEvaluation = ({ areas, transcriptCourseList, semesterPlans }) => {
     const [expandedAreas, setExpandedAreas] = useState(() => new Set());
@@ -1323,251 +1362,178 @@ function App() {
   };
 
   const DashboardTab = () => {
-    const hasTranscriptData =
-      transcriptTerms.length > 0 || Boolean(transcriptTotals?.overall?.earnedHours);
-    const evaluationDone = Boolean(requirementsResult);
-    const earnedHours = evaluationDone
-      ? transcriptTotals?.overall?.earnedHours ?? transcriptCreditsSummary.completedCredits
-      : 0;
-    const completionPercentage = evaluationDone
-      ? Math.min((earnedHours / MOCK_STUDENT.totalRequired) * 100, 100)
-      : 0;
-    const trackedCredits = evaluationDone
-      ? transcriptCreditsSummary.completedCredits +
-        transcriptCreditsSummary.inProgressCredits +
-        plannedCreditsSummary.plannedCredits
-      : 0;
-
     return (
       <div className="space-y-6">
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex justify-between items-start">
+        <div className="bg-white rounded-lg shadow p-6 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-bold text-gray-900">{MOCK_STUDENT.name}</h2>
-              <p className="text-gray-600">UIN: {MOCK_STUDENT.uin}</p>
-              <p className="text-gray-600">
-                {MOCK_STUDENT.major} • Catalog Year: {MOCK_STUDENT.catalogYear}
-              </p>
-              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md">
-                <label className="text-sm text-gray-700">
-                  Emphasis
-                  <select
-                    className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#500000]"
-                    value={selectedEmphasis}
-                    onChange={(e) => setSelectedEmphasis(e.target.value)}
-                  >
-                    {EMPHASIS_OPTIONS.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="text-sm text-gray-700">
-                  Minor
-                  <select
-                    className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#500000]"
-                    value={selectedMinor}
-                    onChange={(e) => setSelectedMinor(e.target.value)}
-                  >
-                    {MINOR_OPTIONS.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <p className="text-gray-600">
-                {evaluationDone && hasTranscriptData ? classification : '—'} •{' '}
-                {evaluationDone ? earnedHours : '—'} earned credits
-              </p>
+              <p className="text-gray-600">Computer Science • GPA: {transcriptGpa || '—'}</p>
             </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold" style={{ color: '#500000' }}>
-                {hasTranscriptData ? transcriptGpa : '—'}
+            <div className="flex gap-3">
+              <div>
+                <label className="text-sm text-gray-700">Emphasis</label>
+                <select
+                  className="mt-1 w-48 rounded border border-gray-300 bg-white px-3 py-2 text-sm"
+                  value={selectedEmphasis}
+                  onChange={(e) => setSelectedEmphasis(e.target.value)}
+                >
+                  {emphasisOptions.map((option) => (
+                    <option key={option || 'blank'} value={option}>
+                      {option || '—'}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <div className="text-sm text-gray-600">Current GPA</div>
+              <div>
+                <label className="text-sm text-gray-700">Minor</label>
+                <select
+                  className="mt-1 w-48 rounded border border-gray-300 bg-white px-3 py-2 text-sm"
+                  value={selectedMinor}
+                  onChange={(e) => setSelectedMinor(e.target.value)}
+                >
+                  {minorOptions.map((option) => (
+                    <option key={option || 'blank'} value={option}>
+                      {option || '—'}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Credits Completed</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {evaluationDone ? earnedHours : 0}/{MOCK_STUDENT.totalRequired}
-                </p>
-              </div>
-              <CheckCircle className="w-8 h-8 text-green-500" />
-            </div>
-            <div className="mt-4 bg-gray-200 rounded-full h-2">
-              <div
-                className="h-2 rounded-full"
-                style={{ width: `${completionPercentage}%`, backgroundColor: '#500000' }}
-              ></div>
-            </div>
-            <p className="mt-2 text-xs text-gray-500">
-              {evaluationDone
-                ? 'Transcript totals (overall earned hours)'
-                : 'Run Evaluate to populate progress'}
-            </p>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">In Progress</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {evaluationDone ? transcriptCreditsSummary.inProgressCredits : 0} credits
-                </p>
-              </div>
-              <Calendar className="w-8 h-8 text-blue-500" />
-            </div>
-            <p className="mt-2 text-xs text-gray-500">Active term coursework</p>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Planned Credits</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {evaluationDone ? plannedCreditsSummary.plannedCredits : 0}
-                </p>
-              </div>
-              <Plus className="w-8 h-8 text-amber-500" />
-            </div>
-            <p className="mt-2 text-xs text-gray-500">
-              {plannedCreditsSummary.plannedCourses} courses in planner
-            </p>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Tracked Credits</p>
-                <p className="text-2xl font-bold text-gray-900">{trackedCredits}</p>
-              </div>
-              <Book className="w-8 h-8 text-purple-500" />
-            </div>
-            <p className="mt-2 text-xs text-gray-500">Completed + In Progress + Planned</p>
+          <div className="flex gap-4 text-sm text-gray-700">
+            <span>Completed: {transcriptCreditsSummary.completedCredits}</span>
+            <span>In Progress: {transcriptCreditsSummary.inProgressCredits}</span>
+            <span>Planned: {plannedCreditsSummary.plannedCredits}</span>
           </div>
         </div>
 
         <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-2">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Requirements Check</h3>
-              <p className="text-sm text-gray-600">
-                Evaluate the current plan + transcript using the backend rules.
-              </p>
-              <p className="text-xs text-gray-500 mt-1">
-                Emphasis: {selectedEmphasis} • Minor: {selectedMinor}
-              </p>
+              <p className="text-sm text-gray-600">Auto-evaluates on load and when you change emphasis/minor or plan.</p>
             </div>
-            <button
-              onClick={evaluateRequirementsLocal}
-              disabled={reqLoading}
-              className="rounded-md bg-[#500000] text-white px-4 py-2 text-sm disabled:opacity-60"
-            >
-              {reqLoading ? 'Evaluating…' : 'Evaluate'}
-            </button>
+            <span className="text-xs text-gray-500">
+              API_BASE={API_BASE} • catalog codes={coursesIndex.size}
+            </span>
           </div>
-
           {reqError && <p className="text-sm text-red-600 mb-2">{reqError}</p>}
           {reqWarning && !reqError && <p className="text-sm text-amber-700 mb-2">{reqWarning}</p>}
-
-          {requirementsResult && (
-            <div className="mt-2 border-t pt-4">
-              <h4 className="text-sm font-semibold text-gray-900 mb-2">
-                {requirementsResult.requirementSet?.name}{' '}
-                {requirementsResult.requirementSet?.catalog_year &&
-                  `(${requirementsResult.requirementSet.catalog_year})`}
-              </h4>
-              <div className="space-y-2">
-                {requirementsResult.groups?.map((group) => (
-                  <div
-                    key={group.name}
-                    className="flex items-start justify-between rounded-md border border-gray-200 px-3 py-2"
-                  >
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">{group.name}</p>
-                      <p className="text-xs text-gray-600">
-                        Earned {group.earnedCredits || 0}
-                        {group.requiredCredits ? ` / ${group.requiredCredits} credits` : ''}{' '}
-                        {group.missing?.length
-                          ? `• Missing: ${group.missing.join(', ')}`
-                          : ''}
-                      </p>
-                      {group.warnings?.length > 0 && (
-                        <p className="text-xs text-amber-700 mt-1">
-                          {group.warnings.join(' | ')}
-                        </p>
-                      )}
-                    </div>
+          {degreeResult ? (
+            <div className="space-y-3 mb-4">
+              <div className="text-sm text-gray-700">
+                <p className="font-semibold">
+                  Degree: {degreeResult.requirementSet?.name || 'CSCE Degree'}
+                </p>
+                {degreeResult.requirementSet?.catalog_year && (
+                  <p>Catalog year: {degreeResult.requirementSet.catalog_year}</p>
+                )}
+              </div>
+              {degreeResult.groups?.map((group) => (
+                <div key={group.name} className="rounded border border-gray-200 px-3 py-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-gray-900">{group.name}</p>
                     {group.satisfied ? (
                       <CheckCircle className="w-5 h-5 text-green-500" />
                     ) : (
                       <AlertTriangle className="w-5 h-5 text-amber-500" />
                     )}
                   </div>
-                ))}
-              </div>
+                  <p className="text-xs text-gray-600">
+                    Earned {group.earnedCredits || 0}
+                    {group.requiredCredits ? ` / ${group.requiredCredits} credits` : ''}
+                  </p>
+                  {group.missing?.length ? (
+                    <p className="text-xs text-red-600">Missing: {group.missing.join(', ')}</p>
+                  ) : null}
+                  {group.usedCourses?.length ? (
+                    <p className="text-xs text-gray-500">Used: {group.usedCourses.join(', ')}</p>
+                  ) : null}
+                </div>
+              ))}
             </div>
+          ) : null}
+
+          {requirementsResult ? (
+            <div className="space-y-3">
+              <div className="text-sm text-gray-700">
+                <p className="font-semibold">Set: {requirementsResult.requirementSet?.name}</p>
+                {requirementsResult.requirementSet?.catalog_year && (
+                  <p>Catalog year: {requirementsResult.requirementSet.catalog_year}</p>
+                )}
+              </div>
+              {requirementsResult.groups?.map((group) => (
+                <div
+                  key={group.name}
+                  className="rounded border border-gray-200 px-3 py-2"
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-gray-900">{group.name}</p>
+                    {group.satisfied ? (
+                      <CheckCircle className="w-5 h-5 text-green-500" />
+                    ) : (
+                      <AlertTriangle className="w-5 h-5 text-amber-500" />
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-600">
+                    Earned {group.earnedCredits || 0}
+                    {group.requiredCredits ? ` / ${group.requiredCredits} credits` : ''}
+                  </p>
+                  {group.missing?.length ? (
+                    <p className="text-xs text-red-600">Missing: {group.missing.join(', ')}</p>
+                  ) : null}
+                  {group.usedCourses?.length ? (
+                    <p className="text-xs text-gray-500">Used: {group.usedCourses.join(', ')}</p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-600">Awaiting evaluation…</p>
           )}
         </div>
 
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <div className="flex items-start">
-            <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 mr-3" />
-            <div>
-              <h3 className="font-semibold text-yellow-900">Action Required</h3>
-              <p className="text-sm text-yellow-800 mt-1">
-                You need to complete CSCE 399 (High Impact Experience) before graduation. Plan to
-                register by Fall 2025.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {evaluationDone ? (
+        {minorResult && (
           <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-bold mb-4">Degree Requirements Progress</h3>
-            <div className="space-y-3">
-              {requirementsResult?.groups?.map((group) => (
-                <div key={group.name} className="flex justify-between items-center">
-                  <span className="text-gray-700">{group.name}</span>
-                  <span
-                    className={`text-sm font-semibold ${
-                      group.satisfied
-                        ? 'text-green-600'
-                        : group.earnedCredits > 0
-                        ? 'text-amber-600'
-                        : 'text-gray-600'
-                    }`}
-                  >
-                    {group.earnedCredits || 0}
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Minor Progress</h3>
+                <p className="text-sm text-gray-600">
+                  {minorResult.requirementSet?.name}{' '}
+                  {minorResult.requirementSet?.catalog_year &&
+                    `(${minorResult.requirementSet.catalog_year})`}
+                </p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {minorResult.groups?.map((group) => (
+                <div
+                  key={group.name}
+                  className="rounded border border-gray-200 px-3 py-2"
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-gray-900">{group.name}</p>
+                    {group.satisfied ? (
+                      <CheckCircle className="w-5 h-5 text-green-500" />
+                    ) : (
+                      <AlertTriangle className="w-5 h-5 text-amber-500" />
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-600">
+                    Earned {group.earnedCredits || 0}
                     {group.requiredCredits ? ` / ${group.requiredCredits} credits` : ''}
-                  </span>
+                  </p>
+                  {group.missing?.length ? (
+                    <p className="text-xs text-red-600">Missing: {group.missing.join(', ')}</p>
+                  ) : null}
+                  {group.usedCourses?.length ? (
+                    <p className="text-xs text-gray-500">Used: {group.usedCourses.join(', ')}</p>
+                  ) : null}
                 </div>
               ))}
             </div>
           </div>
-        ) : (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-bold mb-2">Degree Requirements Progress</h3>
-            <p className="text-sm text-gray-600">Click Evaluate to load progress.</p>
-          </div>
-        )}
-
-        {evaluationDone && (
-          <AreasEvaluation
-            areas={REQUIREMENT_AREAS}
-            transcriptCourseList={transcriptCourseList}
-            semesterPlans={semesterPlans}
-          />
         )}
       </div>
     );
@@ -1926,10 +1892,12 @@ function App() {
                       )}
                     </div>
                     <button
+                      type="button"
                       onClick={() => {
                         if (!isEditable) return;
                         setSelectedSemester(term);
                         setShowCourseModal(true);
+                        setSearchQuery('');
                         setPlanError('');
                       }}
                       className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs ${
@@ -2062,12 +2030,20 @@ function App() {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full pl-10 pr-4 py-2 border rounded-lg"
+                    autoFocus
                   />
                 </div>
               </div>
               <div className="p-6 overflow-y-auto max-h-96">
                 <div className="space-y-2">
-                  {filteredCourses.map(([code, course]) => {
+                  {filteredCourses.length === 0 ? (
+                    <div className="text-sm text-gray-600">
+                      {searchQuery.trim().length === 0
+                        ? 'Type to search (e.g., "CSCE 3").'
+                        : 'No matching courses.'}
+                    </div>
+                  ) : (
+                    filteredCourses.map(([code, course]) => {
                     const isLocked = course.status === 'locked';
                     const plannedForSelectedSemester =
                       semesterPlans[selectedSemester] || [];
@@ -2161,7 +2137,8 @@ function App() {
                         </div>
                       </div>
                     );
-                  })}
+                    })
+                  )}
                 </div>
               </div>
             </div>

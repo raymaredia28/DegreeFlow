@@ -131,11 +131,40 @@ app.get('/api/emphases', async (_req, res, next) => {
 // Requirements evaluation using static requirement set + payload
 app.post('/api/requirements/evaluate-local', async (req, res, next) => {
   try {
-    const { catalogYear = null, courses = [], emphasisId = null } = req.body || {};
+    const { catalogYear = null, courses = [], emphasisId = null, minorId = null } = req.body || {};
     const requirementSets = await loadJson('requirements.json');
-    const requirementSet = catalogYear
-      ? requirementSets.find((r) => r.catalog_year === catalogYear)
-      : requirementSets[0];
+
+    const inferType = (name = '') => {
+      if (name.startsWith('Minor -')) return 'minor';
+      if (name.startsWith('CSCE Emphasis')) return 'emphasis';
+      return 'degree';
+    };
+
+    // try to select a set based on emphasis or minor name if provided
+    let requirementSet = null;
+    if (emphasisId) {
+      const emphases = await loadJson('emphasis_areas.json').catch(() => []);
+      const match = emphases.find((e) => e.emphasis_id === emphasisId);
+      if (match?.name || match?.emphasis_name) {
+        const targetName = `CSCE Emphasis - ${match.name || match.emphasis_name}`;
+        requirementSet = requirementSets.find((r) => r.name === targetName) || requirementSet;
+      }
+    }
+    if (!requirementSet && minorId) {
+      const minors = await loadJson('minors.json').catch(() => []);
+      const match = minors.find((m) => m.minor_id === minorId);
+      if (match?.name || match?.minor_name) {
+        const targetName = `Minor - ${match.name || match.minor_name}`;
+        requirementSet = requirementSets.find((r) => r.name === targetName) || requirementSet;
+      }
+    }
+    if (!requirementSet && catalogYear) {
+      requirementSet = requirementSets.find((r) => r.catalog_year === catalogYear) || null;
+    }
+    if (!requirementSet) {
+      requirementSet = requirementSets.find((r) => inferType(r.name) === 'degree') || null;
+    }
+    if (!requirementSet && requirementSets.length > 0) requirementSet = requirementSets[0];
     if (!requirementSet) return res.status(404).json({ error: 'Requirement set not found' });
 
     const allCourses = await loadJson('courses.json');

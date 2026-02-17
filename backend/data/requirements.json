@@ -1,5 +1,329 @@
 [
   {
+    "name": "CSCE Degree - Core",
+    "catalog_year": "2025-2026",
+    "groups": [
+      {
+        "name": "Major Coursework (30 credits, C or better)",
+        "rules": {
+          "gradeAtLeast": "C",
+          "minCredits": 30,
+          "allOf": [
+            "CSCE 120",
+            "CSCE 181",
+            "CSCE 221",
+            "CSCE 222",
+            "CSCE 312",
+            "CSCE 313",
+            "CSCE 314",
+            "CSCE 331",
+            "CSCE 481",
+            "CSCE 482"
+          ]
+        }
+      },
+      {
+        "name": "Supporting Coursework (46 credits, C or better)",
+        "rules": {
+          "gradeAtLeast": "C",
+          "minCredits": 46,
+          "items": [
+            { "course": "ENGR 102" },
+            { "anyOf": ["ENGR 216", "PHYS 216"] },
+            { "course": "CSCE 411", "note": "Theory directed elective" },
+            {
+              "pool": [
+                "CSCE 410",
+                "CSCE 412",
+                "CSCE 416",
+                "ECEN 416",
+                "CSCE 426",
+                "ECEN 426",
+                "CSCE 456",
+                "CSCE 461",
+                "BMEN 428",
+                "CSCE 462",
+                "CSCE 463",
+                "CSCE 464",
+                "CSCE 465",
+                "CSCE 469",
+                "ECEN 469"
+              ],
+              "minCredits": 3,
+              "note": "Systems Directed Elective (any 1 course)"
+            },
+            {
+              "pool": [
+                "CSCE 413",
+                "CSCE 429",
+                "CSCE 430",
+                "CSCE 431",
+                "CSCE 434",
+                "CSCE 435",
+                "CSCE 438",
+                "CSCE 451"
+              ],
+              "minCredits": 3,
+              "note": "Software Directed Elective (any 1 course)"
+            },
+            {
+              "pool": [
+                "CSCE 305",
+                "STAT 315",
+                "ECEN 360",
+                "CSCE 310",
+                "CSCE 320",
+                "STAT 335",
+                "CSCE 420",
+                "CSCE 421",
+                "STAT 421",
+                "ECEN 427",
+                "CSCE 432",
+                "CSCE 436",
+                "CSCE 439",
+                "CSCE 441",
+                "CSCE 443",
+                "VIST 487",
+                "CSCE 444",
+                "CSCE 445",
+                "CSCE 446",
+                "VIST 477",
+                "CSCE 447",
+                "VIST 476",
+                "CSCE 448",
+                "CSCE 449",
+                "CSCE 450",
+                "CSCE 452",
+                "CSCE 470"
+              ],
+              "minCredits": 3,
+              "note": "Information & Intelligent Systems Directed Elective (any 1 course)"
+            },
+            {
+              "pool": [
+                "CSCE 411",
+                "CSCE 433",
+                "CSCE 440",
+                "CSCE 442",
+                "CSCE 410",
+                "CSCE 412",
+                "CSCE 416",
+                "ECEN 416",
+                "CSCE 426",
+                "ECEN 426",
+                "CSCE 456",
+                "CSCE 461",
+                "BMEN 428",
+                "CSCE 462",
+                "CSCE 463",
+                "CSCE 464",
+                "CSCE 465",
+                "CSCE 469",
+                "ECEN 469",
+                "CSCE 413",
+                "CSCE 429",
+                "CSCE 430",
+                "CSCE 431",
+                "CSCE 434",
+                "CSCE 435",
+                "CSCE 438",
+                "CSCE 451",
+                "CSCE 305",
+                "STAT 315",
+                "ECEN 360",
+                "CSCE 310",
+                "CSCE 320",
+                "STAT 335",
+                "CSCE 420",
+                "CSCE 421",
+                "STAT 421",
+                "ECEN 427",
+                "CSCE 432",
+                "CSCE 436",
+                "CSCE 439",
+                "CSCE 441",
+                "CSCE 443",
+                "VIST 487",
+                "CSCE 444",
+                "CSCE 445",
+                "CSCE 446",
+                "VIST 477",
+                "CSCE 447",
+                "VIST 476",
+                "CSCE 448",
+                "CSCE 449",
+                "CSCE 450",
+                "CSCE 452",
+                "CSCE 470"
+              ],
+              "minCredits": 6,
+              "note": "CSCE Tracked Electives (any 2 courses from any track)"
+            },
+            {
+              "pool": [
+                "CSCE 411",
+                "CSCE 433",
+                "CSCE 440",
+                "CSCE 442",
+                "CSCE 410",
+                "CSCE 412",
+                "CSCE 416",
+                "ECEN 416",
+                "CSCE 426",
+                "ECEN 426",
+                "CSCE 456",
+                "CSCE 461",
+                "BMEN 428",
+                "CSCE 462",
+                "CSCE 463",
+                "CSCE 464",
+                "CSCE 465",
+                "CSCE 469",
+                "ECEN 469",
+                "CSCE 413",
+                "CSCE 429",
+                "CSCE 430",
+                "CSCE 431",
+                "CSCE 434",
+                "CSCE 435",
+                "CSCE 438",
+                "CSCE 451",
+                "CSCE 305",
+                "STAT 315",
+                "ECEN 360",
+                "CSCE 310",
+                "CSCE 320",
+                "STAT 335",
+                "CSCE 420",
+                "CSCE 421",
+                "STAT 421",
+                "ECEN 427",
+                "CSCE 432",
+                "CSCE 436",
+                "CSCE 439",
+                "CSCE 441",
+                "CSCE 443",
+                "VIST 487",
+                "CSCE 444",
+                "CSCE 445",
+                "CSCE 446",
+                "VIST 477",
+                "CSCE 447",
+                "VIST 476",
+                "CSCE 448",
+                "CSCE 449",
+                "CSCE 450",
+                "CSCE 452",
+                "CSCE 470",
+                "CSCE 491",
+                "ENGR 385","CSCE 402","CYBR 402","MARA 403","CSCE 477","CYBR 403"
+              ],
+              "minCredits": 3,
+              "note": "CSCE Elective (tracked/untracked/CSCE 491/ENGR 385)"
+            },
+            { "course": "STAT 211" },
+            { "course": "MATH 304" },
+            { "anyOf": ["MATH 251", "MATH 308", "STAT 212"] },
+            { "emphasisCredits": 12, "note": "Advisor-approved emphasis outside CSCE" }
+          ]
+        }
+      },
+      {
+        "name": "Communication (6 credits)",
+        "rules": {
+          "minCredits": 6,
+          "items": [
+            { "anyOf": ["ENGL 103", "ENGL 104"] },
+            { "anyOf": ["COMM 203", "COMM 205", "ENGL 210"] }
+          ]
+        }
+      },
+      {
+        "name": "Mathematics (8 credits, C or better)",
+        "rules": {
+          "gradeAtLeast": "C",
+          "minCredits": 8,
+          "allOf": ["MATH 151", "MATH 152"]
+        }
+      },
+      {
+        "name": "Life and Physical Sciences (14 credits)",
+        "rules": {
+          "minCredits": 14,
+          "items": [
+            { "anyOf": ["CHEM 119", "CHEM 107", "CHEM 117"] },
+            { "course": "PHYS 206" },
+            { "manual": true, "note": "Science Elective 1 (3 cr) — approved list" },
+            { "manual": true, "note": "Science Elective 2 (4 cr) — approved list" }
+          ]
+        }
+      },
+      {
+        "name": "Language, Philosophy & Culture (3 credits)",
+        "rules": { "minCredits": 3, "manual": true, "note": "Any KLPC core course" }
+      },
+      {
+        "name": "Creative Arts (3 credits)",
+        "rules": { "minCredits": 3, "manual": true, "note": "Any KCRA core course" }
+      },
+      {
+        "name": "Social and Behavioral Sciences (3 credits)",
+        "rules": { "minCredits": 3, "manual": true, "note": "Any KSOC core course" }
+      },
+      {
+        "name": "Citizenship (12 credits)",
+        "rules": {
+          "minCredits": 12,
+          "items": [
+            { "manual": true, "note": "American History (6 cr) — any KHIS core courses" },
+            { "course": "POLS 206" },
+            { "course": "POLS 207" }
+          ]
+        }
+      },
+      {
+        "name": "General Electives (1 credit)",
+        "rules": { "minCredits": 1, "manual": true, "note": "Any undergraduate course not used elsewhere" }
+      },
+      {
+        "name": "High Impact Experience",
+        "rules": {
+          "items": [
+            {
+              "anyOf": ["CSCE 399", "CSCE 291", "CSCE 491", "ENGR 385"],
+              "note": "or any study abroad course with SABR attribute"
+            }
+          ]
+        }
+      },
+      {
+        "name": "ICD/CD (6 credits)",
+        "rules": {
+          "manual": true,
+          "note": "3 credits ICD (KICD) + 3 credits CD (KUCD); can overlap with core"
+        }
+      },
+      {
+        "name": "Foreign Language",
+        "rules": { "manual": true, "note": "2 years same language in HS or 2-semester college sequence" }
+      },
+      {
+        "name": "Residence Requirement",
+        "rules": {
+          "manual": true,
+          "note": "12 CSCE credits and 24 upper-level (300-499) credits in residence at TAMU"
+        }
+      },
+      {
+        "name": "GPA",
+        "rules": {
+          "manual": true,
+          "note": "Overall GPA ≥ 2.0 and CSCE GPA ≥ 2.0"
+        }
+      }
+    ]
+  },
+  {
     "name": "CSCE Emphasis - Math",
     "catalog_year": "2025-2026",
     "groups": [
@@ -709,6 +1033,53 @@
                 "STAT 459",
                 "STAT 485",
                 "STAT 489"
+              ],
+              "minCount": 3
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "Minor - Business",
+    "catalog_year": "2025-2026",
+    "groups": [
+      {
+        "name": "Business Minor",
+        "rules": {
+          "allOf": [
+            "ACCT 209",
+            "MGMT 309",
+            "FINC 409",
+            "MKTG 409",
+            "ISTM 209",
+            "MGMT 209"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "Minor - Game Design and Development",
+    "catalog_year": "2025-2026",
+    "groups": [
+      {
+        "name": "Game Design Minor",
+        "rules": {
+          "items": [
+            { "allOf": ["CSCE 110"] },
+            { "anyOf": ["CSCE 111", "CSCE 120"] },
+            { "anyOf": ["CSCE 441", "VIST 386"] },
+            { "anyOf": ["CSCE 443", "VIST 487"] },
+            {
+              "pool": [
+                "COMM 230",
+                "JOUR 230",
+                "COMM 453",
+                "CSCE 436",
+                "VIST 370",
+                "VIST 374"
               ],
               "minCount": 3
             }

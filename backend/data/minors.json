@@ -14,5 +14,21 @@
     "required_credits": null,
     "description": "Statistics minor: STAT 211 and STAT 212 required, plus three additional STAT electives from the approved list.",
     "notes": "Pick 3 STAT electives from the approved upper-level list after completing STAT 211 and STAT 212."
+  },
+  {
+    "minor_id": 3,
+    "name": "Business",
+    "catalog_year": "2025-2026",
+    "required_credits": null,
+    "description": "Business minor: core set of accounting, management, finance, marketing, and IS courses.",
+    "notes": "All of ACCT 209, MGMT 309, FINC 409, MKTG 409, ISTM 209, and MGMT 209 are required."
+  },
+  {
+    "minor_id": 4,
+    "name": "Game Design and Development",
+    "catalog_year": "2025-2026",
+    "required_credits": null,
+    "description": "Game Design minor: CS foundations plus graphics/interactive systems and game design courses.",
+    "notes": "Requires CSCE 110 and CSCE 111 or CSCE 120; CSCE 441 or VIST 386; CSCE 443 or VIST 487; plus 3 electives from COMM 230/JOUR 230, COMM 453, CSCE 436, VIST 370, VIST 374."
   }
 ]

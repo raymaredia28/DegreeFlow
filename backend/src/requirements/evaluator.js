@@ -66,15 +66,26 @@ const buildCourseIndex = (studentCourses) => {
   return map;
 };
 
+const creditValue = (course) => {
+  const cr = course?.credits;
+  if (typeof cr === 'number') return cr;
+  if (cr && typeof cr === 'object') {
+    const val = cr.max ?? cr.min ?? 0;
+    return Number.isFinite(val) ? val : 0;
+  }
+  const n = Number(cr);
+  return Number.isFinite(n) ? n : 0;
+};
+
 const isCompleted = (course, minGrade) => {
   if (!course) return false;
+  if (course.status === 'planned' || course.status === 'in-progress') return true;
   if (!course.grade || course.grade.toUpperCase() === 'IP') return false;
   if (!meetsMinGrade(course.grade, minGrade)) return false;
   return true;
 };
 
-const sumCredits = (courses) =>
-  courses.reduce((sum, course) => sum + (Number(course.credits) || 0), 0);
+const sumCredits = (courses) => courses.reduce((sum, course) => sum + creditValue(course), 0);
 
 const matchesTag = (course, tag) => {
   if (tag === 'track-any') {
@@ -163,7 +174,7 @@ const evaluateCourseRule = (courseCode, context, minGrade) => {
   if (!isCompleted(course, minGrade)) {
     return { satisfied: false, credits: 0, missing: [code] };
   }
-  return { satisfied: true, credits: Number(course.credits) || 0, used: [code] };
+  return { satisfied: true, credits: creditValue(course), used: [code] };
 };
 
 const evaluatePool = (poolRule, context, minGrade) => {
@@ -285,6 +296,12 @@ const summarizeGroup = (name, rules, context) => {
 
   if (rules.anyOf) {
     const result = evaluateAnyOf(rules.anyOf, context, minGrade);
+    if (!result.satisfied) missing.push(...(result.missing || []));
+    (result.used || []).forEach((c) => usedCourses.add(c));
+  }
+
+  if (rules.pool) {
+    const result = evaluatePool(rules, context, minGrade);
     if (!result.satisfied) missing.push(...(result.missing || []));
     (result.used || []).forEach((c) => usedCourses.add(c));
   }
