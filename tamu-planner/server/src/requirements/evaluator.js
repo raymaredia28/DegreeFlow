@@ -132,6 +132,18 @@ const evaluateAnyOf = (anyOf, context, minGrade) => {
       } else {
         missingOptions.push(option.allOf.map(normalizeCode).join(' + '));
       }
+      return;
+    }
+
+    if (option?.tag) {
+      const result = evaluateTag(option, context, minGrade);
+      if (result.satisfied) {
+        if (result.credits > best.credits) {
+          best = { satisfied: true, credits: result.credits, used: result.used || [] };
+        }
+      } else {
+        missingOptions.push(`tag:${option.tag}`);
+      }
     }
   });
 
