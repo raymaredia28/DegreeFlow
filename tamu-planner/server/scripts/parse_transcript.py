@@ -56,6 +56,7 @@ GRADE_TOKENS = {
     "W",
     "IP",
     "TA",
+    "TCR",
     "TIP",
 }
 
@@ -136,6 +137,54 @@ def clean_department_code(dept: str) -> str:
         "NENGL": "ENGL",
     }
     return corrections.get(dept, dept)
+
+
+def normalize_student_name(raw: str) -> str:
+    name = clean_line(raw)
+    name = re.sub(r"^\s*(Student\s+)?Name\s*:\s*", "", name, flags=re.IGNORECASE)
+    if not name:
+        return ""
+
+    # Handle "Last, First Middle" style.
+    if "," in name:
+        last, rest = name.split(",", 1)
+        if rest.strip():
+            name = f"{rest.strip()} {last.strip()}"
+
+    # If fully uppercase, convert to title case for display.
+    if name == name.upper():
+        small_words = {"de", "da", "del", "la", "van", "von", "of", "the"}
+        parts = []
+        for idx, token in enumerate(name.split()):
+            if idx > 0 and token.lower() in small_words:
+                parts.append(token.lower())
+            else:
+                parts.append(token.capitalize())
+        name = " ".join(parts)
+
+    return name
+
+
+def extract_student_name(pages) -> Optional[str]:
+    # Transcripts commonly include "Name (UIN)" near the top of page 1.
+    for page in pages[:2]:
+        text = page.extract_text() or ""
+        for raw_line in text.split("\n"):
+            line = clean_line(raw_line)
+            if not line:
+                continue
+            match = re.search(r"(.+?)\s*\(\s*(\d{6,12})\s*\)", line)
+            if not match:
+                continue
+            candidate = clean_line(match.group(1))
+            if not candidate:
+                continue
+            if re.search(r"\b(Fall|Spring|Summer|Winter)\b", candidate):
+                continue
+            if "Texas A&M University" in candidate:
+                continue
+            return normalize_student_name(candidate)
+    return None
 
 
 def title_case_course_title(title: str) -> str:
@@ -230,7 +279,7 @@ def parse_course(line: str, in_progress_mode: bool) -> Optional[Course]:
         return None
 
     code = f"{dept} {num}"
-    transfer = grade in ("TA", "TIP")
+    transfer = grade in ("TA", "TCR", "TIP")
     return Course(code=code, title=title, credits=credits, grade=grade, transfer=transfer)
 
 
@@ -453,6 +502,14 @@ def parse_page_columns_words(page, split_columns: bool = True) -> List[TermBlock
 
 
 def infer_missing_labels(blocks: List[TermBlock]) -> List[TermBlock]:
+    def split_term_year(label: Optional[str]):
+        if not label:
+            return None, None
+        parts = label.split(" ")
+        if len(parts) != 2 or not parts[1].isdigit():
+            return None, None
+        return parts[0], int(parts[1])
+
     for idx, block in enumerate(blocks):
         if block.label:
             continue
@@ -473,6 +530,22 @@ def infer_missing_labels(blocks: List[TermBlock]) -> List[TermBlock]:
             if blocks[j].label:
                 prev_label = blocks[j].label
                 break
+
+        prev_term, prev_year = split_term_year(prev_label)
+        next_term, next_year = split_term_year(next_label)
+
+        # In many TAMU transcripts, an unlabeled block between Spring and Fall
+        # is a continuation of the current Spring term (split across columns),
+        # not a standalone Summer term.
+        if (
+            prev_term == "Spring"
+            and next_term == "Fall"
+            and prev_year is not None
+            and next_year is not None
+            and prev_year == next_year
+        ):
+            block.label = prev_label
+            continue
 
         if next_label:
             parts = next_label.split(" ")
@@ -697,6 +770,7 @@ def parse_pdf(path: str):
     blocks: List[TermBlock] = []
     blocks_single: List[TermBlock] = []
     totals = None
+    student_name = None
     
     with pdfplumber.open(path) as pdf:
         # Extract using cropped columns (most accurate for TAMU transcripts)
@@ -706,13 +780,25 @@ def parse_pdf(path: str):
         
         # Extract totals
         totals = extract_totals(pdf.pages)
+        student_name = extract_student_name(pdf.pages)
 
     # Pick best strategy
     if score_blocks(blocks_single) > score_blocks(blocks):
         blocks = blocks_single
 
     # Post-process blocks
-    blocks = merge_continuation_blocks(blocks)
+    # Infer labels before any continuation merge.
+    # This prevents unlabeled right-column terms from being folded into
+    # the previous left-column term.
+    blocks = infer_missing_labels(blocks)
+
+    # Only merge true unknown continuations after inference.
+    unknown_only = []
+    for block in blocks:
+        if block.label == "Unknown Term":
+            block.label = None
+        unknown_only.append(block)
+    blocks = merge_continuation_blocks(unknown_only)
     blocks = infer_missing_labels(blocks)
 
     # Merge blocks with same label
@@ -747,6 +833,8 @@ def parse_pdf(path: str):
     result = {"terms": terms}
     if totals:
         result["totals"] = totals
+    if student_name:
+        result["studentName"] = student_name
     
     return result
 
