@@ -51,6 +51,7 @@ interface CourseEntry {
   credits?: number;
   grade?: string | null;
   status?: string;
+  categories?: string[];
 }
 
 catalogRouter.post("/api/requirements/evaluate-local", async (req, res, next) => {
@@ -124,6 +125,9 @@ catalogRouter.post("/api/requirements/evaluate-local", async (req, res, next) =>
       const code =
         `${(entry.department || "").toUpperCase()} ${String(entry.course_number || "").trim()}`.trim();
       const catalogCourse: any = courseIndex.get(code) || {};
+      const mergedCategories = Array.from(
+        new Set([...(catalogCourse.categories || []), ...(entry.categories || [])])
+      );
       return {
         course: {
           course_id: catalogCourse.course_id ?? -1,
@@ -131,7 +135,7 @@ catalogRouter.post("/api/requirements/evaluate-local", async (req, res, next) =>
           course_number:
             catalogCourse.course_number ?? entry.course_number ?? "",
           credits: entry.credits ?? catalogCourse.credits ?? 0,
-          categories: catalogCourse.categories || [],
+          categories: mergedCategories,
         },
         grade: entry.grade || null,
         status: entry.status || "completed",

@@ -1047,6 +1047,7 @@ function App() {
         map.set(code.toUpperCase(), {
           title: c.title || c.name || '',
           credits: normalizeCredits(),
+          categories: Array.isArray(c.categories) ? c.categories : [],
           department:
             typeof c.department === 'string'
               ? c.department
@@ -1112,11 +1113,14 @@ function App() {
         const code = normalizeCode(course.code);
         if (!code) return;
         const meta = coursesIndex.get(code) || {};
+        const userCategories = Array.isArray(course.categories) ? course.categories : [];
+        const catalogCategories = Array.isArray(meta.categories) ? meta.categories : [];
         combined.set(code, {
           code,
           department: code.split(' ')[0],
           course_number: code.split(' ')[1],
           credits: Number(course.credits) || Number(meta.credits) || 0,
+          categories: Array.from(new Set([...catalogCategories, ...userCategories])),
           grade: course.grade || null,
           status: course.grade === 'IP' ? 'in-progress' : 'completed'
         });
@@ -1133,6 +1137,7 @@ function App() {
             department: code.split(' ')[0],
             course_number: code.split(' ')[1],
             credits: Number(meta.credits) || 0,
+            categories: Array.isArray(meta.categories) ? meta.categories : [],
             grade: null,
             status: 'planned'
           });
@@ -1170,6 +1175,14 @@ function App() {
       }
       const degreeData = await degreeRes.json();
       setDegreeResult(degreeData);
+      if (degreeData.warnings?.length) setReqWarning(degreeData.warnings.join(' | '));
+
+      const hasTrackSelection = Boolean(selectedEmphasisId || selectedMinorId);
+      if (!hasTrackSelection) {
+        setRequirementsResult(null);
+        setMinorResult(null);
+        return;
+      }
 
       const payload = {
         catalogYear: null,
@@ -2353,6 +2366,11 @@ Now answer the student's question based on this context and any additional infor
   const AcademicRecordPanel = () => {
     const [editingCourse, setEditingCourse] = useState(null); // { termLabel, courseCode }
     const [editingCredits, setEditingCredits] = useState('');
+    const [tagEditorCourseKey, setTagEditorCourseKey] = useState(null);
+    const attributeOptions = [
+      { id: 'attr-sabr', label: 'SABR Attribute' },
+      { id: 'attr-hs-lang-2y', label: '2 Years Language in HS' }
+    ];
 
     const updateCourseCredits = (termLabel, courseCode, newCredits) => {
       const credits = parseFloat(newCredits);
@@ -2378,6 +2396,27 @@ Now answer the student's question based on this context and any additional infor
       setTranscriptTerms(updater);
       setEditingCourse(null);
       setEditingCredits('');
+    };
+
+    const updateCourseAttribute = (termLabel, courseCode, attribute, enabled) => {
+      const updater = (prevTerms) =>
+        prevTerms.map((term) => {
+          if (term.label !== termLabel) return term;
+          return {
+            ...term,
+            courses: (term.courses || []).map((course) => {
+              if (course.code !== courseCode) return course;
+              const existing = new Set(Array.isArray(course.categories) ? course.categories : []);
+              if (enabled) existing.add(attribute);
+              else existing.delete(attribute);
+              return { ...course, categories: Array.from(existing) };
+            })
+          };
+        });
+
+      setReviewTerms(updater);
+      setTranscriptTerms(updater);
+      setIsTranscriptDirty(true);
     };
 
     const transcriptYear =
@@ -2626,6 +2665,16 @@ Now answer the student's question based on this context and any additional infor
                             onDrop={(event) => handleTermDrop(term.label, event)}
                             title="Drag to another term"
                           >
+                            {(() => {
+                              const courseKey = `${term.label}-${course.code}`;
+                              const selectedTags = Array.isArray(course.categories)
+                                ? course.categories.filter((c) =>
+                                    attributeOptions.some((opt) => opt.id === c)
+                                  )
+                                : [];
+                              const tagsOpen = tagEditorCourseKey === courseKey;
+                              return (
+                                <>
                             <div className="flex items-start justify-between">
                               <div>
                                 <p className="text-sm font-semibold text-gray-900">
@@ -2691,6 +2740,22 @@ Now answer the student's question based on this context and any additional infor
                                     >
                                       <Edit2 className="w-3 h-3" />
                                     </button>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setTagEditorCourseKey((prev) =>
+                                          prev === courseKey ? null : courseKey
+                                        );
+                                      }}
+                                      className={`text-xs px-2 py-0.5 rounded border transition-colors ${
+                                        tagsOpen
+                                          ? 'border-[#500000] text-[#500000] bg-[#500000]/5'
+                                          : 'border-gray-200 text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                                      }`}
+                                      title="Set requirement attributes"
+                                    >
+                                      Tags{selectedTags.length ? ` (${selectedTags.length})` : ''}
+                                    </button>
                                   </div>
                                 )}
                               </div>
@@ -2745,6 +2810,62 @@ Now answer the student's question based on this context and any additional infor
                                 )}
                               </div>
                             )}
+                            {selectedTags.length > 0 && !tagsOpen && (
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {selectedTags.map((tag) => {
+                                  const label =
+                                    attributeOptions.find((option) => option.id === tag)?.label || tag;
+                                  return (
+                                    <span
+                                      key={tag}
+                                      className="text-[11px] px-2 py-0.5 rounded-full bg-[#500000]/10 text-[#500000]"
+                                    >
+                                      {label}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            {tagsOpen && (
+                              <div className="mt-2 border-t border-gray-100 pt-2">
+                                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1">
+                                  Attributes
+                                </p>
+                                <div className="flex flex-wrap gap-3">
+                                  {attributeOptions.map((option) => {
+                                    const enabled = Array.isArray(course.categories)
+                                      ? course.categories.includes(option.id)
+                                      : false;
+                                    return (
+                                      <label
+                                        key={option.id}
+                                        className="flex items-center gap-1.5 cursor-pointer select-none"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={enabled}
+                                          onChange={(e) => {
+                                            e.stopPropagation();
+                                            updateCourseAttribute(
+                                              term.label,
+                                              course.code,
+                                              option.id,
+                                              e.target.checked
+                                            );
+                                          }}
+                                          className="w-3.5 h-3.5 rounded border-gray-300 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
+                                        />
+                                        <span className="text-xs text-gray-600">{option.label}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                                </>
+                              );
+                            })()}
                           </div>
                       ))
                     )}
