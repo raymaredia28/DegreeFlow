@@ -7,3 +7,4 @@ dist/
 .env.*.local
 tamu-planner/.env.local
 tamu-planner/server/.env
+tamu-planner/server/data/local-db.json
