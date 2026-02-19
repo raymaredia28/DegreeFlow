@@ -857,7 +857,20 @@
       },
       {
         "name": "Foreign Language",
-        "rules": { "manual": true, "note": "2 years same language in HS or 2-semester college sequence" }
+        "rules": {
+          "anyOf": [
+            { "tag": "attr-hs-lang-2y", "minCount": 1 },
+            { "allOf": ["ARAB 201", "ARAB 202"] },
+            { "allOf": ["CHIN 201", "CHIN 202"] },
+            { "allOf": ["FREN 201", "FREN 202"] },
+            { "allOf": ["GERM 201", "GERM 202"] },
+            { "allOf": ["ITAL 201", "ITAL 202"] },
+            { "allOf": ["JAPN 201", "JAPN 202"] },
+            { "allOf": ["RUSS 201", "RUSS 202"] },
+            { "allOf": ["SPAN 201", "SPAN 202"] }
+          ],
+          "note": "2 years same language in HS or completion of a 201/202 college sequence in the same language"
+        }
       }
     ]
   },

@@ -29,6 +29,21 @@ const makeCourse = (code, credits, grade = 'A') => {
   };
 };
 
+const makeTaggedCourse = (code, credits, categories, grade = 'A') => {
+  const [department, number] = code.split(' ');
+  return {
+    course: {
+      department,
+      course_number: number,
+      credits,
+      categories,
+      course_id: -1
+    },
+    grade,
+    status: 'completed'
+  };
+};
+
 const run = async () => {
   const tests = [];
 
@@ -271,6 +286,146 @@ const run = async () => {
       emphasisCourseIds: new Set()
     });
     assert.ok(!result.groups[0].satisfied, 'Manual STEM emphasis should be unsatisfied');
+  });
+
+  // KLPC should pass with a single approved pool course
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [makeCourse('ENGL 221', 3)];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const group = result.groups.find((g) => g.name === 'Language, Philosophy & Culture (3 credits)');
+    assert.ok(group?.satisfied, 'KLPC should be satisfied by one approved course');
+  });
+
+  // Social & Behavioral should pass with a single approved pool course
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [makeCourse('COMM 365', 3)];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const group = result.groups.find((g) => g.name === 'Social and Behavioral Sciences (3 credits)');
+    assert.ok(group?.satisfied, 'Social and Behavioral Sciences should be satisfied by one approved course');
+  });
+
+  // ICD should pass with a single approved pool course
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [makeCourse('IBUS 430', 3)];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const group = result.groups.find((g) => g.name === 'International and Cultural Diversity (3 credits)');
+    assert.ok(group?.satisfied, 'ICD should be satisfied by one approved course');
+  });
+
+  // Cultural Discourse should pass with a single approved pool course
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [makeCourse('COMM 257', 3)];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const group = result.groups.find((g) => g.name === 'Cultural Discourse (3 credits)');
+    assert.ok(group?.satisfied, 'Cultural Discourse should be satisfied by one approved course');
+  });
+
+  // Citizenship should pass with POLS 206/207 plus two approved history courses
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [
+      makeCourse('POLS 206', 3),
+      makeCourse('POLS 207', 3),
+      makeCourse('HIST 105', 3),
+      makeCourse('HIST 106', 3)
+    ];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const group = result.groups.find((g) => g.name === 'Citizenship (12 credits)');
+    assert.ok(group?.satisfied, 'Citizenship should be satisfied with required POLS + two history courses');
+  });
+
+  // Citizenship should fail with duplicate history entry (do not double count duplicates)
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [
+      makeCourse('POLS 206', 3),
+      makeCourse('POLS 207', 3),
+      makeCourse('HIST 105', 3),
+      makeCourse('HIST 105', 3)
+    ];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const group = result.groups.find((g) => g.name === 'Citizenship (12 credits)');
+    assert.ok(!group?.satisfied, 'Citizenship should fail if duplicate history course is used instead of two distinct courses');
+  });
+
+  // High Impact should pass via SABR attribute tag
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [makeTaggedCourse('UNIV 300', 3, ['attr-sabr'])];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const group = result.groups.find((g) => g.name === 'High Impact Experience');
+    assert.ok(group?.satisfied, 'High Impact should be satisfied by a SABR-tagged course');
+  });
+
+  // Foreign Language should pass with valid 201/202 pair
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [makeCourse('SPAN 201', 3), makeCourse('SPAN 202', 3)];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const group = result.groups.find((g) => g.name === 'Foreign Language');
+    assert.ok(group?.satisfied, 'Foreign Language should be satisfied by a matching 201/202 sequence');
+  });
+
+  // Foreign Language should pass via high-school 2-year tag
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [makeTaggedCourse('HSLG 001', 1, ['attr-hs-lang-2y'])];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const group = result.groups.find((g) => g.name === 'Foreign Language');
+    assert.ok(group?.satisfied, 'Foreign Language should be satisfied by HS 2-year language tag');
+  });
+
+  // Foreign Language should fail with duplicate single-semester course (needs full pair)
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [makeCourse('SPAN 201', 3), makeCourse('SPAN 201', 3)];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const group = result.groups.find((g) => g.name === 'Foreign Language');
+    assert.ok(!group?.satisfied, 'Foreign Language should fail without a 202 companion course');
   });
 
   // Run tests
