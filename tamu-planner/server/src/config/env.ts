@@ -2,6 +2,11 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+const normalizeBaseUrl = (input: string, fallback: string) => {
+  const value = input.trim() || fallback;
+  return value.replace(/\/+$/, "");
+};
+
 const required = ["PORT", "CLIENT_ORIGIN"] as const;
 
 for (const key of required) {
@@ -19,5 +24,8 @@ export const env = {
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
   sessionSecret: process.env.SESSION_SECRET ?? "",
   tamuAiApiKey: process.env.TAMU_AI_CHAT_API_KEY ?? "",
-  tamuAiApiEndpoint: process.env.TAMU_AI_CHAT_API_ENDPOINT ?? "https://chat-api.tamu.ai",
+  tamuAiApiEndpoint: normalizeBaseUrl(
+    process.env.TAMU_AI_CHAT_API_ENDPOINT ?? "",
+    "https://chat-api.tamu.ai"
+  ),
 };

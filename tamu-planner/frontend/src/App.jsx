@@ -38,6 +38,25 @@ const fileToBase64 = (file) =>
     reader.readAsDataURL(file);
   });
 
+const DISPLAY_NAME_STORAGE_KEY = 'tamuPlannerDisplayName';
+
+const normalizeDisplayStudentName = (rawName) => {
+  if (!rawName || typeof rawName !== 'string') return '';
+  let name = rawName
+    .replace(/^\s*(Student\s+)?Name\s*:\s*/i, '')
+    .replace(/\s*\(\s*\d{6,12}\s*\)\s*$/, '')
+    .trim();
+  if (!name) return '';
+  if (name.includes(',')) {
+    const [last, ...rest] = name.split(',');
+    const firstPart = rest.join(',').trim();
+    if (firstPart) {
+      name = `${firstPart} ${last.trim()}`.trim();
+    }
+  }
+  return name;
+};
+
 // Mock data
 const MOCK_STUDENT = {
   name: 'Rayaan A. Maredia',
@@ -674,6 +693,10 @@ function App() {
   };
 
   const [activeTab, setActiveTab] = useState('planner');
+  const [displayStudentName, setDisplayStudentName] = useState(() => {
+    const saved = localStorage.getItem(DISPLAY_NAME_STORAGE_KEY);
+    return saved || MOCK_STUDENT.name;
+  });
   const [selectedEmphasis, setSelectedEmphasis] = useState(
     MOCK_STUDENT.emphasisArea || 'Undecided'
   );
@@ -752,6 +775,13 @@ function App() {
   const [emphases, setEmphases] = useState([]);
   const [minors, setMinors] = useState([]);
   const [isChatLoading, setIsChatLoading] = useState(false);
+
+  const updateDisplayStudentName = useCallback((rawName) => {
+    const normalized = normalizeDisplayStudentName(rawName);
+    if (!normalized) return;
+    setDisplayStudentName(normalized);
+    localStorage.setItem(DISPLAY_NAME_STORAGE_KEY, normalized);
+  }, []);
 
   // Derived catalog lookup keyed by course code (string -> meta)
   const COURSES = useMemo(() => {
@@ -927,6 +957,9 @@ function App() {
 
   const loadUserData = useCallback(async (email, name) => {
     try {
+      if (name) {
+        updateDisplayStudentName(name);
+      }
       const resp = await fetch(`${API_BASE}/storage/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -967,12 +1000,14 @@ function App() {
     } catch (err) {
       console.error('Failed to load user data:', err);
     }
-  }, []);
+  }, [updateDisplayStudentName]);
 
   const logout = () => {
     localStorage.removeItem(AUTH_STORAGE_KEY);
+    localStorage.removeItem(DISPLAY_NAME_STORAGE_KEY);
     localStorage.removeItem('studentId');
     setAuthUser(null);
+    setDisplayStudentName(MOCK_STUDENT.name);
     setStudentId('');
     setTranscriptTerms([]);
     setReviewTerms([]);
@@ -1660,6 +1695,9 @@ function App() {
         setTranscriptError('No terms detected. Please try a different transcript file.');
         return;
       }
+      if (result.studentName) {
+        updateDisplayStudentName(result.studentName);
+      }
       setTranscriptTerms(result.terms);
       setTranscriptTotals(result.totals ?? null);
       setReviewTerms(result.terms);
@@ -2191,7 +2229,7 @@ Now answer the student's question based on this context and any additional infor
         <div className="bg-white rounded-lg shadow p-6 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">{MOCK_STUDENT.name}</h2>
+              <h2 className="text-2xl font-bold text-gray-900">{displayStudentName || MOCK_STUDENT.name}</h2>
               <p className="text-gray-600">Computer Science • GPA: {transcriptGpa || '—'}</p>
             </div>
             <div className="flex gap-3">

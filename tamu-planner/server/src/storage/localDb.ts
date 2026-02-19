@@ -107,14 +107,67 @@ type LocalDb = {
   planner_states: PlannerState[];
 };
 
+const createEmptyDb = (): LocalDb => ({
+  login_credentials: [],
+  students: [],
+  emphasis_areas: [],
+  minors: [],
+  courses: [],
+  student_emphasis: [],
+  student_courses: [],
+  course_emphasis: [],
+  course_minor: [],
+  planner_states: []
+});
+
+const normalizeArray = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
+
+const normalizeDb = (value: unknown): LocalDb => {
+  if (!value || typeof value !== "object") {
+    return createEmptyDb();
+  }
+
+  const db = value as Partial<LocalDb>;
+  return {
+    login_credentials: normalizeArray<LoginCredential>(db.login_credentials),
+    students: normalizeArray<Student>(db.students),
+    emphasis_areas: normalizeArray<EmphasisArea>(db.emphasis_areas),
+    minors: normalizeArray<Minor>(db.minors),
+    courses: normalizeArray<Course>(db.courses),
+    student_emphasis: normalizeArray<StudentEmphasis>(db.student_emphasis),
+    student_courses: normalizeArray<StudentCourse>(db.student_courses),
+    course_emphasis: normalizeArray<CourseEmphasis>(db.course_emphasis),
+    course_minor: normalizeArray<CourseMinor>(db.course_minor),
+    planner_states: normalizeArray<PlannerState>(db.planner_states)
+  };
+};
+
+async function ensureDbFile(dbPath = defaultPath): Promise<void> {
+  await fs.mkdir(path.dirname(dbPath), { recursive: true });
+  try {
+    await fs.access(dbPath);
+  } catch {
+    await fs.writeFile(dbPath, JSON.stringify(createEmptyDb(), null, 2));
+  }
+}
+
 const COURSE_CODE_REGEX = /([A-Z]{2,4})\s+(\d{3})/;
 
 async function readDb(dbPath = defaultPath): Promise<LocalDb> {
+  await ensureDbFile(dbPath);
   const raw = await fs.readFile(dbPath, "utf-8");
-  return JSON.parse(raw) as LocalDb;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return normalizeDb(parsed);
+  } catch {
+    const emptyDb = createEmptyDb();
+    await writeDb(emptyDb, dbPath);
+    return emptyDb;
+  }
 }
 
 async function writeDb(next: LocalDb, dbPath = defaultPath): Promise<void> {
+  await fs.mkdir(path.dirname(dbPath), { recursive: true });
   await fs.writeFile(dbPath, JSON.stringify(next, null, 2));
 }
 
