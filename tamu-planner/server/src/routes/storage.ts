@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { Request, Response } from "express";
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -11,7 +12,8 @@ import {
   getTranscriptForStudent,
   savePlannerState,
   saveTranscriptTerms
-} from "../storage/localDb.js";
+} from "../storage/firestoreDb.js";
+import { verifyBearerToken } from "../services/auth.js";
 
 export const storageRouter = Router();
 const execFileAsync = promisify(execFile);
@@ -40,6 +42,20 @@ const parsePayloadSchema = z.object({
   fileName: z.string().optional(),
   dataBase64: z.string()
 });
+
+const getAuthUser = async (req: Request, res: Response) => {
+  try {
+    return await verifyBearerToken(req.headers.authorization);
+  } catch {
+    res.status(401).json({ error: "Unauthorized" });
+    return null;
+  }
+};
+
+const rejectMismatchedStudentId = (authUid: string, requestedStudentId?: string) => {
+  if (!requestedStudentId) return false;
+  return requestedStudentId !== authUid;
+};
 
 // ── Transcript parser: Python pdfplumber ─────────────────────────────────────
 storageRouter.post("/storage/parse-transcript", async (req, res) => {
@@ -74,14 +90,18 @@ storageRouter.post("/storage/parse-transcript", async (req, res) => {
 });
 
 storageRouter.post("/storage/transcript", async (req, res) => {
+  const authUser = await getAuthUser(req, res);
+  if (!authUser) return;
+
   const parsed = transcriptSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid payload", issues: parsed.error.issues });
   }
 
   const student = await getOrCreateStudent({
-    email: parsed.data.studentEmail,
-    name: parsed.data.studentName
+    uid: authUser.uid,
+    email: authUser.email || parsed.data.studentEmail,
+    name: authUser.name || parsed.data.studentName
   });
 
   await saveTranscriptTerms(student.user_id, parsed.data.terms);
@@ -90,10 +110,14 @@ storageRouter.post("/storage/transcript", async (req, res) => {
 });
 
 storageRouter.get("/storage/transcript/:studentId", async (req, res) => {
-  const studentId = Number(req.params.studentId);
-  if (!Number.isFinite(studentId)) {
-    return res.status(400).json({ error: "Invalid student id" });
+  const authUser = await getAuthUser(req, res);
+  if (!authUser) return;
+
+  if (rejectMismatchedStudentId(authUser.uid, req.params.studentId)) {
+    return res.status(403).json({ error: "Forbidden" });
   }
+
+  const studentId = authUser.uid;
   const transcript = await getTranscriptForStudent(studentId);
   if (!transcript.length) {
     return res.status(404).json({ error: "Transcript not found" });
@@ -102,19 +126,27 @@ storageRouter.get("/storage/transcript/:studentId", async (req, res) => {
 });
 
 storageRouter.post("/storage/planner/:studentId", async (req, res) => {
-  const studentId = Number(req.params.studentId);
-  if (!Number.isFinite(studentId)) {
-    return res.status(400).json({ error: "Invalid student id" });
+  const authUser = await getAuthUser(req, res);
+  if (!authUser) return;
+
+  if (rejectMismatchedStudentId(authUser.uid, req.params.studentId)) {
+    return res.status(403).json({ error: "Forbidden" });
   }
+
+  const studentId = authUser.uid;
   const state = await savePlannerState(studentId, req.body);
   return res.json(state);
 });
 
 storageRouter.get("/storage/planner/:studentId", async (req, res) => {
-  const studentId = Number(req.params.studentId);
-  if (!Number.isFinite(studentId)) {
-    return res.status(400).json({ error: "Invalid student id" });
+  const authUser = await getAuthUser(req, res);
+  if (!authUser) return;
+
+  if (rejectMismatchedStudentId(authUser.uid, req.params.studentId)) {
+    return res.status(403).json({ error: "Forbidden" });
   }
+
+  const studentId = authUser.uid;
   const state = await getPlannerState(studentId);
   if (!state) {
     return res.status(404).json({ error: "Planner state not found" });
@@ -124,19 +156,23 @@ storageRouter.get("/storage/planner/:studentId", async (req, res) => {
 
 // Login/lookup: find or create student by email, return id + any saved data
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().email().optional(),
   name: z.string().optional(),
 });
 
 storageRouter.post("/storage/login", async (req, res) => {
-  const parsed = loginSchema.safeParse(req.body);
-  if (!parsed.success) {
+  const authUser = await getAuthUser(req, res);
+  if (!authUser) return;
+
+  const parsed = loginSchema.safeParse(req.body ?? {});
+  if (!parsed.success && req.body) {
     return res.status(400).json({ error: "Invalid payload", issues: parsed.error.issues });
   }
 
   const student = await getOrCreateStudent({
-    email: parsed.data.email,
-    name: parsed.data.name,
+    uid: authUser.uid,
+    email: authUser.email || parsed.data?.email,
+    name: authUser.name || parsed.data?.name
   });
 
   // Load existing transcript and planner data

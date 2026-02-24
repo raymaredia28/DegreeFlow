@@ -28,4 +28,7 @@ export const env = {
     process.env.TAMU_AI_CHAT_API_ENDPOINT ?? "",
     "https://chat-api.tamu.ai"
   ),
+  firebaseProjectId: process.env.FIREBASE_PROJECT_ID ?? "",
+  firebaseClientEmail: process.env.FIREBASE_CLIENT_EMAIL ?? "",
+  firebasePrivateKey: process.env.FIREBASE_PRIVATE_KEY ?? ""
 };
