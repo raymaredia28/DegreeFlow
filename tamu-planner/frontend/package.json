@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@react-oauth/google": "^0.13.4",
+    "firebase": "^12.9.0",
     "lucide-react": "^0.468.0",
     "pdfjs-dist": "^4.2.67",
     "react": "^18.3.1",

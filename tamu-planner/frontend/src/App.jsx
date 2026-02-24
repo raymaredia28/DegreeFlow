@@ -4,7 +4,8 @@ import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import tamuLogo from './assets/tamu-logo.svg';
 import { TRANSCRIPT_DEMO } from './data/transcriptDemo';
 import { DegreeProgress } from './components/DegreeProgress';
-import { useGoogleLogin } from '@react-oauth/google';
+import { signInWithPopup, signOut } from 'firebase/auth';
+import { firebaseAuth, googleProvider } from './firebase';
 import {
   Calendar,
   AlertTriangle,
@@ -702,6 +703,24 @@ function App() {
   );
   const [selectedMinor, setSelectedMinor] = useState(MOCK_STUDENT.minor || 'None');
   const [studentId, setStudentId] = useState(() => localStorage.getItem('studentId') || '');
+  const AUTH_STORAGE_KEY = 'tamuPlannerAuthUser';
+  const AUTH_TOKEN_STORAGE_KEY = 'tamuPlannerAuthToken';
+  const [authUser, setAuthUser] = useState(() => {
+    try {
+      const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [authToken, setAuthToken] = useState(() => localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || '');
+  const authHeaders = useCallback(
+    (extras = {}) => ({
+      ...extras,
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
+    }),
+    [authToken]
+  );
   const [storageError, setStorageError] = useState('');
   const [transcriptTerms, setTranscriptTerms] = useState([]);
   const [transcriptPdfName, setTranscriptPdfName] = useState('');
@@ -818,9 +837,11 @@ function App() {
   }, [isResizingChat, handleChatResize]);
 
   const loadStoredTranscript = useCallback(async (id) => {
-    if (!id) return;
+    if (!id || !authToken) return;
     try {
-      const response = await fetch(`${API_BASE}/storage/transcript/${id}`);
+      const response = await fetch(`${API_BASE}/storage/transcript/${id}`, {
+        headers: authHeaders()
+      });
       if (!response.ok) return;
       const data = await response.json();
       if (Array.isArray(data.terms)) {
@@ -835,12 +856,14 @@ function App() {
     } catch (err) {
       setStorageError('Unable to load saved transcript data.');
     }
-  }, []);
+  }, [authHeaders, authToken]);
 
   const loadStoredPlanner = useCallback(async (id) => {
-    if (!id) return;
+    if (!id || !authToken) return;
     try {
-      const response = await fetch(`${API_BASE}/storage/planner/${id}`);
+      const response = await fetch(`${API_BASE}/storage/planner/${id}`, {
+        headers: authHeaders()
+      });
       if (!response.ok) return;
       const data = await response.json();
       if (data?.payload) {
@@ -860,7 +883,7 @@ function App() {
     } catch (err) {
       setStorageError('Unable to load saved planner data.');
     }
-  }, []);
+  }, [authHeaders, authToken]);
 
   const saveTranscriptToStorage = useCallback(
     async (terms) => {
@@ -871,7 +894,7 @@ function App() {
         const name = currentAuth?.name || MOCK_STUDENT.name;
         const response = await fetch(`${API_BASE}/storage/transcript`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             studentEmail: email,
             studentName: name,
@@ -891,7 +914,7 @@ function App() {
         return null;
       }
     },
-    []
+    [authHeaders]
   );
 
   const savePlanToStorage = useCallback(async () => {
@@ -911,7 +934,7 @@ function App() {
 
       const response = await fetch(`${API_BASE}/storage/planner/${currentId}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           semesterPlans,
           transcriptTerms,
@@ -934,7 +957,8 @@ function App() {
     semesterPlans,
     selectedPlanYear,
     selectedTranscriptYear,
-    saveTranscriptToStorage
+    saveTranscriptToStorage,
+    authHeaders
   ]);
 
   useEffect(() => {
@@ -944,17 +968,6 @@ function App() {
     }
   }, [studentId, loadStoredTranscript, loadStoredPlanner]);
 
-  const AUTH_STORAGE_KEY = 'tamuPlannerAuthUser';
-
-  const [authUser, setAuthUser] = useState(() => {
-    try {
-      const raw = localStorage.getItem(AUTH_STORAGE_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
-  });
-
   const loadUserData = useCallback(async (email, name) => {
     try {
       if (name) {
@@ -962,7 +975,7 @@ function App() {
       }
       const resp = await fetch(`${API_BASE}/storage/login`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ email, name })
       });
       if (!resp.ok) return;
@@ -1000,13 +1013,16 @@ function App() {
     } catch (err) {
       console.error('Failed to load user data:', err);
     }
-  }, [updateDisplayStudentName]);
+  }, [authHeaders, updateDisplayStudentName]);
 
   const logout = () => {
+    signOut(firebaseAuth).catch(() => {});
     localStorage.removeItem(AUTH_STORAGE_KEY);
+    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
     localStorage.removeItem(DISPLAY_NAME_STORAGE_KEY);
     localStorage.removeItem('studentId');
     setAuthUser(null);
+    setAuthToken('');
     setDisplayStudentName(MOCK_STUDENT.name);
     setStudentId('');
     setTranscriptTerms([]);
@@ -1017,41 +1033,36 @@ function App() {
     setSelectedTranscriptYear('');
   };
 
-  const googleLogin = useGoogleLogin({
-    scope: 'openid email profile',
-    onSuccess: async (tokenResponse) => {
-      const resp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-        headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
-      });
-
-      if (!resp.ok) throw new Error('Failed to fetch Google user profile');
-
-      const profile = await resp.json();
-
+  const googleLogin = async () => {
+    try {
+      const credential = await signInWithPopup(firebaseAuth, googleProvider);
       const user = {
         provider: 'google',
-        name: profile.name || '',
-        email: profile.email || '',
-        picture: profile.picture || ''
+        uid: credential.user.uid,
+        name: credential.user.displayName || '',
+        email: credential.user.email || '',
+        picture: credential.user.photoURL || ''
       };
+
+      const token = await credential.user.getIdToken();
+      setAuthToken(token);
+      localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
 
       setAuthUser(user);
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
 
       await loadUserData(user.email, user.name);
-
       setActiveTab('dashboard');
-    },
-    onError: () => {
+    } catch {
       alert('Google sign-in failed. Please try again.');
     }
-  });
+  };
 
   useEffect(() => {
-    if (authUser?.email && !studentId) {
+    if (authUser?.email && authToken && !studentId) {
       loadUserData(authUser.email, authUser.name);
     }
-  }, []);
+  }, [authToken, authUser, loadUserData, studentId]);
 
   const buildCourseIndex = (courses) => {
     const map = new Map();
