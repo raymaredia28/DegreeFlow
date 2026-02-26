@@ -485,7 +485,7 @@ const parseTranscriptLines = (lines) => {
     if (!line) return;
 
     if (/courses in progress/i.test(line)) {
-      console.log('[transcript] Skipping "courses in progress" marker:', line);
+      //console.log('[transcript] Skipping "courses in progress" marker:', line);
       return;
     }
 
@@ -500,7 +500,7 @@ const parseTranscriptLines = (lines) => {
 
     const termCheck = line.match(TERM_REGEX);
     if (termCheck) {
-      console.log('[transcript] Term match:', { line, termMatch: termCheck });
+      //console.log('[transcript] Term match:', { line, termMatch: termCheck });
       const label = `${termCheck[1]} ${termCheck[2]}`;
       const existing = terms.find((term) => term.label === label);
       if (existing) {
@@ -1208,7 +1208,7 @@ function App() {
         courses: Array.from(combined.values())
       };
 
-      console.log('Sending degree evaluation payload', degreePayload);
+      //console.log('Sending degree evaluation payload', degreePayload);
 
       const degreeRes = await fetch(`${API_BASE}/api/requirements/evaluate-local`, {
         method: 'POST',
@@ -1247,7 +1247,7 @@ function App() {
         throw new Error(msg.error || `Evaluate failed (${res.status})`);
       }
       const data = await res.json();
-      console.log('requirements evaluation result', data);
+      //console.log('requirements evaluation result', data);
       setRequirementsResult(data);
       // Evaluate minor separately (if selected) to show minor-specific progress
       if (selectedMinorId) {
