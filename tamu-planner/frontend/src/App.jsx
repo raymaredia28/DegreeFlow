@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import tamuLogo from './assets/tamu-logo.svg';
-import { TRANSCRIPT_DEMO } from './data/transcriptDemo';
 import { DegreeProgress } from './components/DegreeProgress';
 import { signInWithPopup, signOut } from 'firebase/auth';
 import { firebaseAuth, googleProvider } from './firebase';
@@ -58,20 +57,6 @@ const normalizeDisplayStudentName = (rawName) => {
   return name;
 };
 
-// Mock data
-const MOCK_STUDENT = {
-  name: 'Rayaan A. Maredia',
-  uin: '832006835',
-  email: 'rayaan.maredia@tamu.edu',
-  major: 'Computer Science',
-  catalogYear: '2025-2026',
-  gpa: 3.82,
-  completedCredits: 98,
-  totalRequired: 120,
-  emphasisArea: 'Undecided',
-  minor: 'None'
-};
-
 // Requirement areas used for the evaluation bars on the Dashboard.
 // NOTE: Replace/extend these with your real CS degree audit rules as needed.
 const REQUIREMENT_AREAS = [
@@ -118,8 +103,6 @@ const RISKY_COMBOS = [
     severity: 'medium'
   }
 ];
-
-const RAW_TRANSCRIPT_TERMS = TRANSCRIPT_DEMO;
 
 const normalizeTranscript = (terms) => {
   const termOrder = { Fall: 0, Winter: 1, Spring: 2, Summer: 3 };
@@ -177,12 +160,6 @@ const toTitleCase = (str) => {
     return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
   }).join(' ');
 };
-
-const DEMO_COURSE_LOOKUP = new Map(
-  TRANSCRIPT_DEMO.flatMap((term) =>
-    (term.courses || []).map((course) => [course.code, course])
-  )
-);
 
 const TERM_REGEX = /\b(Fall|Spring|Summer|Winter)\s+(20\d{2})\b/;
 const COURSE_REGEX = /\b([A-Z]{2,4})\s+(\d{3})\b/;
@@ -428,10 +405,8 @@ const parseTranscriptLines = (lines) => {
       const code = `${subj} ${num}`;
       const credits = Number(creditsStr);
       const grade = gradeRaw;
-      const demoCourse = DEMO_COURSE_LOOKUP.get(code);
-      const resolvedTitle = toTitleCase(demoCourse?.title ?? title.trim());
-      const resolvedCredits =
-        Number.isFinite(credits) && credits > 0 ? credits : demoCourse?.credits ?? 0;
+      const resolvedTitle = toTitleCase(title.trim() || code);
+      const resolvedCredits = Number.isFinite(credits) && credits > 0 ? credits : 0;
       currentTerm.courses.push({
         code,
         title: resolvedTitle,
@@ -460,10 +435,8 @@ const parseTranscriptLines = (lines) => {
     const title = credits
       ? withoutGrade.replace(String(credits), '').trim()
       : withoutGrade.trim();
-    const demoCourse = DEMO_COURSE_LOOKUP.get(code);
-    const resolvedTitle = toTitleCase(demoCourse?.title ?? (title || code));
-    const resolvedCredits =
-      Number.isFinite(credits) && credits > 0 ? credits : demoCourse?.credits ?? 0;
+    const resolvedTitle = toTitleCase(title || code);
+    const resolvedCredits = Number.isFinite(credits) && credits > 0 ? credits : 0;
 
     currentTerm.courses.push({
       code,
@@ -693,15 +666,19 @@ function App() {
     return seeded;
   };
 
-  const [activeTab, setActiveTab] = useState('planner');
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      return localStorage.getItem('tamuPlannerAuthUser') ? 'planner' : 'login';
+    } catch {
+      return 'login';
+    }
+  });
   const [displayStudentName, setDisplayStudentName] = useState(() => {
     const saved = localStorage.getItem(DISPLAY_NAME_STORAGE_KEY);
-    return saved || MOCK_STUDENT.name;
+    return saved || '';
   });
-  const [selectedEmphasis, setSelectedEmphasis] = useState(
-    MOCK_STUDENT.emphasisArea || 'Undecided'
-  );
-  const [selectedMinor, setSelectedMinor] = useState(MOCK_STUDENT.minor || 'None');
+  const [selectedEmphasis, setSelectedEmphasis] = useState('Undecided');
+  const [selectedMinor, setSelectedMinor] = useState('None');
   const [studentId, setStudentId] = useState(() => localStorage.getItem('studentId') || '');
   const AUTH_STORAGE_KEY = 'tamuPlannerAuthUser';
   const AUTH_TOKEN_STORAGE_KEY = 'tamuPlannerAuthToken';
@@ -772,6 +749,7 @@ function App() {
   const [selectedTranscriptYear, setSelectedTranscriptYear] = useState('');
   // Set of transfer course codes excluded from degree evaluation (user-toggled)
   const [excludedTransferCourses, setExcludedTransferCourses] = useState(() => new Set());
+  const [excludedFromEval, setExcludedFromEval] = useState(() => new Set());
   const [transcriptError, setTranscriptError] = useState('');
   const [transcriptLoading, setTranscriptLoading] = useState(false);
   const [transcriptLoadingMessage, setTranscriptLoadingMessage] = useState('');
@@ -794,6 +772,8 @@ function App() {
   const [emphases, setEmphases] = useState([]);
   const [minors, setMinors] = useState([]);
   const [isChatLoading, setIsChatLoading] = useState(false);
+  const [consentPendingFile, setConsentPendingFile] = useState(null);
+  const uploadInputRef = useRef(null);
 
   const updateDisplayStudentName = useCallback((rawName) => {
     const normalized = normalizeDisplayStudentName(rawName);
@@ -890,8 +870,8 @@ function App() {
       try {
         setStorageError('');
         const currentAuth = JSON.parse(localStorage.getItem('tamuPlannerAuthUser') || 'null');
-        const email = currentAuth?.email || MOCK_STUDENT.email;
-        const name = currentAuth?.name || MOCK_STUDENT.name;
+        const email = currentAuth?.email || '';
+        const name = currentAuth?.name || '';
         const response = await fetch(`${API_BASE}/storage/transcript`, {
           method: 'POST',
           headers: authHeaders({ 'Content-Type': 'application/json' }),
@@ -1023,7 +1003,7 @@ function App() {
     localStorage.removeItem('studentId');
     setAuthUser(null);
     setAuthToken('');
-    setDisplayStudentName(MOCK_STUDENT.name);
+    setDisplayStudentName('');
     setStudentId('');
     setTranscriptTerms([]);
     setReviewTerms([]);
@@ -1031,6 +1011,7 @@ function App() {
     setTranscriptPdfName('');
     setSemesterPlans(initSemesterPlans({}));
     setSelectedTranscriptYear('');
+    setActiveTab('login');
   };
 
   const googleLogin = async () => {
@@ -1158,6 +1139,7 @@ function App() {
       transcriptCourseList.forEach((course) => {
         const code = normalizeCode(course.code);
         if (!code) return;
+        if (excludedFromEval.has(code)) return;
         const meta = coursesIndex.get(code) || {};
         const userCategories = Array.isArray(course.categories) ? course.categories : [];
         const catalogCategories = Array.isArray(meta.categories) ? meta.categories : [];
@@ -1168,7 +1150,7 @@ function App() {
           credits: Number(course.credits) || Number(meta.credits) || 0,
           categories: Array.from(new Set([...catalogCategories, ...userCategories])),
           grade: course.grade || null,
-          status: course.grade === 'IP' ? 'in-progress' : 'completed'
+          status: (!course.grade || course.grade === 'IP' || course.grade === 'TIP') ? 'in-progress' : 'completed'
         });
       });
 
@@ -1176,6 +1158,7 @@ function App() {
         (codes || []).forEach((raw) => {
           const code = normalizeCode(raw);
           if (!code) return;
+          if (excludedFromEval.has(code)) return;
           if (combined.has(code)) return; // prefer transcript/in-progress copy
           const meta = coursesIndex.get(code) || {};
           combined.set(code, {
@@ -1281,7 +1264,7 @@ function App() {
     autoEvalDone.current = true;
     evaluateRequirementsLocal();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [coursesIndex, selectedEmphasis, selectedMinor, transcriptTerms, semesterPlans]);
+  }, [coursesIndex, selectedEmphasis, selectedMinor, transcriptTerms, semesterPlans, excludedFromEval]);
 
   // Ensure modal state and errors clear when leaving Planner tab
   useEffect(() => {
@@ -1400,7 +1383,7 @@ function App() {
       attemptedCredits += credits;
     });
 
-    if (!attemptedCredits) return MOCK_STUDENT.gpa;
+    if (!attemptedCredits) return null;
     return Number((qualityPoints / attemptedCredits).toFixed(2));
   }, [transcriptCourseList, transcriptTotals]);
   const classification = useMemo(() => {
@@ -1681,6 +1664,7 @@ function App() {
     };
   }, [reviewContextMenu.open]);
 
+
   const handleTranscriptPdf = async (file) => {
     if (!file) return;
     setTranscriptPdfName(file.name);
@@ -1738,8 +1722,7 @@ function App() {
       
       contextParts.push('STUDENT PROFILE:');
       contextParts.push(`- Texas A&M University Computer Science student`);
-      contextParts.push(`- Major: ${MOCK_STUDENT.major}`);
-      contextParts.push(`- Catalog Year: ${MOCK_STUDENT.catalogYear}`);
+      contextParts.push(`- Major: Computer Science`);
       
       if (transcriptTerms.length > 0) {
         const completedCourses = transcriptCourseList.filter(c => c.type === 'completed');
@@ -1749,7 +1732,7 @@ function App() {
         );
         
         contextParts.push('\nTRANSCRIPT DATA:');
-        contextParts.push(`- Current GPA: ${transcriptGpa}`);
+        contextParts.push(`- Current GPA: ${transcriptGpa ?? 'N/A'}`);
         contextParts.push(`- Credits Completed: ${transcriptCreditsSummary.completedCredits}`);
         contextParts.push(`- Credits In Progress: ${transcriptCreditsSummary.inProgressCredits}`);
         contextParts.push(`- Transfer Credits: ${transferCourses.length > 0 ? transferCourses.join(', ') : 'None'}`);
@@ -1793,9 +1776,9 @@ function App() {
       }
       
       contextParts.push('\nDEGREE REQUIREMENTS:');
-      contextParts.push(`- Total Required: ${MOCK_STUDENT.totalRequired} credits`);
+      contextParts.push(`- Total Required: 126 credits`);
       contextParts.push(`- Completed + In Progress + Planned: ${transcriptCreditsSummary.completedCredits + transcriptCreditsSummary.inProgressCredits + plannedCreditsSummary.plannedCredits} credits`);
-      contextParts.push(`- Remaining: ${MOCK_STUDENT.totalRequired - (transcriptCreditsSummary.completedCredits + transcriptCreditsSummary.inProgressCredits + plannedCreditsSummary.plannedCredits)} credits`);
+      contextParts.push(`- Remaining: ${126 - (transcriptCreditsSummary.completedCredits + transcriptCreditsSummary.inProgressCredits + plannedCreditsSummary.plannedCredits)} credits`);
       
       const systemMessage = {
         role: 'system',
@@ -2240,7 +2223,7 @@ Now answer the student's question based on this context and any additional infor
         <div className="bg-white rounded-lg shadow p-6 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">{displayStudentName || MOCK_STUDENT.name}</h2>
+              <h2 className="text-2xl font-bold text-gray-900">{displayStudentName || 'Student'}</h2>
               <p className="text-gray-600">Computer Science • GPA: {transcriptGpa || '—'}</p>
             </div>
             <div className="flex gap-3">
@@ -2287,9 +2270,6 @@ Now answer the student's question based on this context and any additional infor
               <h3 className="text-lg font-semibold text-gray-900">Requirements Check</h3>
               <p className="text-sm text-gray-600">Auto-evaluates on load and when you change emphasis/minor or plan.</p>
             </div>
-            <span className="text-xs text-gray-500">
-              API_BASE={API_BASE} • catalog codes={coursesIndex.size}
-            </span>
           </div>
           {reqError && <p className="text-sm text-red-600 mb-2">{reqError}</p>}
           {reqWarning && !reqError && <p className="text-sm text-amber-700 mb-2">{reqWarning}</p>}
@@ -2416,6 +2396,18 @@ Now answer the student's question based on this context and any additional infor
     const [editingCourse, setEditingCourse] = useState(null); // { termLabel, courseCode }
     const [editingCredits, setEditingCredits] = useState('');
     const [tagEditorCourseKey, setTagEditorCourseKey] = useState(null);
+    const [moveMenuCourseKey, setMoveMenuCourseKey] = useState(null);
+    useEffect(() => {
+      if (!moveMenuCourseKey) return undefined;
+      const handleClose = () => setMoveMenuCourseKey(null);
+      const handleKey = (e) => { if (e.key === 'Escape') setMoveMenuCourseKey(null); };
+      window.addEventListener('click', handleClose);
+      window.addEventListener('keydown', handleKey);
+      return () => {
+        window.removeEventListener('click', handleClose);
+        window.removeEventListener('keydown', handleKey);
+      };
+    }, [moveMenuCourseKey]);
     const attributeOptions = [
       { id: 'attr-sabr', label: 'SABR Attribute' },
       { id: 'attr-hs-lang-2y', label: '2 Years Language in HS' }
@@ -2514,33 +2506,17 @@ Now answer the student's question based on this context and any additional infor
           <label className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-100 cursor-pointer inline-flex items-center gap-1.5">
             <Plus className="w-4 h-4" />
             <input
+              ref={uploadInputRef}
               type="file"
               accept="application/pdf"
               className="hidden"
-              onChange={(e) => handleTranscriptPdf(e.target.files?.[0])}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) setConsentPendingFile(file);
+              }}
             />
             Upload PDF
           </label>
-          <button
-            type="button"
-            onClick={() => {
-              setTranscriptTerms(TRANSCRIPT_DEMO);
-              setReviewTerms(TRANSCRIPT_DEMO);
-              setTranscriptError('');
-              setTranscriptPdfName('');
-              setTranscriptTotals(null);
-              setReviewTotals(null);
-              setIsTranscriptDirty(false);
-              const normalized = normalizeTranscript(TRANSCRIPT_DEMO);
-              if (normalized.length > 0) {
-                setSelectedTranscriptYear(normalized[normalized.length - 1].year);
-              }
-            }}
-            className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-100"
-          >
-            Demo Data
-          </button>
-
           <div className="w-px h-6 bg-gray-300 mx-1" />
 
           <button
@@ -2722,6 +2698,11 @@ Now answer the student's question based on this context and any additional infor
                                   )
                                 : [];
                               const tagsOpen = tagEditorCourseKey === courseKey;
+                              const moveOpen = moveMenuCourseKey === courseKey;
+                              // All term labels across all years, excluding the current one
+                              const allTermOptions = transcriptYears.flatMap((yr) =>
+                                getTermsForAcademicYear(yr.year).filter((lbl) => lbl !== term.label)
+                              );
                               return (
                                 <>
                             <div className="flex items-start justify-between">
@@ -2805,6 +2786,65 @@ Now answer the student's question based on this context and any additional infor
                                     >
                                       Tags{selectedTags.length ? ` (${selectedTags.length})` : ''}
                                     </button>
+                                    <div className="relative">
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setMoveMenuCourseKey((prev) =>
+                                            prev === courseKey ? null : courseKey
+                                          );
+                                          setTagEditorCourseKey(null);
+                                        }}
+                                        className={`text-xs px-1.5 py-0.5 rounded border transition-colors ${
+                                          moveOpen
+                                            ? 'border-[#500000] text-[#500000] bg-[#500000]/5'
+                                            : 'border-gray-200 text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                                        }`}
+                                        title="Move to another term"
+                                      >
+                                        ···
+                                      </button>
+                                      {moveOpen && (
+                                        <div
+                                          className="absolute right-0 top-full mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg w-40 max-h-48 overflow-y-auto py-1"
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          <p className="text-[9px] font-semibold text-gray-400 uppercase px-2 py-0.5 tracking-wide">
+                                            Move to
+                                          </p>
+                                          {allTermOptions.length === 0 ? (
+                                            <p className="text-[10px] text-gray-500 px-2 py-1">No other terms</p>
+                                          ) : (
+                                            transcriptYears.map((yr) => {
+                                              const opts = getTermsForAcademicYear(yr.year).filter(
+                                                (lbl) => lbl !== term.label
+                                              );
+                                              if (opts.length === 0) return null;
+                                              return (
+                                                <div key={yr.year}>
+                                                  <p className="text-[9px] text-gray-400 px-2 pt-1 pb-0.5 font-medium">
+                                                    {yr.year}
+                                                  </p>
+                                                  {opts.map((targetLabel) => (
+                                                    <button
+                                                      key={targetLabel}
+                                                      type="button"
+                                                      onClick={() => {
+                                                        moveReviewedCourse(course.code, term.label, targetLabel);
+                                                        setMoveMenuCourseKey(null);
+                                                      }}
+                                                      className="w-full text-left text-[10px] px-2 py-1 hover:bg-gray-50 text-gray-700 hover:text-gray-900"
+                                                    >
+                                                      {targetLabel}
+                                                    </button>
+                                                  ))}
+                                                </div>
+                                              );
+                                            })
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
                                 )}
                               </div>
@@ -2839,6 +2879,7 @@ Now answer the student's question based on this context and any additional infor
                                       checked={!excludedTransferCourses.has(course.code)}
                                       onChange={(e) => {
                                         e.stopPropagation();
+                                        const adding = !excludedTransferCourses.has(course.code);
                                         setExcludedTransferCourses((prev) => {
                                           const next = new Set(prev);
                                           if (next.has(course.code)) {
@@ -2848,12 +2889,49 @@ Now answer the student's question based on this context and any additional infor
                                           }
                                           return next;
                                         });
+                                        // keep eval exclusion in sync: excluding from degree also excludes from eval
+                                        setExcludedFromEval((prev) => {
+                                          const next = new Set(prev);
+                                          if (adding) {
+                                            next.add(course.code);
+                                          } else {
+                                            next.delete(course.code);
+                                          }
+                                          return next;
+                                        });
                                         setIsTranscriptDirty(true);
                                       }}
                                       className="w-3.5 h-3.5 rounded border-gray-300 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
                                     />
                                     <span className={`text-xs ${excludedTransferCourses.has(course.code) ? 'text-gray-400 line-through' : 'text-gray-600'}`}>
                                       Count toward degree
+                                    </span>
+                                  </label>
+                                )}
+                                {!course.transfer && (
+                                  <label
+                                    className="flex items-center gap-1.5 cursor-pointer select-none"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={!excludedFromEval.has(course.code)}
+                                      onChange={(e) => {
+                                        e.stopPropagation();
+                                        setExcludedFromEval((prev) => {
+                                          const next = new Set(prev);
+                                          if (next.has(course.code)) {
+                                            next.delete(course.code);
+                                          } else {
+                                            next.add(course.code);
+                                          }
+                                          return next;
+                                        });
+                                      }}
+                                      className="w-3.5 h-3.5 rounded border-gray-300 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
+                                    />
+                                    <span className={`text-xs ${excludedFromEval.has(course.code) ? 'text-gray-400 line-through' : 'text-gray-600'}`}>
+                                      Use in evaluation
                                     </span>
                                   </label>
                                 )}
@@ -3225,6 +3303,31 @@ Now answer the student's question based on this context and any additional infor
                                       .join(', ')}
                                   </p>
                                 )}
+                                <label
+                                  className="flex items-center gap-1.5 mt-1.5 cursor-pointer select-none"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={!excludedFromEval.has(course.code)}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      setExcludedFromEval((prev) => {
+                                        const next = new Set(prev);
+                                        if (next.has(course.code)) {
+                                          next.delete(course.code);
+                                        } else {
+                                          next.add(course.code);
+                                        }
+                                        return next;
+                                      });
+                                    }}
+                                    className="w-3.5 h-3.5 rounded border-gray-300 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
+                                  />
+                                  <span className={`text-xs ${excludedFromEval.has(course.code) ? 'text-gray-400 line-through' : 'text-gray-600'}`}>
+                                    Use in evaluation
+                                  </span>
+                                </label>
                               </div>
                               {course.type === 'planned' && (
                                 <button
@@ -3752,6 +3855,52 @@ Now answer the student's question based on this context and any additional infor
     );
   };
 
+  const TranscriptConsentModal = () => {
+    if (!consentPendingFile) return null;
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-8">
+          <h2 className="text-xl font-bold text-gray-900 mb-3">Data Storage Consent</h2>
+          <p className="text-sm text-gray-700 mb-4">
+            By uploading your transcript, you consent to DegreeFlow storing your course history
+            (course codes, grades, and credit hours) to power your degree plan. Your data is
+            associated with your TAMU Google account and is used solely for academic planning
+            within this application.
+          </p>
+          <ul className="text-xs text-gray-500 space-y-1 mb-6 list-disc list-inside">
+            <li>Only course codes, titles, grades, and credit hours are stored.</li>
+            <li>Your PDF is never saved — it is processed and discarded immediately.</li>
+            <li>You can clear your data at any time from the Academic Record tab.</li>
+          </ul>
+          <div className="flex gap-3 justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                setConsentPendingFile(null);
+                if (uploadInputRef.current) uploadInputRef.current.value = '';
+              }}
+              className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const file = consentPendingFile;
+                setConsentPendingFile(null);
+                handleTranscriptPdf(file);
+              }}
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
+              style={{ backgroundColor: '#500000' }}
+            >
+              I Consent — Upload
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const LoginPage = () => {
     return (
       <div className="min-h-[70vh] flex items-center justify-center">
@@ -3803,7 +3952,7 @@ Now answer the student's question based on this context and any additional infor
               <div className="flex items-center justify-between">
                 <button
                   type="button"
-                  onClick={() => setActiveTab('dashboard')}
+                  onClick={() => setActiveTab(authUser ? 'dashboard' : 'login')}
                   className="flex items-center gap-3 text-left"
                   aria-label="Go to dashboard"
                 >
@@ -3864,56 +4013,59 @@ Now answer the student's question based on this context and any additional infor
             </div>
           </header>
 
-          <nav className="bg-white shadow">
-            <div className="max-w-7xl mx-auto px-4">
-              <div className="flex gap-6">
-                {[
-                  { id: 'dashboard', label: 'Dashboard' },
-                  { id: 'planner', label: 'Planner' },
-                  { id: 'prerequisites', label: 'Prerequisites' }
-                ].map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => {
-                      // Warn if leaving planner with unsaved changes
-                      if (activeTab === 'planner' && tab.id !== 'planner' && plannerDirty) {
-                        if (!window.confirm('You have unsaved planner changes. Leave without saving?')) {
-                          return;
+          {authUser && (
+            <nav className="bg-white shadow">
+              <div className="max-w-7xl mx-auto px-4">
+                <div className="flex gap-6">
+                  {[
+                    { id: 'dashboard', label: 'Dashboard' },
+                    { id: 'planner', label: 'Planner' },
+                    { id: 'prerequisites', label: 'Prerequisites' }
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => {
+                        if (activeTab === 'planner' && tab.id !== 'planner' && plannerDirty) {
+                          if (!window.confirm('You have unsaved planner changes. Leave without saving?')) {
+                            return;
+                          }
                         }
+                        setActiveTab(tab.id);
+                      }}
+                      className={`py-4 px-2 border-b-2 font-medium capitalize ${
+                        activeTab === tab.id
+                          ? 'text-gray-900'
+                          : 'border-transparent text-gray-600 hover:text-gray-900'
+                      }`}
+                      style={
+                        activeTab === tab.id ? { borderColor: '#500000', color: '#500000' } : {}
                       }
-                      setActiveTab(tab.id);
-                    }}
-                    className={`py-4 px-2 border-b-2 font-medium capitalize ${
-                      activeTab === tab.id
-                        ? 'text-gray-900'
-                        : 'border-transparent text-gray-600 hover:text-gray-900'
-                    }`}
-                    style={
-                      activeTab === tab.id ? { borderColor: '#500000', color: '#500000' } : {}
-                    }
-                  >
-                    {tab.label}
-                  </button>
-                ))}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-          </nav>
+            </nav>
+          )}
         </>
       )}
 
       <main className={isFlowFullscreen ? 'p-0' : 'max-w-7xl mx-auto px-4 py-8'}>
         <div key={activeTab} className="animate-fade-in">
-          {activeTab === 'dashboard' && <DashboardTab />}
-          {activeTab === 'planner' && <PlannerTab />}
-          {activeTab === 'prerequisites' && (
+          {activeTab === 'dashboard' && (authUser ? <DashboardTab /> : <LoginPage />)}
+          {activeTab === 'planner' && (authUser ? <PlannerTab /> : <LoginPage />)}
+          {activeTab === 'prerequisites' && (authUser ? (
             <PrerequisiteTab
               isFullscreen={isFlowFullscreen}
               onFullscreenChange={setIsFlowFullscreen}
             />
-          )}
+          ) : <LoginPage />)}
           {activeTab === 'login' && <LoginPage />}
         </div>
       </main>
+
+      <TranscriptConsentModal />
 
       {!isFlowFullscreen && (
         <div className="fixed right-0 bottom-6 z-50 flex items-end">

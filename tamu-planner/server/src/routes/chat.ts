@@ -3,6 +3,7 @@ import { z } from "zod";
 import { env } from "../config/env.js";
 
 export const chatRouter = Router();
+const isProduction = env.nodeEnv === "production";
 
 const chatMessageSchema = z.object({
   role: z.enum(["user", "assistant", "system"]),
@@ -49,9 +50,9 @@ chatRouter.post("/chat/completions", async (req, res) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error("[chat] TAMU AI API error:", response.status, errorText);
-      return res.status(response.status).json({ 
+      return res.status(response.status).json({
         error: "TAMU AI API request failed",
-        details: errorText,
+        ...(isProduction ? {} : { details: errorText })
       });
     }
 
@@ -60,9 +61,9 @@ chatRouter.post("/chat/completions", async (req, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[chat] Error calling TAMU AI API:", message);
-    return res.status(500).json({ 
+    return res.status(500).json({
       error: "Failed to communicate with TAMU AI API",
-      details: message,
+      ...(isProduction ? {} : { details: message })
     });
   }
 });
@@ -85,9 +86,9 @@ chatRouter.get("/chat/models", async (_req, res) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error("[chat] TAMU AI models API error:", response.status, errorText);
-      return res.status(response.status).json({ 
+      return res.status(response.status).json({
         error: "Failed to fetch models",
-        details: errorText,
+        ...(isProduction ? {} : { details: errorText })
       });
     }
 
@@ -96,9 +97,9 @@ chatRouter.get("/chat/models", async (_req, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[chat] Error fetching models:", message);
-    return res.status(500).json({ 
+    return res.status(500).json({
       error: "Failed to fetch models from TAMU AI API",
-      details: message,
+      ...(isProduction ? {} : { details: message })
     });
   }
 });

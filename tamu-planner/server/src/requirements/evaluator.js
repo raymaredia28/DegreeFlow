@@ -104,7 +104,7 @@ const evaluateAnyOf = (anyOf, context, minGrade) => {
       const course = context.courseIndex.get(code);
       if (isCompleted(course, minGrade)) {
         const credits = Number(course.credits) || 0;
-        if (credits > best.credits) {
+        if (!best.satisfied || credits > best.credits) {
           best = { satisfied: true, credits, used: [code] };
         }
       } else {
@@ -126,7 +126,7 @@ const evaluateAnyOf = (anyOf, context, minGrade) => {
         }
       });
       if (missing.length === 0) {
-        if (credits > best.credits) {
+        if (!best.satisfied || credits > best.credits) {
           best = { satisfied: true, credits, used: option.allOf.map(normalizeCode) };
         }
       } else {
@@ -138,7 +138,7 @@ const evaluateAnyOf = (anyOf, context, minGrade) => {
     if (option?.tag) {
       const result = evaluateTag(option, context, minGrade);
       if (result.satisfied) {
-        if (result.credits > best.credits) {
+        if (!best.satisfied || result.credits > best.credits) {
           best = { satisfied: true, credits: result.credits, used: result.used || [] };
         }
       } else {
