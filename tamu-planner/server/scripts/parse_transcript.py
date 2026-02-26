@@ -533,6 +533,18 @@ def infer_missing_labels(blocks: List[TermBlock]) -> List[TermBlock]:
 
         prev_term, prev_year = split_term_year(prev_label)
         next_term, next_year = split_term_year(next_label)
+        
+        # If a trailing unlabeled block follows an in-progress block, treat it as
+        # the same in-progress term rather than inventing a future labeled term.
+        if idx > 0 and not next_label:
+            prev_block = blocks[idx - 1]
+            if prev_block.label and prev_block.status == "In Progress":
+                block.label = prev_block.label
+                block.status = "In Progress"
+                for course in block.courses:
+                    if not course.grade:
+                        course.grade = "IP"
+                continue
 
         # In many TAMU transcripts, an unlabeled block between Spring and Fall
         # is a continuation of the current Spring term (split across columns),

@@ -4071,14 +4071,11 @@ Now answer the student's question based on this context and any additional infor
       <TranscriptConsentModal />
 
       {!isFlowFullscreen && (
-        <div className="fixed right-0 bottom-6 z-50 flex items-end">
+        <div className="fixed right-0 bottom-6 z-50 flex items-end pointer-events-none">
+          {isChatOpen && (
           <div
-            className={`mr-3 rounded-2xl border border-gray-200 bg-white shadow-xl transition-all duration-300 ease-out flex relative ${
-              isChatOpen
-                ? 'opacity-100 translate-x-0 pointer-events-auto'
-                : 'opacity-0 translate-x-6 pointer-events-none'
-            }`}
-            style={isChatOpen ? { width: chatWidth, height: chatHeight } : { width: 320, height: 400 }}
+            className="mr-3 rounded-2xl border border-gray-200 bg-white shadow-xl flex relative pointer-events-auto"
+            style={{ width: chatWidth, height: chatHeight }}
           >
               <div
                 role="button"
@@ -4219,11 +4216,12 @@ Now answer the student's question based on this context and any additional infor
               </div>
             </div>
           </div>
+          )}
 
           <button
             type="button"
             onClick={() => setIsChatOpen((prev) => !prev)}
-            className="flex items-center justify-center h-14 w-7 rounded-l-full bg-[#500000] text-white shadow-lg hover:bg-[#3d0000]"
+            className="pointer-events-auto flex items-center justify-center h-14 w-7 rounded-l-full bg-[#500000] text-white shadow-lg hover:bg-[#3d0000]"
             aria-label="Toggle chat assistant"
           >
             {isChatOpen ? '›' : '‹'}
