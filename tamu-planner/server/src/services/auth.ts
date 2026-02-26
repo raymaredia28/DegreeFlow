@@ -4,6 +4,11 @@ import { env } from "../config/env.js";
 
 const formatPrivateKey = (key: string) => key.replace(/\\n/g, "\n");
 
+const hasFirebaseCredentials =
+  Boolean(env.firebaseProjectId) &&
+  Boolean(env.firebaseClientEmail) &&
+  Boolean(env.firebasePrivateKey);
+
 export function ensureFirebaseApp() {
   if (getApps().length > 0) {
     return getApps()[0];
@@ -15,12 +20,7 @@ export function ensureFirebaseApp() {
     firebasePrivateKey
   } = env;
 
-  const useServiceAccount =
-    Boolean(firebaseProjectId) &&
-    Boolean(firebaseClientEmail) &&
-    Boolean(firebasePrivateKey);
-
-  if (useServiceAccount) {
+  if (hasFirebaseCredentials) {
     return initializeApp({
       credential: cert({
         projectId: firebaseProjectId,
@@ -43,7 +43,20 @@ export type AuthUser = {
   picture: string;
 };
 
+/**
+ * In dev mode without Firebase credentials, accepts any Bearer token as
+ * a user identifier so the server can run fully offline.
+ * Format: "Bearer <uid>" or "Bearer dev" (defaults to "dev-user").
+ */
 export async function verifyBearerToken(authorizationHeader?: string): Promise<AuthUser> {
+  if (env.nodeEnv !== "production" && !hasFirebaseCredentials) {
+    const raw = authorizationHeader?.startsWith("Bearer ")
+      ? authorizationHeader.slice(7).trim()
+      : "";
+    const uid = raw || "dev-user";
+    return { uid, email: `${uid}@dev.local`, name: "Dev User", picture: "" };
+  }
+
   if (!authorizationHeader || !authorizationHeader.startsWith("Bearer ")) {
     throw new Error("Missing or invalid Authorization header");
   }

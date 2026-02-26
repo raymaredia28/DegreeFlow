@@ -1,34 +1,6 @@
 import { getFirestore } from "firebase-admin/firestore";
 import { ensureFirebaseApp } from "../services/auth.js";
-
-export type Student = {
-  user_id: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-};
-
-export type PlannerState = {
-  id: string;
-  user_id: string;
-  created_at: string;
-  updated_at: string;
-  payload: unknown;
-};
-
-export type TranscriptCourse = {
-  code: string;
-  title: string;
-  credits: number;
-  grade: string;
-  transfer?: boolean;
-};
-
-export type TranscriptTerm = {
-  label: string;
-  status: string;
-  courses: TranscriptCourse[];
-};
+import type { Student, PlannerState, TranscriptTerm } from "./types.js";
 
 const USERS_COLLECTION = "users";
 

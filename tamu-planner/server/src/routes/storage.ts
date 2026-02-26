@@ -12,7 +12,7 @@ import {
   getTranscriptForStudent,
   savePlannerState,
   saveTranscriptTerms
-} from "../storage/firestoreDb.js";
+} from "../storage/index.js";
 import { verifyBearerToken } from "../services/auth.js";
 
 export const storageRouter = Router();

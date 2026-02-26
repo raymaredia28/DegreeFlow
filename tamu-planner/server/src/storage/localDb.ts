@@ -1,347 +1,151 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { env } from "../config/env.js";
+import type { Student, PlannerState, TranscriptTerm } from "./types.js";
 
-const defaultPath = path.resolve(process.env.LOCAL_DB_PATH ?? "./data/local-db.json");
+const dbPath = () => path.resolve(env.localDbPath);
 
-export type LoginCredential = {
-  credential_id: number;
-  user_id: number;
-  username: string;
-  password_hash: string;
-  last_login_at: string;
-};
-
-export type Student = {
-  user_id: number;
+type UserRecord = {
+  user_id: string;
   first_name: string;
   last_name: string;
   email: string;
-};
-
-export type EmphasisArea = {
-  emphasis_id: number;
-  emphasis_name: string;
-};
-
-export type Minor = {
-  minor_id: number;
-  minor_name: string;
-};
-
-export type Course = {
-  course_id: number;
-  department: string;
-  course_number: string;
-  title: string;
-  credits: number;
-};
-
-export type StudentEmphasis = {
-  student_emphasis_id: number;
-  user_id: number;
-  emphasis_id: number;
-  catalog_year: string;
-};
-
-export type StudentCourse = {
-  entry_id: number;
-  user_id: number;
-  course_id: number;
-  student_emphasis_id?: number | null;
-  term: string;
-  year: number;
-  grade: string;
-  status: string;
-};
-
-export type CourseEmphasis = {
-  course_emphasis_id: number;
-  course_id: number;
-  emphasis_id: number;
-};
-
-export type CourseMinor = {
-  course_minor_id: number;
-  course_id: number;
-  minor_id: number;
-};
-
-export type PlannerState = {
-  id: string;
-  user_id: number;
   created_at: string;
   updated_at: string;
-  payload: unknown;
-};
-
-export type TranscriptCourse = {
-  code: string;
-  title: string;
-  credits: number;
-  grade: string;
-  transfer?: boolean;
-};
-
-export type TranscriptTerm = {
-  label: string;
-  status: string;
-  courses: TranscriptCourse[];
-};
-
-export type TranscriptTotals = {
-  institution?: { gpa?: string; qualityPoints?: string; earnedHours?: string; gpaHours?: string };
-  transfer?: { gpa?: string; qualityPoints?: string; earnedHours?: string; gpaHours?: string };
-  overall?: { gpa?: string; qualityPoints?: string; earnedHours?: string; gpaHours?: string };
+  transcript_terms: TranscriptTerm[];
+  planner: PlannerState | null;
 };
 
 type LocalDb = {
-  login_credentials: LoginCredential[];
-  students: Student[];
-  emphasis_areas: EmphasisArea[];
-  minors: Minor[];
-  courses: Course[];
-  student_emphasis: StudentEmphasis[];
-  student_courses: StudentCourse[];
-  course_emphasis: CourseEmphasis[];
-  course_minor: CourseMinor[];
-  planner_states: PlannerState[];
+  users: Record<string, UserRecord>;
 };
 
-const createEmptyDb = (): LocalDb => ({
-  login_credentials: [],
-  students: [],
-  emphasis_areas: [],
-  minors: [],
-  courses: [],
-  student_emphasis: [],
-  student_courses: [],
-  course_emphasis: [],
-  course_minor: [],
-  planner_states: []
-});
+const createEmptyDb = (): LocalDb => ({ users: {} });
 
-const normalizeArray = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
-
-const normalizeDb = (value: unknown): LocalDb => {
-  if (!value || typeof value !== "object") {
+async function readDb(): Promise<LocalDb> {
+  const p = dbPath();
+  await fs.mkdir(path.dirname(p), { recursive: true });
+  try {
+    const raw = await fs.readFile(p, "utf-8");
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object" && "users" in parsed) {
+      return parsed as LocalDb;
+    }
+    return createEmptyDb();
+  } catch {
     return createEmptyDb();
   }
-
-  const db = value as Partial<LocalDb>;
-  return {
-    login_credentials: normalizeArray<LoginCredential>(db.login_credentials),
-    students: normalizeArray<Student>(db.students),
-    emphasis_areas: normalizeArray<EmphasisArea>(db.emphasis_areas),
-    minors: normalizeArray<Minor>(db.minors),
-    courses: normalizeArray<Course>(db.courses),
-    student_emphasis: normalizeArray<StudentEmphasis>(db.student_emphasis),
-    student_courses: normalizeArray<StudentCourse>(db.student_courses),
-    course_emphasis: normalizeArray<CourseEmphasis>(db.course_emphasis),
-    course_minor: normalizeArray<CourseMinor>(db.course_minor),
-    planner_states: normalizeArray<PlannerState>(db.planner_states)
-  };
-};
-
-async function ensureDbFile(dbPath = defaultPath): Promise<void> {
-  await fs.mkdir(path.dirname(dbPath), { recursive: true });
-  try {
-    await fs.access(dbPath);
-  } catch {
-    await fs.writeFile(dbPath, JSON.stringify(createEmptyDb(), null, 2));
-  }
 }
 
-const COURSE_CODE_REGEX = /([A-Z]{2,4})\s+(\d{3})/;
-
-async function readDb(dbPath = defaultPath): Promise<LocalDb> {
-  await ensureDbFile(dbPath);
-  const raw = await fs.readFile(dbPath, "utf-8");
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    return normalizeDb(parsed);
-  } catch {
-    const emptyDb = createEmptyDb();
-    await writeDb(emptyDb, dbPath);
-    return emptyDb;
-  }
+async function writeDb(db: LocalDb): Promise<void> {
+  const p = dbPath();
+  await fs.mkdir(path.dirname(p), { recursive: true });
+  await fs.writeFile(p, JSON.stringify(db, null, 2));
 }
 
-async function writeDb(next: LocalDb, dbPath = defaultPath): Promise<void> {
-  await fs.mkdir(path.dirname(dbPath), { recursive: true });
-  await fs.writeFile(dbPath, JSON.stringify(next, null, 2));
-}
-
-function nextId(items: Array<Record<string, unknown>>, key: string) {
-  const values = items.map((i) => Number(i[key] ?? 0)).filter((v) => Number.isFinite(v));
-  return values.length ? Math.max(...values) + 1 : 1;
-}
-
-function splitName(name?: string) {
+const splitName = (name?: string) => {
   if (!name) return { first: "", last: "" };
   const parts = name.trim().split(/\s+/);
   if (parts.length === 1) return { first: parts[0], last: "" };
   return { first: parts[0], last: parts.slice(1).join(" ") };
-}
+};
+
+const nowIso = () => new Date().toISOString();
 
 export async function getOrCreateStudent(input: {
+  uid: string;
   email?: string;
   name?: string;
 }): Promise<Student> {
   const db = await readDb();
-  const existing = input.email
-    ? db.students.find((s) => s.email.toLowerCase() === input.email?.toLowerCase())
-    : undefined;
-  if (existing) return existing;
-
+  const existing = db.users[input.uid];
   const { first, last } = splitName(input.name);
-  const record: Student = {
-    user_id: nextId(db.students, "user_id"),
-    first_name: first,
-    last_name: last,
-    email: input.email ?? ""
-  };
-  db.students.push(record);
-  await writeDb(db);
-  return record;
-}
+  const now = nowIso();
 
-export async function saveTranscriptTerms(studentId: number, terms: TranscriptTerm[]) {
-  const db = await readDb();
-
-  db.student_courses = db.student_courses.filter((entry) => entry.user_id !== studentId);
-
-  terms.forEach((term) => {
-    const [termName, yearStr] = term.label.split(" ");
-    const year = Number(yearStr);
-
-    term.courses.forEach((course) => {
-      const codeMatch = course.code.match(COURSE_CODE_REGEX);
-      if (!codeMatch) return;
-      const [, department, courseNumber] = codeMatch;
-
-      // Sanity-check credits: a single course should never exceed 10 credit hours.
-      // If the value looks like it was set from the course number (e.g. 312 for CSCE 312)
-      // fall back to 0 so the user can correct it manually.
-      const sanitizedCredits =
-        Number.isFinite(course.credits) && course.credits >= 0 && course.credits <= 10
-          ? course.credits
-          : 0;
-
-      let courseRecord = db.courses.find(
-        (c) => c.department === department && c.course_number === courseNumber
-      );
-      if (!courseRecord) {
-        courseRecord = {
-          course_id: nextId(db.courses, "course_id"),
-          department,
-          course_number: courseNumber,
-          title: course.title,
-          credits: sanitizedCredits
-        };
-        db.courses.push(courseRecord);
-      } else {
-        // Always update title and credits from the latest parse so stale/bad
-        // data from a previous (possibly incorrect) parse is overwritten.
-        courseRecord.title = course.title;
-        courseRecord.credits = sanitizedCredits;
-      }
-
-      const status = term.status
-        ? term.status
-        : course.grade === "IP"
-          ? "In Progress"
-          : course.grade === "TA"
-            ? "Transfer"
-            : "Evaluated";
-
-      db.student_courses.push({
-        entry_id: nextId(db.student_courses, "entry_id"),
-        user_id: studentId,
-        course_id: courseRecord.course_id,
-        student_emphasis_id: null,
-        term: termName,
-        year: Number.isFinite(year) ? year : new Date().getFullYear(),
-        grade: course.grade,
-        status
-      });
-    });
-  });
-
-  await writeDb(db);
-}
-
-export async function getTranscriptForStudent(studentId: number) {
-  const db = await readDb();
-  const entries = db.student_courses.filter((e) => e.user_id === studentId);
-  if (!entries.length) return [] as TranscriptTerm[];
-
-  const coursesById = new Map(db.courses.map((c) => [c.course_id, c]));
-  const termsMap = new Map<string, TranscriptTerm>();
-
-  entries.forEach((entry) => {
-    const course = coursesById.get(entry.course_id);
-    if (!course) return;
-    const label = `${entry.term} ${entry.year}`;
-    if (!termsMap.has(label)) {
-      termsMap.set(label, {
-        label,
-        status: entry.status || "Evaluated",
-        courses: []
-      });
-    }
-    const term = termsMap.get(label);
-    // Sanity-check credits on read as well
-    const credits =
-      Number.isFinite(course.credits) && course.credits >= 0 && course.credits <= 10
-        ? course.credits
-        : 0;
-
-    term?.courses.push({
-      code: `${course.department} ${course.course_number}`,
-      title: course.title,
-      credits,
-      grade: entry.grade,
-      transfer: entry.grade === "TA" || entry.grade === "TIP"
-    });
-    if (term && entry.status === "In Progress") {
-      term.status = "In Progress";
-    }
-  });
-
-  return Array.from(termsMap.values()).sort((a, b) => {
-    const [aTerm, aYearStr] = a.label.split(" ");
-    const [bTerm, bYearStr] = b.label.split(" ");
-    if (aYearStr !== bYearStr) return Number(aYearStr) - Number(bYearStr);
-    const order: Record<string, number> = { Spring: 0, Summer: 1, Fall: 2, Winter: 3 };
-    return (order[aTerm] ?? 9) - (order[bTerm] ?? 9);
-  });
-}
-
-export async function savePlannerState(userId: number, payload: unknown) {
-  const db = await readDb();
-  const existing = db.planner_states.find((p) => p.user_id === userId);
-  const now = new Date().toISOString();
-
-  if (existing) {
-    existing.payload = payload;
-    existing.updated_at = now;
+  if (!existing) {
+    const user: UserRecord = {
+      user_id: input.uid,
+      first_name: first,
+      last_name: last,
+      email: input.email ?? "",
+      created_at: now,
+      updated_at: now,
+      transcript_terms: [],
+      planner: null,
+    };
+    db.users[input.uid] = user;
     await writeDb(db);
-    return existing;
+    return {
+      user_id: input.uid,
+      first_name: first,
+      last_name: last,
+      email: input.email ?? "",
+    };
   }
 
-  const next: PlannerState = {
-    id: `planner_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-    user_id: userId,
-    created_at: now,
-    updated_at: now,
-    payload
+  const shouldUpdate =
+    (input.email && existing.email !== input.email) ||
+    (first && existing.first_name !== first) ||
+    (last && existing.last_name !== last);
+
+  if (shouldUpdate) {
+    existing.email = input.email ?? existing.email;
+    existing.first_name = first || existing.first_name;
+    existing.last_name = last || existing.last_name;
+    existing.updated_at = now;
+    await writeDb(db);
+  }
+
+  return {
+    user_id: existing.user_id,
+    first_name: existing.first_name,
+    last_name: existing.last_name,
+    email: existing.email,
   };
-  db.planner_states.push(next);
-  await writeDb(db);
-  return next;
 }
 
-export async function getPlannerState(userId: number) {
+export async function saveTranscriptTerms(
+  studentId: string,
+  terms: TranscriptTerm[]
+): Promise<void> {
   const db = await readDb();
-  return db.planner_states.find((p) => p.user_id === userId) ?? null;
+  const user = db.users[studentId];
+  if (!user) throw new Error(`User ${studentId} not found in local DB`);
+  user.transcript_terms = terms;
+  user.updated_at = nowIso();
+  await writeDb(db);
+}
+
+export async function getTranscriptForStudent(
+  studentId: string
+): Promise<TranscriptTerm[]> {
+  const db = await readDb();
+  return db.users[studentId]?.transcript_terms ?? [];
+}
+
+export async function savePlannerState(
+  studentId: string,
+  payload: unknown
+): Promise<PlannerState> {
+  const db = await readDb();
+  const user = db.users[studentId];
+  if (!user) throw new Error(`User ${studentId} not found in local DB`);
+  const now = nowIso();
+  const state: PlannerState = {
+    id: "current",
+    user_id: studentId,
+    created_at: user.planner?.created_at ?? now,
+    updated_at: now,
+    payload,
+  };
+  user.planner = state;
+  await writeDb(db);
+  return state;
+}
+
+export async function getPlannerState(
+  studentId: string
+): Promise<PlannerState | null> {
+  const db = await readDb();
+  return db.users[studentId]?.planner ?? null;
 }
