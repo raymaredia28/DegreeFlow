@@ -7,6 +7,14 @@ const normalizeBaseUrl = (input: string, fallback: string) => {
   return value.replace(/\/+$/, "");
 };
 
+const parseOrigins = (input: string, fallback: string) => {
+  const raw = input.trim() || fallback;
+  return raw
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+};
+
 const required = ["PORT", "CLIENT_ORIGIN"] as const;
 
 for (const key of required) {
@@ -19,6 +27,10 @@ export const env = {
   nodeEnv: process.env.NODE_ENV ?? "development",
   port: Number(process.env.PORT ?? 4000),
   clientOrigin: process.env.CLIENT_ORIGIN ?? "http://localhost:5173",
+  clientOrigins: parseOrigins(
+    process.env.CLIENT_ORIGIN ?? "",
+    "http://localhost:5173"
+  ),
   databaseUrl: process.env.DATABASE_URL ?? "",
   localDbPath: process.env.LOCAL_DB_PATH ?? "./data/local-db.json",
   googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
