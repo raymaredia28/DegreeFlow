@@ -1891,15 +1891,15 @@ Now answer the student's question based on this context and any additional infor
 
     courses.forEach((code) => {
       const course = COURSES[code];
-      totalCredits += course.credits;
-      totalDifficulty += course.difficulty;
+      if (!course) return;
+      totalCredits += course.credits ?? 0;
+      totalDifficulty += course.difficulty ?? 0;
 
       if (isCourseCompleted(code) || isCourseInProgress(code) || isCoursePlannedInEarlierSemester(code, semester)) {
         errors.push(`${code} has already been taken or planned in a prior semester`);
       }
 
-      // Check prerequisites
-      course.prereqs.forEach((prereq) => {
+      (course.prereqs || []).forEach((prereq) => {
         if (!isCourseCompleted(prereq)) {
           errors.push(`${code} requires ${prereq} to be completed`);
         }
@@ -3931,16 +3931,9 @@ Now answer the student's question based on this context and any additional infor
             Continue with Google
           </button>
 
-          <div className="mt-6 text-sm text-gray-600 flex items-center justify-between">
-            <span>Continue without signing in to explore the planner.</span>
-            <button
-              type="button"
-              onClick={() => setActiveTab('planner')}
-              className="text-[#500000] font-semibold hover:underline"
-            >
-              Back to planner
-            </button>
-          </div>
+          <p className="mt-6 text-sm text-gray-500 text-center">
+            Sign in with your Google account to get started.
+          </p>
         </div>
       </div>
     );
