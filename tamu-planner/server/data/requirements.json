@@ -581,7 +581,6 @@
         "name": "General Electives (1 credit)",
         "rules": {
           "minCredits": 1,
-          "manual": true,
           "note": "Any undergraduate course not used elsewhere",
           "items": [
             {

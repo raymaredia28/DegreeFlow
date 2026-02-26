@@ -1183,10 +1183,13 @@ function App() {
           ? minors.find((m) => (m.minor_name || m.name) === selectedMinor)?.minor_id || null
           : null;
 
-      // Degree-level evaluation (no emphasis/minor)
+      // Degree-level evaluation — pass degreeEmphasisId so the backend can
+      // populate emphasisCourseIds for the emphasisCredits sub-rule in
+      // Supporting Coursework without switching to the emphasis requirement set.
       const degreePayload = {
-        catalogYear: null, // backend will pick latest/first set
+        catalogYear: null,
         emphasisId: null,
+        degreeEmphasisId: selectedEmphasisId ?? null,
         minorId: null,
         courses: Array.from(combined.values())
       };
@@ -1461,7 +1464,7 @@ function App() {
   const deriveTermStatus = (courses = []) => {
     let status = 'Evaluated';
     for (const course of courses) {
-      if (course?.grade === 'IP' || course?.grade === 'TIP') return 'In Progress';
+      if (course?.grade === 'IP' || course?.grade === 'TIP' || !course?.grade) return 'In Progress';
       if (course?.transfer || course?.grade === 'TA') status = 'Transfer';
     }
     return status;
@@ -2849,7 +2852,7 @@ Now answer the student's question based on this context and any additional infor
                                 )}
                               </div>
                             </div>
-                            {(course.transfer || course.honors || course.grade === 'IP' || course.grade === 'TIP') && (
+                            {(course.transfer || course.honors || course.grade === 'IP' || course.grade === 'TIP' || !course.grade) && (
                               <div className="mt-2 flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   {course.honors && (
@@ -2863,7 +2866,7 @@ Now answer the student's question based on this context and any additional infor
                                       Transfer
                                     </span>
                                   )}
-                                  {(course.grade === 'IP' || course.grade === 'TIP') && (
+                                  {(course.grade === 'IP' || course.grade === 'TIP' || !course.grade) && (
                                     <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700">
                                       In Progress
                                     </span>
