@@ -7,11 +7,18 @@ import { apiRouter } from "./routes/index.js";
 
 export function createApp() {
   const app = express();
+  const allowedOrigins = new Set(env.clientOrigins);
 
   app.use(helmet());
   app.use(
     cors({
-      origin: env.clientOrigin,
+      origin: (origin, callback) => {
+        if (!origin || allowedOrigins.has(origin)) {
+          callback(null, true);
+          return;
+        }
+        callback(null, false);
+      },
       credentials: true,
     })
   );
