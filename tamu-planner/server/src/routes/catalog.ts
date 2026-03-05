@@ -109,6 +109,55 @@ const buildEmphasisCourseIds = (
   return ids;
 };
 
+/**
+ * Extract eligible course IDs from an emphasis requirement set in
+ * requirements.json by walking its groups' pools, allOf, anyOf, and items.
+ * This covers emphasis areas whose emphasis_areas.json rules aren't fully
+ * handled by buildEmphasisCourseIds (e.g. source_minor-based emphases).
+ */
+const extractCourseIdsFromRequirementSet = (
+  reqSet: any,
+  catalogIndex: Map<string, any>
+): Set<number> => {
+  const ids = new Set<number>();
+
+  const addByCode = (code: string) => {
+    const c = catalogIndex.get(normCode(code));
+    if (c?.course_id != null && c.course_id !== -1) ids.add(c.course_id);
+  };
+
+  for (const group of reqSet.groups || []) {
+    const rules = group.rules;
+    if (!rules) continue;
+
+    if (Array.isArray(rules.pool)) {
+      rules.pool.forEach((c: string) => addByCode(c));
+    }
+
+    if (Array.isArray(rules.allOf)) {
+      rules.allOf.forEach((c: string) => {
+        if (typeof c === "string") addByCode(c);
+      });
+    }
+
+    if (Array.isArray(rules.items)) {
+      for (const item of rules.items) {
+        if (item.course) addByCode(item.course);
+        if (Array.isArray(item.pool)) {
+          item.pool.forEach((c: string) => addByCode(c));
+        }
+        if (Array.isArray(item.anyOf)) {
+          item.anyOf.forEach((opt: any) => {
+            if (typeof opt === "string") addByCode(opt);
+          });
+        }
+      }
+    }
+  }
+
+  return ids;
+};
+
 catalogRouter.post("/api/requirements/evaluate-local", async (req, res, next) => {
   try {
     const {
@@ -221,6 +270,21 @@ catalogRouter.post("/api/requirements/evaluate-local", async (req, res, next) =>
         buildEmphasisCourseIds(match, catalogIndex).forEach((id) =>
           emphasisCourseIds.add(id)
         );
+
+        // Supplement from the matching emphasis requirement set's pools in
+        // requirements.json — fills the gap for emphases whose
+        // emphasis_areas.json rules use source_minor (Cybersecurity, Game,
+        // Neuroscience) and aren't covered by buildEmphasisCourseIds.
+        const emphasisName = match.name || match.emphasis_name;
+        const targetName = `CSCE Emphasis - ${emphasisName}`;
+        const emphasisReqSet = requirementSets.find(
+          (r: any) => r.name === targetName
+        );
+        if (emphasisReqSet) {
+          extractCourseIdsFromRequirementSet(emphasisReqSet, catalogIndex).forEach(
+            (id) => emphasisCourseIds.add(id)
+          );
+        }
       }
     }
 

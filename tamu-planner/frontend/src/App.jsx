@@ -18,7 +18,9 @@ import {
   ChevronUp,
   Edit2,
   PanelRightClose,
-  PanelRightOpen
+  PanelRightOpen,
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4000';
@@ -764,7 +766,6 @@ function App() {
   const [reqLoading, setReqLoading] = useState(false);
   const [reqError, setReqError] = useState('');
   const [reqWarning, setReqWarning] = useState('');
-  const autoEvalDone = useRef(false);
   const [minorResult, setMinorResult] = useState(null);
   const [coursesIndex, setCoursesIndex] = useState(new Map());
   const [emphasisOptions, setEmphasisOptions] = useState(['Undecided']);
@@ -848,6 +849,7 @@ function App() {
       const data = await response.json();
       if (data?.payload) {
         if (data.payload.semesterPlans) {
+          suppressDirtyRef.current = true;
           setSemesterPlans(initSemesterPlans(data.payload.semesterPlans));
         }
         if (data.payload.selectedPlanYear) {
@@ -858,6 +860,19 @@ function App() {
         }
         if (data.payload.transcriptTotals) {
           setTranscriptTotals(data.payload.transcriptTotals);
+        }
+        if (data.payload.selectedEmphasis) {
+          setSelectedEmphasis(data.payload.selectedEmphasis);
+        }
+        if (data.payload.selectedMinor) {
+          setSelectedMinor(data.payload.selectedMinor);
+        }
+        if (data.payload.savedEvaluation) {
+          const ev = data.payload.savedEvaluation;
+          if (ev.degreeResult) setDegreeResult(ev.degreeResult);
+          if (ev.requirementsResult) setRequirementsResult(ev.requirementsResult);
+          if (ev.minorResult) setMinorResult(ev.minorResult);
+          if (ev.reqWarning) setReqWarning(ev.reqWarning);
         }
       }
     } catch (err) {
@@ -920,7 +935,9 @@ function App() {
           transcriptTerms,
           transcriptTotals,
           selectedPlanYear,
-          selectedTranscriptYear
+          selectedTranscriptYear,
+          selectedEmphasis,
+          selectedMinor
         })
       });
 
@@ -937,8 +954,68 @@ function App() {
     semesterPlans,
     selectedPlanYear,
     selectedTranscriptYear,
+    selectedEmphasis,
+    selectedMinor,
     saveTranscriptToStorage,
     authHeaders
+  ]);
+
+  const [evalSaving, setEvalSaving] = useState(false);
+  const saveEvaluationToStorage = useCallback(async () => {
+    try {
+      setEvalSaving(true);
+      setStorageError('');
+      let currentId = studentId;
+      if (!currentId) {
+        setStorageError('No student ID found. Upload a transcript before saving.');
+        return;
+      }
+
+      const response = await fetch(`${API_BASE}/storage/planner/${currentId}`, {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          semesterPlans,
+          transcriptTerms,
+          transcriptTotals,
+          selectedPlanYear,
+          selectedTranscriptYear,
+          selectedEmphasis,
+          selectedMinor,
+          savedEvaluation: {
+            degreeResult,
+            requirementsResult,
+            minorResult,
+            reqWarning
+          }
+        })
+      });
+
+      if (!response.ok) {
+        setStorageError('Unable to save evaluation.');
+      } else {
+        showToast('Evaluation saved!', 'success');
+      }
+    } catch (err) {
+      setStorageError('Unable to save evaluation.');
+    } finally {
+      setEvalSaving(false);
+    }
+  }, [
+    studentId,
+    semesterPlans,
+    transcriptTerms,
+    transcriptTotals,
+    selectedPlanYear,
+    selectedTranscriptYear,
+    selectedEmphasis,
+    selectedMinor,
+    degreeResult,
+    requirementsResult,
+    minorResult,
+    reqWarning,
+    authHeaders,
+    showToast
   ]);
 
   useEffect(() => {
@@ -978,6 +1055,7 @@ function App() {
 
       if (data.planner) {
         if (data.planner.semesterPlans) {
+          suppressDirtyRef.current = true;
           setSemesterPlans(initSemesterPlans(data.planner.semesterPlans));
         }
         if (data.planner.selectedPlanYear) {
@@ -988,6 +1066,19 @@ function App() {
         }
         if (data.planner.transcriptTotals) {
           setTranscriptTotals(data.planner.transcriptTotals);
+        }
+        if (data.planner.selectedEmphasis) {
+          setSelectedEmphasis(data.planner.selectedEmphasis);
+        }
+        if (data.planner.selectedMinor) {
+          setSelectedMinor(data.planner.selectedMinor);
+        }
+        if (data.planner.savedEvaluation) {
+          const ev = data.planner.savedEvaluation;
+          if (ev.degreeResult) setDegreeResult(ev.degreeResult);
+          if (ev.requirementsResult) setRequirementsResult(ev.requirementsResult);
+          if (ev.minorResult) setMinorResult(ev.minorResult);
+          if (ev.reqWarning) setReqWarning(ev.reqWarning);
         }
       }
     } catch (err) {
@@ -1261,13 +1352,6 @@ function App() {
     }
   };
 
-  // Auto-run evaluation when catalog loads and when key inputs change
-  useEffect(() => {
-    if (coursesIndex.size === 0) return;
-    autoEvalDone.current = true;
-    evaluateRequirementsLocal();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [coursesIndex, selectedEmphasis, selectedMinor, transcriptTerms, semesterPlans, excludedFromEval]);
 
   // Ensure modal state and errors clear when leaving Planner tab
   useEffect(() => {
@@ -1524,6 +1608,7 @@ function App() {
   // Track unsaved planner changes
   const [plannerDirty, setPlannerDirty] = useState(false);
   const prevPlansRef = useRef(null);
+  const suppressDirtyRef = useRef(false);
   useEffect(() => {
     // Skip initial render
     if (prevPlansRef.current === null) {
@@ -1531,7 +1616,11 @@ function App() {
       return;
     }
     if (prevPlansRef.current !== semesterPlans) {
-      setPlannerDirty(true);
+      if (suppressDirtyRef.current) {
+        suppressDirtyRef.current = false;
+      } else {
+        setPlannerDirty(true);
+      }
       prevPlansRef.current = semesterPlans;
     }
   }, [semesterPlans]);
@@ -2268,10 +2357,38 @@ Now answer the student's question based on this context and any additional infor
         </div>
 
         <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-3">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Requirements Check</h3>
-              <p className="text-sm text-gray-600">Auto-evaluates on load and when you change emphasis/minor or plan.</p>
+              <p className="text-sm text-gray-600">Generate an evaluation to check your degree progress.</p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={evaluateRequirementsLocal}
+                disabled={reqLoading || coursesIndex.size === 0}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded border border-[#500000] text-[#500000] bg-white hover:bg-[#500000]/5 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {reqLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-4 h-4" />
+                )}
+                {reqLoading ? 'Generating…' : 'Generate'}
+              </button>
+              {degreeResult && (
+                <button
+                  onClick={saveEvaluationToStorage}
+                  disabled={evalSaving}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {evalSaving ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  {evalSaving ? 'Saving…' : 'Save'}
+                </button>
+              )}
             </div>
           </div>
           {reqError && <p className="text-sm text-red-600 mb-2">{reqError}</p>}
@@ -2345,9 +2462,9 @@ Now answer the student's question based on this context and any additional infor
                 </div>
               ))}
             </div>
-          ) : (
-            <p className="text-sm text-gray-600">Awaiting evaluation…</p>
-          )}
+          ) : !degreeResult ? (
+            <p className="text-sm text-gray-500">Click Generate to evaluate your degree requirements.</p>
+          ) : null}
         </div>
 
         {minorResult && (

@@ -1004,7 +1004,12 @@
         "name": "Business Emphasis (12 credits)",
         "rules": {
           "minCredits": 12,
-          "allOf": ["ACCT 209", "FINC 409", "MGMT 309", "MKTG 409"]
+          "items": [
+            { "anyOf": ["ACCT 209", "ACCT 229"] },
+            { "course": "FINC 409" },
+            { "course": "MGMT 309" },
+            { "course": "MKTG 409" }
+          ]
         }
       }
     ]

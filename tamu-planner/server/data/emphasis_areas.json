@@ -30,7 +30,7 @@
     "min_credits": 12,
     "description": "Follow Business minor courses; emphasis can be completed without finishing the minor.",
     "rules": {
-      "required_courses": ["ACCT 209", "FINC 409", "MGMT 309", "MKTG 409"],
+      "required_courses": ["ACCT 209", "ACCT 229", "FINC 409", "MGMT 309", "MKTG 409"],
       "recommended_minor": "Business",
       "degree_plan_overlap": {
         "general_elective": ["MGMT 209"],

@@ -12,8 +12,8 @@ const normalizeCode = (raw) => {
 const gradeValue = (grade) => {
   if (!grade) return null;
   const g = grade.toUpperCase().trim();
-  if (g === 'IP') return null;
-  if (g === 'P' || g === 'S') return 2.0;
+  if (g === 'IP' || g === 'TIP') return null;
+  if (g === 'P' || g === 'S' || g === 'TCR') return 2.0;
   const map = {
     'A+': 4.0,
     A: 4.0,
@@ -27,7 +27,11 @@ const gradeValue = (grade) => {
     'D+': 1.3,
     D: 1.0,
     'D-': 0.7,
-    F: 0.0
+    F: 0.0,
+    TA: 4.0,
+    TB: 3.0,
+    TC: 2.0,
+    TD: 1.0
   };
   return map[g] ?? null;
 };
@@ -235,20 +239,24 @@ const evaluateEmphasis = (rule, context, minGrade) => {
     return {
       satisfied: false,
       credits: 0,
+      used: [],
       missing: ['Emphasis area courses (advisor-approved)']
     };
   }
-  const credits = sumCredits(
-    Array.from(context.courseIndex.values()).filter(
-      (course) =>
-        isCompleted(course, minGrade) && context.emphasisCourseIds.has(course.course_id)
-    )
+  const matched = Array.from(context.courseIndex.values()).filter(
+    (course) =>
+      isCompleted(course, minGrade) && context.emphasisCourseIds.has(course.course_id)
   );
+  const credits = sumCredits(matched);
+  const used = matched.map((c) => normalizeCode(`${c.department} ${c.course_number}`));
   const satisfied = credits >= requiredCredits;
   return {
     satisfied,
     credits,
-    missing: satisfied ? [] : [`Emphasis credits: ${requiredCredits}`]
+    used,
+    missing: satisfied
+      ? []
+      : [`Emphasis credits: need ${requiredCredits - credits} more (${credits}/${requiredCredits})`]
   };
 };
 

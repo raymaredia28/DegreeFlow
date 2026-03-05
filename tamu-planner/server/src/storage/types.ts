@@ -19,6 +19,7 @@ export type TranscriptCourse = {
   credits: number;
   grade: string;
   transfer?: boolean;
+  categories?: string[];
 };
 
 export type TranscriptTerm = {

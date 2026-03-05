@@ -23,7 +23,8 @@ const transcriptCourseSchema = z.object({
   title: z.string(),
   credits: z.number(),
   grade: z.string(),
-  transfer: z.boolean().optional()
+  transfer: z.boolean().optional(),
+  categories: z.array(z.string()).optional()
 });
 
 const transcriptTermSchema = z.object({
