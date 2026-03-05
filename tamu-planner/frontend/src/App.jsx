@@ -896,16 +896,17 @@ function App() {
             terms
           })
         });
-        const data = await response.json();
+        const data = await response.json().catch(() => ({}));
         if (response.ok && data.studentId) {
           localStorage.setItem('studentId', String(data.studentId));
           setStudentId(String(data.studentId));
           return String(data.studentId);
         }
-        setStorageError('Unable to save transcript data.');
+        const detail = data.error || `Server returned ${response.status}`;
+        setStorageError(`Unable to save transcript: ${detail}`);
         return null;
       } catch (err) {
-        setStorageError('Unable to save transcript data.');
+        setStorageError(`Unable to save transcript: ${err.message || 'network error'}`);
         return null;
       }
     },
@@ -1129,6 +1130,17 @@ function App() {
       alert('Google sign-in failed. Please try again.');
     }
   };
+
+  useEffect(() => {
+    const unsubscribe = firebaseAuth.onIdTokenChanged(async (user) => {
+      if (user) {
+        const freshToken = await user.getIdToken();
+        setAuthToken(freshToken);
+        localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, freshToken);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     if (authUser?.email && authToken && !studentId) {
