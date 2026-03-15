@@ -166,6 +166,7 @@ const toTitleCase = (str) => {
 const TERM_REGEX = /\b(Fall|Spring|Summer|Winter)\s+(20\d{2})\b/;
 const COURSE_REGEX = /\b([A-Z]{2,4})\s+(\d{3})\b/;
 const GRADE_REGEX = /\b(A|A-|B\+|B|B-|C\+|C|C-|D\+|D|D-|F|S|U|P|W|IP|TA)\b/;
+const CHAT_ACTION_BLOCK_REGEX = /\[DEGREEFLOW_ACTIONS\]([\s\S]*?)\[\/DEGREEFLOW_ACTIONS\]/i;
 
 const normalizeSpacedText = (line) => {
   const tokens = line.split(/\s+/).filter(Boolean);
@@ -773,8 +774,10 @@ function App() {
   const [emphases, setEmphases] = useState([]);
   const [minors, setMinors] = useState([]);
   const [isChatLoading, setIsChatLoading] = useState(false);
+  const [pendingChatActions, setPendingChatActions] = useState(null);
   const [consentPendingFile, setConsentPendingFile] = useState(null);
   const uploadInputRef = useRef(null);
+  const chatUploadInputRef = useRef(null);
 
   const updateDisplayStudentName = useCallback((rawName) => {
     const normalized = normalizeDisplayStudentName(rawName);
@@ -1811,10 +1814,112 @@ function App() {
     }
   };
 
+  const queueTranscriptUpload = useCallback(
+    (file) => {
+      if (!file) return;
+      const name = String(file.name || '').toLowerCase();
+      const isPdf = file.type === 'application/pdf' || name.endsWith('.pdf');
+      if (!isPdf) {
+        setTranscriptError('Please upload a PDF transcript file.');
+        showToast('Please select a PDF file.', 'error');
+        return;
+      }
+      setConsentPendingFile(file);
+    },
+    [showToast]
+  );
+
   const normalizeCode = (code) => code?.replace(/\s+/g, ' ').trim().toUpperCase();
+  const formatPlannerActionLabel = (action) =>
+    `${action.type === 'add' ? 'Add' : 'Remove'} ${action.courseCode} ${
+      action.type === 'add' ? 'to' : 'from'
+    } ${action.term}`;
+  const parsePlannerActionsFromResponse = (rawText) => {
+    if (!rawText || typeof rawText !== 'string') {
+      return { cleanText: '', actions: [] };
+    }
+    const match = rawText.match(CHAT_ACTION_BLOCK_REGEX);
+    if (!match) {
+      return { cleanText: rawText.trim(), actions: [] };
+    }
+
+    let payload = null;
+    try {
+      payload = JSON.parse((match[1] || '').trim());
+    } catch {
+      payload = null;
+    }
+
+    let rawActions = [];
+    if (Array.isArray(payload?.actions)) {
+      rawActions = payload.actions;
+    } else if (payload && typeof payload === 'object' && payload.type) {
+      rawActions = [payload];
+    }
+
+    const actions = rawActions
+      .map((item) => {
+        const type = String(item?.type || item?.action || '').trim().toLowerCase();
+        const courseCode = normalizeCode(item?.courseCode || item?.course || item?.code || '');
+        const term = String(item?.term || item?.semester || item?.termLabel || '').trim();
+        const reason = String(item?.reason || '').trim();
+        if ((type !== 'add' && type !== 'remove') || !courseCode || !term) return null;
+        return { type, courseCode, term, reason };
+      })
+      .filter(Boolean);
+
+    const index = match.index ?? 0;
+    const cleanText = `${rawText.slice(0, index)}${rawText.slice(index + match[0].length)}`
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+    return {
+      cleanText: cleanText || rawText.replace(match[0], '').trim(),
+      actions
+    };
+  };
+  const parsePlannerActionFromUserMessage = (rawText) => {
+    if (!rawText || typeof rawText !== 'string') return [];
+
+    const text = rawText.trim();
+    const addIdx = text.search(/\b(add|include|insert|schedule|plan)\b/i);
+    const removeIdx = text.search(/\b(remove|delete|drop|take\s+out)\b/i);
+    let type = '';
+    if (addIdx >= 0 && removeIdx >= 0) {
+      type = addIdx < removeIdx ? 'add' : 'remove';
+    } else if (addIdx >= 0) {
+      type = 'add';
+    } else if (removeIdx >= 0) {
+      type = 'remove';
+    }
+    if (!type) return [];
+
+    const courseMatch = text.match(COURSE_REGEX);
+    const termMatch = text.match(TERM_REGEX);
+    if (!courseMatch || !termMatch) return [];
+
+    const courseCode = normalizeCode(`${courseMatch[1]} ${courseMatch[2]}`);
+    const season = termMatch[1];
+    const year = termMatch[2];
+    const term = `${season.charAt(0).toUpperCase()}${season.slice(1).toLowerCase()} ${year}`;
+    if (!courseCode || !term) return [];
+
+    return [
+      {
+        type,
+        courseCode,
+        term,
+        reason: 'Requested in chat'
+      }
+    ];
+  };
 
   const sendChatMessage = async (userMessage) => {
     if (!userMessage.trim()) return;
+    if (pendingChatActions) {
+      showToast('Please confirm or cancel the pending planner action first.', 'info');
+      return;
+    }
     
     const userMsg = { id: `user-${Date.now()}`, role: 'user', text: userMessage };
     setChatMessages((prev) => [...prev, userMsg]);
@@ -1827,62 +1932,168 @@ function App() {
       contextParts.push('STUDENT PROFILE:');
       contextParts.push(`- Texas A&M University Computer Science student`);
       contextParts.push(`- Major: Computer Science`);
+      contextParts.push(`- Selected Emphasis: ${selectedEmphasis || 'Undecided'}`);
+      contextParts.push(`- Selected Minor: ${selectedMinor || 'None'}`);
+      contextParts.push(`- Planner terms available for edits: ${semesterOrder.join(', ')}`);
       
-      if (transcriptTerms.length > 0) {
-        const completedCourses = transcriptCourseList.filter(c => c.type === 'completed');
-        const inProgressCourses = transcriptCourseList.filter(c => c.type === 'in-progress');
-        const transferCourses = transcriptTerms.flatMap(t => 
-          t.courses.filter(c => c.transfer).map(c => c.code)
-        );
-        
+      const transcriptCoursesForChat = transcriptTerms.flatMap((term) =>
+        (term.courses || [])
+          .filter((course) => normalizeCode(course.code))
+          .map((course) => {
+            const code = normalizeCode(course.code);
+            const catalogMeta = COURSES[code] || {};
+            const grade = String(course.grade || '').trim().toUpperCase();
+            const inProgress = !grade || grade === 'IP' || grade === 'TIP';
+            return {
+              code,
+              title: course.title || catalogMeta.title || '',
+              grade: grade || 'N/A',
+              credits: sanitizeCredits(course.credits ?? catalogMeta.credits ?? 0),
+              transfer: Boolean(course.transfer),
+              status: inProgress ? 'in-progress' : 'completed',
+              termLabel: term.label || 'Unknown Term'
+            };
+          })
+      );
+
+      if (transcriptCoursesForChat.length > 0) {
+        const completedCourses = transcriptCoursesForChat.filter((course) => course.status === 'completed');
+        const inProgressCourses = transcriptCoursesForChat.filter((course) => course.status === 'in-progress');
+        const transferCourses = transcriptCoursesForChat.filter((course) => course.transfer);
+
         contextParts.push('\nTRANSCRIPT DATA:');
         contextParts.push(`- Current GPA: ${transcriptGpa ?? 'N/A'}`);
         contextParts.push(`- Credits Completed: ${transcriptCreditsSummary.completedCredits}`);
         contextParts.push(`- Credits In Progress: ${transcriptCreditsSummary.inProgressCredits}`);
-        contextParts.push(`- Transfer Credits: ${transferCourses.length > 0 ? transferCourses.join(', ') : 'None'}`);
+        contextParts.push(
+          `- Transfer Credits: ${
+            transferCourses.length > 0
+              ? transferCourses.map((course) => `${course.code} (${course.termLabel})`).join(', ')
+              : 'None'
+          }`
+        );
         contextParts.push(`- Classification: ${classification}`);
         
         if (completedCourses.length > 0) {
           contextParts.push('\nCOMPLETED COURSES:');
-          completedCourses.forEach(c => {
-            const term = transcriptTerms.find(t => 
-              t.courses.some(tc => tc.code === c.code)
+          completedCourses.forEach((course) => {
+            contextParts.push(
+              `- ${course.code} (${course.termLabel}): ${course.title} (${course.grade}, ${course.credits} credits${
+                course.transfer ? ', transfer' : ''
+              })`
             );
-            const courseData = term?.courses.find(tc => tc.code === c.code);
-            contextParts.push(`- ${c.code}: ${courseData?.title || ''} (${courseData?.grade || 'N/A'}, ${courseData?.credits || 0} credits)`);
           });
         }
         
         if (inProgressCourses.length > 0) {
           contextParts.push('\nIN PROGRESS COURSES:');
-          inProgressCourses.forEach(c => {
-            const term = transcriptTerms.find(t => 
-              t.courses.some(tc => tc.code === c.code)
+          inProgressCourses.forEach((course) => {
+            contextParts.push(
+              `- ${course.code} (${course.termLabel}): ${course.title} (${course.credits} credits${
+                course.transfer ? ', transfer' : ''
+              })`
             );
-            const courseData = term?.courses.find(tc => tc.code === c.code);
-            contextParts.push(`- ${c.code}: ${courseData?.title || ''} (${courseData?.credits || 0} credits)`);
           });
         }
       }
       
-      const allPlannedCourses = Object.entries(semesterPlans).filter(([_, courses]) => courses.length > 0);
+      const allPlannedCourses = Object.entries(semesterPlans)
+        .map(([semester, courses]) => [
+          semester,
+          Array.from(new Set((courses || []).map((code) => normalizeCode(code)).filter(Boolean)))
+        ])
+        .filter(([, courses]) => courses.length > 0);
       if (allPlannedCourses.length > 0) {
         contextParts.push('\nPLANNED COURSES:');
         allPlannedCourses.forEach(([semester, courses]) => {
           contextParts.push(`\n${semester}:`);
-          courses.forEach(code => {
-            const course = COURSES[code];
-            if (course) {
-              contextParts.push(`  - ${code}: ${course.title} (${course.credits} credits)`);
-            }
+          courses.forEach((code) => {
+            const course = COURSES[code] || {};
+            const fromTranscript = transcriptCoursesForChat.find((item) => item.code === code);
+            const title = course.title || fromTranscript?.title || 'Title unavailable';
+            const courseCredits = Number(course.credits);
+            const credits = Number.isFinite(courseCredits)
+              ? courseCredits
+              : sanitizeCredits(fromTranscript?.credits || 0);
+            contextParts.push(`  - ${code}: ${title} (${credits} credits)`);
           });
         });
       }
+
+      const appendEvaluationContext = (label, result) => {
+        if (!result) {
+          contextParts.push(`- ${label}: Not generated yet.`);
+          return;
+        }
+        const requirementName = result.requirementSet?.name || label;
+        const catalogYear = result.requirementSet?.catalog_year;
+        const groups = Array.isArray(result.groups) ? result.groups : [];
+        const satisfiedCount = groups.filter((group) => group?.satisfied).length;
+        contextParts.push(`- ${label}: ${requirementName}${catalogYear ? ` (${catalogYear})` : ''}`);
+        contextParts.push(`  Group Status: ${satisfiedCount}/${groups.length} satisfied`);
+        groups.forEach((group) => {
+          if (!group?.name) return;
+          const earnedCredits = Number(group.earnedCredits) || 0;
+          const requiredCreditsRaw = Number(group.requiredCredits);
+          const requiredCredits =
+            Number.isFinite(requiredCreditsRaw) && requiredCreditsRaw > 0
+              ? requiredCreditsRaw
+              : null;
+          const remainingCredits = requiredCredits
+            ? Math.max(requiredCredits - earnedCredits, 0)
+            : null;
+          const missing = (Array.isArray(group.missing) ? group.missing : [])
+            .filter(Boolean)
+            .map((item) => {
+              if (!requiredCredits || remainingCredits === null) return String(item);
+              const normalized = String(item).trim();
+              if (/^Need\s+\d+(\.\d+)?\s+credits\s+from\s+/i.test(normalized)) {
+                return normalized.replace(
+                  /^Need\s+\d+(\.\d+)?\s+credits/i,
+                  `Need ${remainingCredits} more credits`
+                );
+              }
+              return normalized;
+            });
+          const groupSummary = requiredCredits
+            ? `${group.name}: ${earnedCredits}/${requiredCredits} credits`
+            : `${group.name}: ${group.satisfied ? 'Satisfied' : 'Not satisfied'}`;
+          contextParts.push(`  - ${groupSummary}`);
+          if (!group.satisfied && missing.length > 0) {
+            contextParts.push(`    Missing: ${missing.join('; ')}`);
+          }
+        });
+      };
+
+      contextParts.push('\nDEGREE EVALUATION SNAPSHOT:');
+      if (reqError) {
+        contextParts.push(`- Unable to load evaluation results: ${reqError}`);
+      }
+      if (reqWarning) {
+        contextParts.push(`- Planner evaluation warning: ${reqWarning}`);
+      }
+      appendEvaluationContext('Degree evaluation', degreeResult);
+      appendEvaluationContext('Emphasis evaluation', requirementsResult);
+      appendEvaluationContext('Minor evaluation', minorResult);
       
       contextParts.push('\nDEGREE REQUIREMENTS:');
       contextParts.push(`- Total Required: 126 credits`);
-      contextParts.push(`- Completed + In Progress + Planned: ${transcriptCreditsSummary.completedCredits + transcriptCreditsSummary.inProgressCredits + plannedCreditsSummary.plannedCredits} credits`);
-      contextParts.push(`- Remaining: ${126 - (transcriptCreditsSummary.completedCredits + transcriptCreditsSummary.inProgressCredits + plannedCreditsSummary.plannedCredits)} credits`);
+      contextParts.push(
+        `- Completed + In Progress + Planned: ${
+          transcriptCreditsSummary.completedCredits +
+          transcriptCreditsSummary.inProgressCredits +
+          plannedCreditsSummary.plannedCredits
+        } credits`
+      );
+      contextParts.push(
+        `- Remaining: ${Math.max(
+          126 -
+            (transcriptCreditsSummary.completedCredits +
+              transcriptCreditsSummary.inProgressCredits +
+              plannedCreditsSummary.plannedCredits),
+          0
+        )} credits`
+      );
       
       const systemMessage = {
         role: 'system',
@@ -1893,6 +2104,15 @@ IMPORTANT INSTRUCTIONS:
 2. When asked about specific courses, look up the official TAMU course catalog for accurate information.
 3. Use the student's current transcript and planner data (provided below) to give personalized advice.
 4. Help with course planning, prerequisite checking, graduation requirements, and academic guidance.
+4.1. Prioritize the "DEGREE EVALUATION SNAPSHOT" to identify missing requirement groups and recommend next courses.
+4.2. Do not suggest courses already completed or currently in progress unless explicitly asked for alternatives/retakes.
+4.3. For credit-based requirement groups, compute missing credits as (required - earned). Never interpret earned credits as remaining credits.
+4.4. If the user explicitly asks to add/remove planned courses, append a machine-readable action block at the end using this exact format:
+[DEGREEFLOW_ACTIONS]
+{"actions":[{"type":"add|remove","courseCode":"SUBJ 123","term":"Fall 2026","reason":"optional short reason"}]}
+[/DEGREEFLOW_ACTIONS]
+4.5. Only include actions the user asked for, and only use term labels from "Planner terms available for edits".
+4.6. For direct commands like "add/remove COURSE_CODE to/from TERM", always include the action block; do not refuse for ambiguity.
 5. Format your responses with clear structure:
    - Use **bold** for emphasis (e.g., **Important:** or **Course Name**)
    - Use bullet points (•) or numbered lists for multiple items
@@ -1932,13 +2152,36 @@ Now answer the student's question based on this context and any additional infor
 
       const data = await response.json();
       const assistantText = data.choices?.[0]?.message?.content || 'Sorry, I could not generate a response.';
+      const { cleanText, actions } = parsePlannerActionsFromResponse(assistantText);
+      const fallbackActions =
+        actions.length > 0 ? actions : parsePlannerActionFromUserMessage(userMessage);
+      const usedFallback = actions.length === 0 && fallbackActions.length > 0;
       
+      let assistantReplyText = '';
+      if (usedFallback) {
+        assistantReplyText =
+          'I prepared that planner change from your request. Please review and confirm below before I apply it.';
+      } else if (cleanText) {
+        assistantReplyText = cleanText;
+      } else if (fallbackActions.length > 0) {
+        assistantReplyText =
+          'I prepared planner changes. Please review and confirm below before I apply them.';
+      } else {
+        assistantReplyText = assistantText;
+      }
+
       const assistantMsg = { 
         id: `assistant-${Date.now()}`, 
         role: 'assistant', 
-        text: assistantText 
+        text: assistantReplyText
       };
       setChatMessages((prev) => [...prev, assistantMsg]);
+      if (fallbackActions.length > 0) {
+        setPendingChatActions({
+          actions: fallbackActions,
+          createdAt: Date.now()
+        });
+      }
     } catch (err) {
       console.error('[chat] Error:', err);
       const errorMsg = { 
@@ -1980,6 +2223,115 @@ Now answer the student's question based on this context and any additional infor
       ...prev,
       [semester]: (prev[semester] || []).filter((c) => c !== courseCode)
     }));
+  };
+
+  const confirmPendingChatActions = () => {
+    if (!pendingChatActions?.actions?.length) return;
+
+    const actionsToApply = pendingChatActions.actions;
+    const applied = [];
+    const rejected = [];
+
+    setSemesterPlans((prev) => {
+      const next = {};
+      Object.entries(prev).forEach(([term, codes]) => {
+        next[term] = [...(codes || [])];
+      });
+
+      actionsToApply.forEach((action) => {
+        const code = normalizeCode(action.courseCode);
+        const term = String(action.term || '').trim();
+        const type = action.type;
+
+        if (!code || !term || (type !== 'add' && type !== 'remove')) {
+          rejected.push(`${formatPlannerActionLabel(action)}: invalid action format`);
+          return;
+        }
+        if (!Object.prototype.hasOwnProperty.call(next, term)) {
+          rejected.push(`${formatPlannerActionLabel(action)}: invalid term`);
+          return;
+        }
+
+        if (type === 'add') {
+          if (!COURSES[code]) {
+            rejected.push(`${formatPlannerActionLabel(action)}: course not found in catalog`);
+            return;
+          }
+          if (isCourseCompleted(code)) {
+            rejected.push(`${formatPlannerActionLabel(action)}: already completed`);
+            return;
+          }
+          if (isCourseInProgress(code)) {
+            rejected.push(`${formatPlannerActionLabel(action)}: currently in progress`);
+            return;
+          }
+          if ((next[term] || []).includes(code)) {
+            rejected.push(`${formatPlannerActionLabel(action)}: already in ${term}`);
+            return;
+          }
+          const inOtherTerm = Object.entries(next).some(([otherTerm, codes]) => {
+            if (otherTerm === term) return false;
+            return (codes || []).includes(code);
+          });
+          if (inOtherTerm) {
+            rejected.push(`${formatPlannerActionLabel(action)}: already planned in another term`);
+            return;
+          }
+          next[term] = [...(next[term] || []), code];
+          applied.push(`${formatPlannerActionLabel(action)}`);
+          return;
+        }
+
+        if (!(next[term] || []).includes(code)) {
+          rejected.push(`${formatPlannerActionLabel(action)}: not found in ${term}`);
+          return;
+        }
+        next[term] = (next[term] || []).filter((item) => item !== code);
+        applied.push(`${formatPlannerActionLabel(action)}`);
+      });
+
+      return next;
+    });
+
+    setPendingChatActions(null);
+
+    if (applied.length > 0) {
+      showToast(`Applied ${applied.length} planner action${applied.length > 1 ? 's' : ''}.`, 'success');
+      setPlanError('');
+    } else {
+      showToast('No planner actions were applied.', 'info');
+    }
+
+    const summary = [];
+    if (applied.length > 0) {
+      summary.push('Planner changes applied:');
+      applied.forEach((line) => summary.push(`- ${line}`));
+    }
+    if (rejected.length > 0) {
+      summary.push('Planner changes not applied:');
+      rejected.forEach((line) => summary.push(`- ${line}`));
+    }
+    if (summary.length > 0) {
+      setChatMessages((prev) => [
+        ...prev,
+        { id: `assistant-action-result-${Date.now()}`, role: 'assistant', text: summary.join('\n') }
+      ]);
+    }
+  };
+
+  const cancelPendingChatActions = () => {
+    if (!pendingChatActions?.actions?.length) return;
+    const count = pendingChatActions.actions.length;
+    setPendingChatActions(null);
+    showToast('Cancelled planner action request.', 'info');
+    setChatMessages((prev) => [
+      ...prev,
+      {
+        id: `assistant-action-cancel-${Date.now()}`,
+        role: 'assistant',
+        text: `Cancelled ${count} pending planner action${count > 1 ? 's' : ''}.`
+      }
+    ]);
   };
 
   const validateSemester = (semester) => {
@@ -2644,7 +2996,8 @@ Now answer the student's question based on this context and any additional infor
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0];
-                if (file) setConsentPendingFile(file);
+                if (file) queueTranscriptUpload(file);
+                e.target.value = '';
               }}
             />
             Upload PDF
@@ -4010,6 +4363,7 @@ Now answer the student's question based on this context and any additional infor
               onClick={() => {
                 setConsentPendingFile(null);
                 if (uploadInputRef.current) uploadInputRef.current.value = '';
+                if (chatUploadInputRef.current) chatUploadInputRef.current.value = '';
               }}
               className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50"
             >
@@ -4020,6 +4374,8 @@ Now answer the student's question based on this context and any additional infor
               onClick={() => {
                 const file = consentPendingFile;
                 setConsentPendingFile(null);
+                if (uploadInputRef.current) uploadInputRef.current.value = '';
+                if (chatUploadInputRef.current) chatUploadInputRef.current.value = '';
                 handleTranscriptPdf(file);
               }}
               className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
@@ -4298,6 +4654,36 @@ Now answer the student's question based on this context and any additional infor
                     );
                   })
                 )}
+                {pendingChatActions?.actions?.length > 0 && (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                    <p className="font-semibold">Confirm planner update</p>
+                    <p className="mt-1">The assistant requested these changes:</p>
+                    <div className="mt-2 space-y-1">
+                      {pendingChatActions.actions.map((action, idx) => (
+                        <p key={`${action.type}-${action.courseCode}-${action.term}-${idx}`}>
+                          • {formatPlannerActionLabel(action)}
+                          {action.reason ? ` (${action.reason})` : ''}
+                        </p>
+                      ))}
+                    </div>
+                    <div className="mt-3 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={confirmPendingChatActions}
+                        className="rounded-full bg-[#500000] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#3d0000]"
+                      >
+                        Confirm
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelPendingChatActions}
+                        className="rounded-full border border-amber-400 bg-white px-3 py-1.5 text-[11px] font-semibold text-amber-900 hover:bg-amber-100"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {isChatLoading && (
                   <div className="flex justify-start">
                     <span className="max-w-[85%] rounded-lg bg-gray-100 px-3 py-2 text-xs text-gray-500">
@@ -4312,6 +4698,36 @@ Now answer the student's question based on this context and any additional infor
               </div>
               <div className="border-t px-3 py-3 flex-shrink-0">
                 <div className="flex items-center gap-2">
+                  <input
+                    ref={chatUploadInputRef}
+                    type="file"
+                    accept="application/pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        queueTranscriptUpload(file);
+                        setChatMessages((prev) => [
+                          ...prev,
+                          {
+                            id: `assistant-upload-${Date.now()}`,
+                            role: 'assistant',
+                            text: `I can parse ${file.name}. Please confirm the consent dialog to continue.`
+                          }
+                        ]);
+                      }
+                      e.target.value = '';
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => chatUploadInputRef.current?.click()}
+                    disabled={isChatLoading || transcriptLoading}
+                    className="rounded-lg border border-gray-200 px-2.5 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+                    title="Upload transcript PDF"
+                  >
+                    PDF
+                  </button>
                   <input
                     type="text"
                     placeholder="Type your question..."
