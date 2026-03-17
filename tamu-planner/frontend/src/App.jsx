@@ -820,68 +820,6 @@ function App() {
     };
   }, [isResizingChat, handleChatResize]);
 
-  const loadStoredTranscript = useCallback(async (id) => {
-    if (!id || !authToken) return;
-    try {
-      const response = await fetch(`${API_BASE}/storage/transcript/${id}`, {
-        headers: authHeaders()
-      });
-      if (!response.ok) return;
-      const data = await response.json();
-      if (Array.isArray(data.terms)) {
-        setTranscriptTerms(data.terms);
-        setReviewTerms(data.terms);
-        setIsTranscriptDirty(false);
-        const normalized = normalizeTranscript(data.terms);
-        if (normalized.length > 0) {
-          setSelectedTranscriptYear(normalized[normalized.length - 1].year);
-        }
-      }
-    } catch (err) {
-      setStorageError('Unable to load saved transcript data.');
-    }
-  }, [authHeaders, authToken]);
-
-  const loadStoredPlanner = useCallback(async (id) => {
-    if (!id || !authToken) return;
-    try {
-      const response = await fetch(`${API_BASE}/storage/planner/${id}`, {
-        headers: authHeaders()
-      });
-      if (!response.ok) return;
-      const data = await response.json();
-      if (data?.payload) {
-        if (data.payload.semesterPlans) {
-          suppressDirtyRef.current = true;
-          setSemesterPlans(initSemesterPlans(data.payload.semesterPlans));
-        }
-        if (data.payload.selectedPlanYear) {
-          setSelectedPlanYear(data.payload.selectedPlanYear);
-        }
-        if (data.payload.selectedTranscriptYear) {
-          setSelectedTranscriptYear(data.payload.selectedTranscriptYear);
-        }
-        if (data.payload.transcriptTotals) {
-          setTranscriptTotals(data.payload.transcriptTotals);
-        }
-        if (data.payload.selectedEmphasis) {
-          setSelectedEmphasis(data.payload.selectedEmphasis);
-        }
-        if (data.payload.selectedMinor) {
-          setSelectedMinor(data.payload.selectedMinor);
-        }
-        if (data.payload.savedEvaluation) {
-          const ev = data.payload.savedEvaluation;
-          if (ev.degreeResult) setDegreeResult(ev.degreeResult);
-          if (ev.requirementsResult) setRequirementsResult(ev.requirementsResult);
-          if (ev.minorResult) setMinorResult(ev.minorResult);
-          if (ev.reqWarning) setReqWarning(ev.reqWarning);
-        }
-      }
-    } catch (err) {
-      setStorageError('Unable to load saved planner data.');
-    }
-  }, [authHeaders, authToken]);
 
   const saveTranscriptToStorage = useCallback(
     async (terms) => {
@@ -1022,13 +960,6 @@ function App() {
     showToast
   ]);
 
-  useEffect(() => {
-    if (studentId) {
-      loadStoredTranscript(studentId);
-      loadStoredPlanner(studentId);
-    }
-  }, [studentId, loadStoredTranscript, loadStoredPlanner]);
-
   const loadUserData = useCallback(async (email, name) => {
     try {
       if (name) {
@@ -1039,7 +970,7 @@ function App() {
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ email, name })
       });
-      if (!resp.ok) return;
+      if (!resp.ok) return false;
       const data = await resp.json();
 
       if (data.studentId) {
@@ -1085,8 +1016,10 @@ function App() {
           if (ev.reqWarning) setReqWarning(ev.reqWarning);
         }
       }
+      return true;
     } catch (err) {
       console.error('Failed to load user data:', err);
+      return false;
     }
   }, [authHeaders, updateDisplayStudentName]);
 
@@ -1127,7 +1060,8 @@ function App() {
       setAuthUser(user);
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
 
-      await loadUserData(user.email, user.name);
+      const loaded = await loadUserData(user.email, user.name);
+      if (loaded) dataLoadedRef.current = true;
       setActiveTab('dashboard');
     } catch {
       alert('Google sign-in failed. Please try again.');
@@ -1145,11 +1079,17 @@ function App() {
     return () => unsubscribe();
   }, []);
 
+  const dataLoadedRef = useRef(false);
   useEffect(() => {
-    if (authUser?.email && authToken && !studentId) {
-      loadUserData(authUser.email, authUser.name);
+    if (authUser?.email && authToken && !dataLoadedRef.current) {
+      loadUserData(authUser.email, authUser.name).then((ok) => {
+        if (ok) dataLoadedRef.current = true;
+      });
     }
-  }, [authToken, authUser, loadUserData, studentId]);
+    if (!authUser) {
+      dataLoadedRef.current = false;
+    }
+  }, [authToken, authUser, loadUserData]);
 
   const buildCourseIndex = (courses) => {
     const map = new Map();
