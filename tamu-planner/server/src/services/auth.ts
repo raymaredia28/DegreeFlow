@@ -44,17 +44,36 @@ export type AuthUser = {
 };
 
 /**
+ * Try to extract claims from a JWT without verification (dev mode only).
+ * Returns the decoded payload or null if the token isn't a valid JWT.
+ */
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const payload = Buffer.from(parts[1], "base64url").toString("utf8");
+    return JSON.parse(payload);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * In dev mode without Firebase credentials, accepts any Bearer token as
  * a user identifier so the server can run fully offline.
- * Format: "Bearer <uid>" or "Bearer dev" (defaults to "dev-user").
+ * If the token is a Firebase JWT, extracts the stable uid from its payload.
+ * Otherwise falls back to "Bearer <uid>" or "dev-user".
  */
 export async function verifyBearerToken(authorizationHeader?: string): Promise<AuthUser> {
   if (env.nodeEnv !== "production" && !hasFirebaseCredentials) {
     const raw = authorizationHeader?.startsWith("Bearer ")
       ? authorizationHeader.slice(7).trim()
       : "";
-    const uid = raw || "dev-user";
-    return { uid, email: `${uid}@dev.local`, name: "Dev User", picture: "" };
+    const claims = decodeJwtPayload(raw);
+    const uid = (claims?.user_id as string) || (claims?.sub as string) || raw || "dev-user";
+    const email = (claims?.email as string) || `${uid}@dev.local`;
+    const name = (claims?.name as string) || "Dev User";
+    return { uid, email, name, picture: (claims?.picture as string) || "" };
   }
 
   if (!authorizationHeader || !authorizationHeader.startsWith("Bearer ")) {
