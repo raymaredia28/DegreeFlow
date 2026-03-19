@@ -15,7 +15,6 @@ import {
   Search,
   Save,
   ChevronDown,
-  ChevronUp,
   Edit2,
   PanelRightClose,
   PanelRightOpen,
@@ -165,8 +164,37 @@ const toTitleCase = (str) => {
 
 const TERM_REGEX = /\b(Fall|Spring|Summer|Winter)\s+(20\d{2})\b/;
 const COURSE_REGEX = /\b([A-Z]{2,4})\s+(\d{3})\b/;
-const GRADE_REGEX = /\b(A|A-|B\+|B|B-|C\+|C|C-|D\+|D|D-|F|S|U|P|W|IP|TA)\b/;
+const GRADE_REGEX = /\b(A|A-|B\+|B|B-|C\+|C|C-|D\+|D|D-|F|S|U|P|W|IP|TA|TCR|TIP)\b/;
+
+// Transfer grades: TA (Transfer A), TCR (Transfer Credit), TIP (Transfer In Progress)
+// Pass/fail grades: S (Satisfactory), U (Unsatisfactory), P (Pass)
+const TRANSFER_GRADES = new Set(['TA', 'TCR', 'TIP']);
+const PASS_FAIL_GRADES = new Set(['S', 'U', 'P']);
+const isTransferGrade = (grade) => TRANSFER_GRADES.has(grade);
+const isPassFailGrade = (grade) => PASS_FAIL_GRADES.has(grade);
 const CHAT_ACTION_BLOCK_REGEX = /\[DEGREEFLOW_ACTIONS\]([\s\S]*?)\[\/DEGREEFLOW_ACTIONS\]/i;
+
+// Courses that are equivalent (renamed/replaced). Each array is a group of
+// interchangeable course codes. Only one from each group should count.
+const EQUIVALENT_COURSE_GROUPS = [
+  ['CSCE 120', 'CSCE 121'],
+  ['CSCE 315', 'CSCE 331'],
+];
+
+// Build a fast lookup: courseCode -> canonical (first element of its group)
+const EQUIVALENT_MAP = new Map();
+EQUIVALENT_COURSE_GROUPS.forEach((group) => {
+  const canonical = group[0];
+  group.forEach((code) => EQUIVALENT_MAP.set(code, canonical));
+});
+
+const getCanonicalCode = (code) => EQUIVALENT_MAP.get(code) || code;
+
+const getEquivalents = (code) => {
+  const canonical = getCanonicalCode(code);
+  const group = EQUIVALENT_COURSE_GROUPS.find((g) => g.includes(canonical));
+  return group ? group.filter((c) => c !== code) : [];
+};
 
 const normalizeSpacedText = (line) => {
   const tokens = line.split(/\s+/).filter(Boolean);
@@ -401,7 +429,7 @@ const parseTranscriptLines = (lines) => {
     }
 
     const courseLineMatch = line.match(
-      /^([A-Z]{2,4})\s+(\d{3})\s+(.+?)\s+(\d+(?:\.\d{3})?)\s+([A-Z][+\-]?|IP|TA|S|U|P|W)\b/
+      /^([A-Z]{2,4})\s+(\d{3})\s+(.+?)\s+(\d+(?:\.\d{3})?)\s+([A-Z][+\-]?|IP|TA|TCR|TIP|S|U|P|W)\b/
     );
     if (courseLineMatch && currentTerm) {
       const [, subj, num, title, creditsStr, gradeRaw] = courseLineMatch;
@@ -415,11 +443,11 @@ const parseTranscriptLines = (lines) => {
         title: resolvedTitle,
         credits: resolvedCredits,
         grade,
-        transfer: grade === 'TA' || grade === 'TIP'
+        transfer: isTransferGrade(grade)
       });
       if (grade === 'IP' || grade === 'TIP') {
         currentTerm.status = 'In Progress';
-      } else if (grade === 'TA' && currentTerm.status !== 'In Progress') {
+      } else if (isTransferGrade(grade) && currentTerm.status !== 'In Progress') {
         currentTerm.status = 'Transfer';
       }
       return true;
@@ -446,11 +474,11 @@ const parseTranscriptLines = (lines) => {
       title: resolvedTitle,
       credits: resolvedCredits,
       grade,
-      transfer: grade === 'TA' || grade === 'TIP'
+      transfer: isTransferGrade(grade)
     });
     if (grade === 'IP' || grade === 'TIP') {
       currentTerm.status = 'In Progress';
-    } else if (grade === 'TA' && currentTerm.status !== 'In Progress') {
+    } else if (isTransferGrade(grade) && currentTerm.status !== 'In Progress') {
       currentTerm.status = 'Transfer';
     }
     return true;
@@ -572,7 +600,6 @@ const buildTranscriptIndex = (terms, excludedTransfers = new Set()) => {
   terms.forEach((term) => {
     term.courses.forEach((course) => {
       if (!course.code) return;
-      // Skip transfer courses the user has excluded from degree evaluation
       if (course.transfer && excludedTransfers.has(course.code)) return;
       const isInProgress = course.grade === 'IP' || course.grade === 'TIP';
       const status = isInProgress ? 'in-progress' : 'completed';
@@ -585,6 +612,18 @@ const buildTranscriptIndex = (terms, excludedTransfers = new Set()) => {
           honors: Boolean(course.honors)
         });
       }
+      // Also register under equivalent codes so lookups by either name work
+      const equivalents = getEquivalents(course.code);
+      equivalents.forEach((eqCode) => {
+        if (!map.has(eqCode)) {
+          map.set(eqCode, {
+            status,
+            grade: course.grade,
+            transfer: Boolean(course.transfer),
+            honors: Boolean(course.honors)
+          });
+        }
+      });
     });
   });
   return map;
@@ -682,6 +721,8 @@ function App() {
   });
   const [selectedEmphasis, setSelectedEmphasis] = useState('Undecided');
   const [selectedMinor, setSelectedMinor] = useState('None');
+  const [hasHsLanguage, setHasHsLanguage] = useState(false);
+  const [hasSabrCourse, setHasSabrCourse] = useState(false);
   const [studentId, setStudentId] = useState(() => localStorage.getItem('studentId') || '');
   const AUTH_STORAGE_KEY = 'tamuPlannerAuthUser';
   const AUTH_TOKEN_STORAGE_KEY = 'tamuPlannerAuthToken';
@@ -879,7 +920,9 @@ function App() {
           selectedPlanYear,
           selectedTranscriptYear,
           selectedEmphasis,
-          selectedMinor
+          selectedMinor,
+          hasHsLanguage,
+          hasSabrCourse
         })
       });
 
@@ -898,6 +941,8 @@ function App() {
     selectedTranscriptYear,
     selectedEmphasis,
     selectedMinor,
+    hasHsLanguage,
+    hasSabrCourse,
     saveTranscriptToStorage,
     authHeaders
   ]);
@@ -924,6 +969,8 @@ function App() {
           selectedTranscriptYear,
           selectedEmphasis,
           selectedMinor,
+          hasHsLanguage,
+          hasSabrCourse,
           savedEvaluation: {
             degreeResult,
             requirementsResult,
@@ -952,6 +999,8 @@ function App() {
     selectedTranscriptYear,
     selectedEmphasis,
     selectedMinor,
+    hasHsLanguage,
+    hasSabrCourse,
     degreeResult,
     requirementsResult,
     minorResult,
@@ -1007,6 +1056,12 @@ function App() {
         }
         if (data.planner.selectedMinor) {
           setSelectedMinor(data.planner.selectedMinor);
+        }
+        if (data.planner.hasHsLanguage != null) {
+          setHasHsLanguage(data.planner.hasHsLanguage);
+        }
+        if (data.planner.hasSabrCourse != null) {
+          setHasSabrCourse(data.planner.hasSabrCourse);
         }
         if (data.planner.savedEvaluation) {
           const ev = data.planner.savedEvaluation;
@@ -1237,7 +1292,9 @@ function App() {
         emphasisId: null,
         degreeEmphasisId: selectedEmphasisId ?? null,
         minorId: null,
-        courses: Array.from(combined.values())
+        courses: Array.from(combined.values()),
+        hasHsLanguage,
+        hasSabrCourse
       };
 
       //console.log('Sending degree evaluation payload', degreePayload);
@@ -1266,7 +1323,9 @@ function App() {
         catalogYear: null,
         emphasisId: selectedEmphasisId,
         minorId: selectedMinorId,
-        courses: Array.from(combined.values())
+        courses: Array.from(combined.values()),
+        hasHsLanguage,
+        hasSabrCourse
       };
 
       const res = await fetch(`${API_BASE}/api/requirements/evaluate-local`, {
@@ -1500,11 +1559,20 @@ function App() {
   const isCoursePlanned = (courseCode) =>
     Object.values(semesterPlans).some((courses) => courses?.includes(courseCode));
 
+  // Checks if a prerequisite is satisfied for a given semester, considering:
+  // 1. Already completed (on transcript)
+  // 2. In progress (on transcript)
+  // 3. Planned in an earlier semester
+  const isPrereqSatisfiedForSemester = (prereqCode, semester) => {
+    if (isCourseCompleted(prereqCode) || isCourseInProgress(prereqCode)) return true;
+    return isCoursePlannedInEarlierSemester(prereqCode, semester);
+  };
+
   const deriveTermStatus = (courses = []) => {
     let status = 'Evaluated';
     for (const course of courses) {
       if (course?.grade === 'IP' || course?.grade === 'TIP' || !course?.grade) return 'In Progress';
-      if (course?.transfer || course?.grade === 'TA') status = 'Transfer';
+      if (course?.transfer || isTransferGrade(course?.grade)) status = 'Transfer';
     }
     return status;
   };
@@ -2150,6 +2218,22 @@ Now answer the student's question based on this context and any additional infor
       setPlanError(`${normalized} is already selected in another term.`);
       return;
     }
+    // Block adding a course if an equivalent has already been taken or planned
+    const equivalents = getEquivalents(normalized);
+    for (const eq of equivalents) {
+      if (isCourseCompleted(eq)) {
+        setPlanError(`${normalized} is equivalent to ${eq}, which has already been taken.`);
+        return;
+      }
+      if (isCourseInProgress(eq)) {
+        setPlanError(`${normalized} is equivalent to ${eq}, which is currently in progress.`);
+        return;
+      }
+      if (isCoursePlanned(eq)) {
+        setPlanError(`${normalized} is equivalent to ${eq}, which is already planned.`);
+        return;
+      }
+    }
     setSemesterPlans((prev) => ({
       ...prev,
       [semester]: [...(prev[semester] || []), normalized]
@@ -2293,8 +2377,21 @@ Now answer the student's question based on this context and any additional infor
       }
 
       (course.prereqs || []).forEach((prereq) => {
-        if (!isCourseCompleted(prereq)) {
-          errors.push(`${code} requires ${prereq} to be completed`);
+        if (isPrereqSatisfiedForSemester(prereq, semester)) return;
+        if (isCoursePlanned(prereq)) {
+          warnings.push(`${code}: prerequisite ${prereq} is planned but not in an earlier semester`);
+        } else {
+          errors.push(`${code} requires ${prereq} (not completed or planned)`);
+        }
+      });
+
+      // Warn about equivalent courses already completed/planned
+      const equivalents = getEquivalents(code);
+      equivalents.forEach((eq) => {
+        if (isCourseCompleted(eq) || isCourseInProgress(eq)) {
+          warnings.push(`${code} is equivalent to ${eq} (already on transcript) — will not count separately`);
+        } else if (isCoursePlanned(eq) && eq !== code) {
+          warnings.push(`${code} is equivalent to ${eq} (also planned) — only one will count`);
         }
       });
     });
@@ -2333,7 +2430,7 @@ Now answer the student's question based on this context and any additional infor
   }, [searchQuery, COURSES]);
 
   const AreasEvaluation = ({ areas, transcriptCourseList, semesterPlans }) => {
-    const [expandedAreas, setExpandedAreas] = useState(() => new Set());
+    const [expandedAreas, setExpandedAreas] = useState(() => new Set(areas.map((a) => a.id)));
     const allExpanded = expandedAreas.size === areas.length && areas.length > 0;
 
     // Green: Taken/Registered = anything in transcript (including IP)
@@ -2477,7 +2574,7 @@ Now answer the student's question based on this context and any additional infor
                 <button
                   type="button"
                   onClick={() => toggleArea(area.id)}
-                  className="w-full flex items-center justify-between gap-4 p-4"
+                  className="w-full flex items-center justify-between gap-4 p-4 hover:bg-gray-50 rounded-lg transition-colors"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="flex-shrink-0">
@@ -2533,11 +2630,10 @@ Now answer the student's question based on this context and any additional infor
                     </div>
 
                     <div className="flex-shrink-0">
-                      {expanded ? (
-                        <ChevronUp className="w-7 h-7 text-gray-600" />
-                      ) : (
-                        <ChevronDown className="w-7 h-7 text-gray-600" />
-                      )}
+                      <ChevronDown
+                        className="w-7 h-7 text-gray-600 transition-transform duration-200"
+                        style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                      />
                     </div>
                   </div>
                 </button>
@@ -2653,6 +2749,26 @@ Now answer the student's question based on this context and any additional infor
               </div>
             </div>
           </div>
+          <div className="flex flex-wrap gap-x-6 gap-y-2">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={hasHsLanguage}
+                onChange={(e) => setHasHsLanguage(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
+              />
+              <span className="text-sm text-gray-700">Completed 2 years of same foreign language in HS</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={hasSabrCourse}
+                onChange={(e) => setHasSabrCourse(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
+              />
+              <span className="text-sm text-gray-700">Completed a Study Abroad (SABR) course</span>
+            </label>
+          </div>
           <div className="flex gap-4 text-sm text-gray-700">
             <span>Completed: {transcriptCreditsSummary.completedCredits}</span>
             <span>In Progress: {transcriptCreditsSummary.inProgressCredits}</span>
@@ -2697,76 +2813,300 @@ Now answer the student's question based on this context and any additional infor
           </div>
           {reqError && <p className="text-sm text-red-600 mb-2">{reqError}</p>}
           {reqWarning && !reqError && <p className="text-sm text-amber-700 mb-2">{reqWarning}</p>}
-          {degreeResult ? (
-            <div className="space-y-3 mb-4">
-              <div className="text-sm text-gray-700">
-                <p className="font-semibold">
-                  Degree: {degreeResult.requirementSet?.name || 'CSCE Degree'}
-                </p>
-                {degreeResult.requirementSet?.catalog_year && (
-                  <p>Catalog year: {degreeResult.requirementSet.catalog_year}</p>
-                )}
-              </div>
-              {degreeResult.groups?.map((group) => (
-                <div key={group.name} className="rounded border border-gray-200 px-3 py-2">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-gray-900">{group.name}</p>
-                    {group.satisfied ? (
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                    ) : (
-                      <AlertTriangle className="w-5 h-5 text-amber-500" />
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-600">
-                    Earned {group.earnedCredits || 0}
-                    {group.requiredCredits ? ` / ${group.requiredCredits} credits` : ''}
-                  </p>
-                  {group.missing?.length ? (
-                    <p className="text-xs text-red-600">Missing: {group.missing.join(', ')}</p>
-                  ) : null}
-                  {group.usedCourses?.length ? (
-                    <p className="text-xs text-gray-500">Used: {group.usedCourses.join(', ')}</p>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          ) : null}
+          {degreeResult ? (() => {
+            const allGroups = degreeResult.groups || [];
+            const satisfiedGroups = allGroups.filter((g) => g.satisfied);
+            const unsatisfiedGroups = allGroups.filter((g) => !g.satisfied);
+            const totalSatisfied = satisfiedGroups.length;
+            const totalGroups = allGroups.length;
+            const pctDone = totalGroups > 0 ? Math.round((totalSatisfied / totalGroups) * 100) : 0;
 
-          {requirementsResult ? (
-            <div className="space-y-3">
-              <div className="text-sm text-gray-700">
-                <p className="font-semibold">Set: {requirementsResult.requirementSet?.name}</p>
-                {requirementsResult.requirementSet?.catalog_year && (
-                  <p>Catalog year: {requirementsResult.requirementSet.catalog_year}</p>
+            const renderGroup = (group) => {
+              const earned = group.earnedCredits || 0;
+              const required = group.requiredCredits || 0;
+              const pct = required > 0 ? Math.min(Math.round((earned / required) * 100), 100) : (group.satisfied ? 100 : 0);
+              const exceeded = required > 0 && earned > required;
+              const extraCredits = exceeded ? earned - required : 0;
+              const ariaLabel = required > 0
+                ? `${earned} of ${required} credits completed${exceeded ? `, ${extraCredits} extra` : ''}`
+                : (group.satisfied ? 'Satisfied' : 'Not satisfied');
+              const hasDetails = (group.missing?.length > 0) || (group.usedCourses?.length > 0);
+
+              return (
+                <details key={group.name} className="rounded border border-gray-200 group">
+                  <summary className="cursor-pointer select-none px-3 py-2 hover:bg-gray-50 transition-colors rounded list-none">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <ChevronDown className="w-4 h-4 text-gray-400 details-chevron flex-shrink-0" />
+                        <p className="text-sm font-semibold text-gray-900 truncate">{group.name}</p>
+                      </div>
+                      {group.satisfied ? (
+                        <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+                      ) : (
+                        <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0" />
+                      )}
+                    </div>
+                    <div className="ml-6">
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <p className="text-xs text-gray-600">
+                          Earned {earned}{required ? ` / ${required} credits` : ''}
+                        </p>
+                        {exceeded && (
+                          <span className="text-xs font-medium text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                            +{extraCredits} extra
+                          </span>
+                        )}
+                        {group.satisfied && !exceeded && required > 0 && (
+                          <span className="text-xs font-medium text-green-600">Completed</span>
+                        )}
+                      </div>
+                      {required > 0 && (
+                        <div
+                          className={`mt-1.5 h-2 rounded-full overflow-hidden ${pct >= 100 ? 'bg-green-200' : 'bg-red-200'}`}
+                          role="progressbar"
+                          aria-valuenow={pct}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-label={ariaLabel}
+                          title={ariaLabel}
+                        >
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{ width: `${pct}%`, backgroundColor: '#16a34a' }}
+                          />
+                        </div>
+                      )}
+                      {!required && (
+                        <div
+                          className="mt-1.5 h-2 rounded-full overflow-hidden"
+                          role="progressbar"
+                          aria-valuenow={group.satisfied ? 100 : 0}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-label={ariaLabel}
+                          title={ariaLabel}
+                          style={{ backgroundColor: group.satisfied ? '#bbf7d0' : '#fca5a5' }}
+                        >
+                          <div
+                            className="h-full rounded-full"
+                            style={{ width: group.satisfied ? '100%' : '0%', backgroundColor: '#16a34a' }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </summary>
+                  {hasDetails && (
+                    <div className="px-3 pb-2 ml-6 border-t border-gray-100 mt-1 pt-2 space-y-1">
+                      {group.usedCourses?.length > 0 && (
+                        <p className="text-xs text-gray-500">Used: {group.usedCourses.join(', ')}</p>
+                      )}
+                      {group.missing?.length > 0 && (
+                        <p className="text-xs text-red-600">Missing: {group.missing.join(', ')}</p>
+                      )}
+                      {group.warnings?.length > 0 && group.warnings.map((w, i) => (
+                        <p key={i} className="text-xs text-amber-600">{w}</p>
+                      ))}
+                    </div>
+                  )}
+                </details>
+              );
+            };
+
+            return (
+              <div className="space-y-3 mb-4">
+                <div className="text-sm text-gray-700">
+                  <p className="font-semibold">
+                    Degree: {degreeResult.requirementSet?.name || 'CSCE Degree'}
+                  </p>
+                  {degreeResult.requirementSet?.catalog_year && (
+                    <p>Catalog year: {degreeResult.requirementSet.catalog_year}</p>
+                  )}
+                </div>
+
+                {/* Progress summary bar */}
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-700">
+                      Degree Progress: {totalSatisfied}/{totalGroups} requirement groups satisfied
+                    </span>
+                    <span className="text-sm font-bold" style={{ color: pctDone === 100 ? '#16a34a' : '#500000' }}>
+                      {pctDone}%
+                    </span>
+                  </div>
+                  <div className="h-3 rounded-full bg-gray-200 overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{ width: `${pctDone}%`, backgroundColor: pctDone === 100 ? '#16a34a' : '#500000' }}
+                    />
+                  </div>
+                </div>
+
+                {/* Still Needed section */}
+                {unsatisfiedGroups.length > 0 && (
+                  <details open>
+                    <summary className="cursor-pointer select-none flex items-center gap-2 text-sm font-semibold text-red-700 py-2 px-2 rounded hover:bg-red-50 transition-colors">
+                      <ChevronDown className="w-4 h-4 details-chevron flex-shrink-0" />
+                      <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                      Still Needed ({unsatisfiedGroups.length})
+                    </summary>
+                    <div className="space-y-2 mt-2">
+                      {unsatisfiedGroups.map(renderGroup)}
+                    </div>
+                  </details>
+                )}
+
+                {/* Satisfied section */}
+                {satisfiedGroups.length > 0 && (
+                  <details open>
+                    <summary className="cursor-pointer select-none flex items-center gap-2 text-sm font-semibold text-green-700 py-2 px-2 rounded hover:bg-green-50 transition-colors">
+                      <ChevronDown className="w-4 h-4 details-chevron flex-shrink-0" />
+                      <CheckCircle className="w-4 h-4 flex-shrink-0" />
+                      Completed / Satisfied ({satisfiedGroups.length})
+                    </summary>
+                    <div className="space-y-2 mt-2">
+                      {satisfiedGroups.map(renderGroup)}
+                    </div>
+                  </details>
                 )}
               </div>
-              {requirementsResult.groups?.map((group) => (
-                <div
-                  key={group.name}
-                  className="rounded border border-gray-200 px-3 py-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-gray-900">{group.name}</p>
-                    {group.satisfied ? (
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                    ) : (
-                      <AlertTriangle className="w-5 h-5 text-amber-500" />
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-600">
-                    Earned {group.earnedCredits || 0}
-                    {group.requiredCredits ? ` / ${group.requiredCredits} credits` : ''}
-                  </p>
-                  {group.missing?.length ? (
-                    <p className="text-xs text-red-600">Missing: {group.missing.join(', ')}</p>
-                  ) : null}
-                  {group.usedCourses?.length ? (
-                    <p className="text-xs text-gray-500">Used: {group.usedCourses.join(', ')}</p>
-                  ) : null}
+            );
+          })() : null}
+
+          {requirementsResult ? (() => {
+            const allGroups = requirementsResult.groups || [];
+            const satisfiedGroups = allGroups.filter((g) => g.satisfied);
+            const unsatisfiedGroups = allGroups.filter((g) => !g.satisfied);
+
+            const renderGroup = (group) => {
+              const earned = group.earnedCredits || 0;
+              const required = group.requiredCredits || 0;
+              const pct = required > 0 ? Math.min(Math.round((earned / required) * 100), 100) : (group.satisfied ? 100 : 0);
+              const exceeded = required > 0 && earned > required;
+              const extraCredits = exceeded ? earned - required : 0;
+              const ariaLabel = required > 0
+                ? `${earned} of ${required} credits completed${exceeded ? `, ${extraCredits} extra` : ''}`
+                : (group.satisfied ? 'Satisfied' : 'Not satisfied');
+              const hasDetails = (group.missing?.length > 0) || (group.usedCourses?.length > 0);
+
+              return (
+                <details key={group.name} className="rounded border border-gray-200 group">
+                  <summary className="cursor-pointer select-none px-3 py-2 hover:bg-gray-50 transition-colors rounded list-none">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <ChevronDown className="w-4 h-4 text-gray-400 details-chevron flex-shrink-0" />
+                        <p className="text-sm font-semibold text-gray-900 truncate">{group.name}</p>
+                      </div>
+                      {group.satisfied ? (
+                        <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+                      ) : (
+                        <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0" />
+                      )}
+                    </div>
+                    <div className="ml-6">
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <p className="text-xs text-gray-600">
+                          Earned {earned}{required ? ` / ${required} credits` : ''}
+                        </p>
+                        {exceeded && (
+                          <span className="text-xs font-medium text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                            +{extraCredits} extra
+                          </span>
+                        )}
+                        {group.satisfied && !exceeded && required > 0 && (
+                          <span className="text-xs font-medium text-green-600">Completed</span>
+                        )}
+                      </div>
+                      {required > 0 && (
+                        <div
+                          className={`mt-1.5 h-2 rounded-full overflow-hidden ${pct >= 100 ? 'bg-green-200' : 'bg-red-200'}`}
+                          role="progressbar"
+                          aria-valuenow={pct}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-label={ariaLabel}
+                          title={ariaLabel}
+                        >
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{ width: `${pct}%`, backgroundColor: '#16a34a' }}
+                          />
+                        </div>
+                      )}
+                      {!required && (
+                        <div
+                          className="mt-1.5 h-2 rounded-full overflow-hidden"
+                          role="progressbar"
+                          aria-valuenow={group.satisfied ? 100 : 0}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-label={ariaLabel}
+                          title={ariaLabel}
+                          style={{ backgroundColor: group.satisfied ? '#bbf7d0' : '#fca5a5' }}
+                        >
+                          <div
+                            className="h-full rounded-full"
+                            style={{ width: group.satisfied ? '100%' : '0%', backgroundColor: '#16a34a' }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </summary>
+                  {hasDetails && (
+                    <div className="px-3 pb-2 ml-6 border-t border-gray-100 mt-1 pt-2 space-y-1">
+                      {group.usedCourses?.length > 0 && (
+                        <p className="text-xs text-gray-500">Used: {group.usedCourses.join(', ')}</p>
+                      )}
+                      {group.missing?.length > 0 && (
+                        <p className="text-xs text-red-600">Missing: {group.missing.join(', ')}</p>
+                      )}
+                      {group.warnings?.length > 0 && group.warnings.map((w, i) => (
+                        <p key={i} className="text-xs text-amber-600">{w}</p>
+                      ))}
+                    </div>
+                  )}
+                </details>
+              );
+            };
+
+            return (
+              <div className="space-y-3">
+                <div className="text-sm text-gray-700">
+                  <p className="font-semibold">Set: {requirementsResult.requirementSet?.name}</p>
+                  {requirementsResult.requirementSet?.catalog_year && (
+                    <p>Catalog year: {requirementsResult.requirementSet.catalog_year}</p>
+                  )}
                 </div>
-              ))}
-            </div>
-          ) : !degreeResult ? (
+
+                {/* Still Needed section */}
+                {unsatisfiedGroups.length > 0 && (
+                  <details open>
+                    <summary className="cursor-pointer select-none flex items-center gap-2 text-sm font-semibold text-red-700 py-2 px-2 rounded hover:bg-red-50 transition-colors">
+                      <ChevronDown className="w-4 h-4 details-chevron flex-shrink-0" />
+                      <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                      Still Needed ({unsatisfiedGroups.length})
+                    </summary>
+                    <div className="space-y-2 mt-2">
+                      {unsatisfiedGroups.map(renderGroup)}
+                    </div>
+                  </details>
+                )}
+
+                {/* Satisfied section */}
+                {satisfiedGroups.length > 0 && (
+                  <details open>
+                    <summary className="cursor-pointer select-none flex items-center gap-2 text-sm font-semibold text-green-700 py-2 px-2 rounded hover:bg-green-50 transition-colors">
+                      <ChevronDown className="w-4 h-4 details-chevron flex-shrink-0" />
+                      <CheckCircle className="w-4 h-4 flex-shrink-0" />
+                      Completed / Satisfied ({satisfiedGroups.length})
+                    </summary>
+                    <div className="space-y-2 mt-2">
+                      {satisfiedGroups.map(renderGroup)}
+                    </div>
+                  </details>
+                )}
+              </div>
+            );
+          })() : !degreeResult ? (
             <p className="text-sm text-gray-500">Click Generate to evaluate your degree requirements.</p>
           ) : null}
         </div>
@@ -2784,31 +3124,79 @@ Now answer the student's question based on this context and any additional infor
               </div>
             </div>
             <div className="space-y-2">
-              {minorResult.groups?.map((group) => (
-                <div
-                  key={group.name}
-                  className="rounded border border-gray-200 px-3 py-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-gray-900">{group.name}</p>
-                    {group.satisfied ? (
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                    ) : (
-                      <AlertTriangle className="w-5 h-5 text-amber-500" />
+              {minorResult.groups?.map((group) => {
+                const earned = group.earnedCredits || 0;
+                const required = group.requiredCredits || 0;
+                const pct = required > 0 ? Math.min(Math.round((earned / required) * 100), 100) : (group.satisfied ? 100 : 0);
+                const exceeded = required > 0 && earned > required;
+                const extraCredits = exceeded ? earned - required : 0;
+                const ariaLabel = required > 0
+                  ? `${earned} of ${required} credits completed${exceeded ? `, ${extraCredits} extra` : ''}`
+                  : (group.satisfied ? 'Satisfied' : 'Not satisfied');
+                const hasDetails = (group.missing?.length > 0) || (group.usedCourses?.length > 0);
+
+                return (
+                  <details
+                    key={group.name}
+                    className="rounded border border-gray-200 group"
+                  >
+                    <summary className="cursor-pointer select-none px-3 py-2 hover:bg-gray-50 transition-colors rounded list-none">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <ChevronDown className="w-4 h-4 text-gray-400 details-chevron flex-shrink-0" />
+                          <p className="text-sm font-semibold text-gray-900 truncate">{group.name}</p>
+                        </div>
+                        {group.satisfied ? (
+                          <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+                        ) : (
+                          <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0" />
+                        )}
+                      </div>
+                      <div className="ml-6">
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <p className="text-xs text-gray-600">
+                            Earned {earned}{required ? ` / ${required} credits` : ''}
+                          </p>
+                          {exceeded && (
+                            <span className="text-xs font-medium text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                              +{extraCredits} extra
+                            </span>
+                          )}
+                          {group.satisfied && !exceeded && required > 0 && (
+                            <span className="text-xs font-medium text-green-600">Completed</span>
+                          )}
+                        </div>
+                        {required > 0 && (
+                          <div
+                            className={`mt-1.5 h-2 rounded-full overflow-hidden ${pct >= 100 ? 'bg-green-200' : 'bg-red-200'}`}
+                            role="progressbar"
+                            aria-valuenow={pct}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-label={ariaLabel}
+                            title={ariaLabel}
+                          >
+                            <div
+                              className="h-full rounded-full transition-all"
+                              style={{ width: `${pct}%`, backgroundColor: '#16a34a' }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </summary>
+                    {hasDetails && (
+                      <div className="px-3 pb-2 ml-6 border-t border-gray-100 mt-1 pt-2 space-y-1">
+                        {group.usedCourses?.length > 0 && (
+                          <p className="text-xs text-gray-500">Used: {group.usedCourses.join(', ')}</p>
+                        )}
+                        {group.missing?.length > 0 && (
+                          <p className="text-xs text-red-600">Missing: {group.missing.join(', ')}</p>
+                        )}
+                      </div>
                     )}
-                  </div>
-                  <p className="text-xs text-gray-600">
-                    Earned {group.earnedCredits || 0}
-                    {group.requiredCredits ? ` / ${group.requiredCredits} credits` : ''}
-                  </p>
-                  {group.missing?.length ? (
-                    <p className="text-xs text-red-600">Missing: {group.missing.join(', ')}</p>
-                  ) : null}
-                  {group.usedCourses?.length ? (
-                    <p className="text-xs text-gray-500">Used: {group.usedCourses.join(', ')}</p>
-                  ) : null}
-                </div>
-              ))}
+                  </details>
+                );
+              })}
             </div>
           </div>
         )}
@@ -2819,7 +3207,6 @@ Now answer the student's question based on this context and any additional infor
   const AcademicRecordPanel = () => {
     const [editingCourse, setEditingCourse] = useState(null); // { termLabel, courseCode }
     const [editingCredits, setEditingCredits] = useState('');
-    const [tagEditorCourseKey, setTagEditorCourseKey] = useState(null);
     const [moveMenuCourseKey, setMoveMenuCourseKey] = useState(null);
     useEffect(() => {
       if (!moveMenuCourseKey) return undefined;
@@ -2832,10 +3219,7 @@ Now answer the student's question based on this context and any additional infor
         window.removeEventListener('keydown', handleKey);
       };
     }, [moveMenuCourseKey]);
-    const attributeOptions = [
-      { id: 'attr-sabr', label: 'SABR Attribute' },
-      { id: 'attr-hs-lang-2y', label: '2 Years Language in HS' }
-    ];
+    const CUSTOM_EMPHASIS_TAG = 'custom-emphasis';
 
     const updateCourseCredits = (termLabel, courseCode, newCredits) => {
       const credits = parseFloat(newCredits);
@@ -2863,7 +3247,7 @@ Now answer the student's question based on this context and any additional infor
       setEditingCredits('');
     };
 
-    const updateCourseAttribute = (termLabel, courseCode, attribute, enabled) => {
+    const toggleCourseEmphasis = (termLabel, courseCode, enabled) => {
       const updater = (prevTerms) =>
         prevTerms.map((term) => {
           if (term.label !== termLabel) return term;
@@ -2872,8 +3256,8 @@ Now answer the student's question based on this context and any additional infor
             courses: (term.courses || []).map((course) => {
               if (course.code !== courseCode) return course;
               const existing = new Set(Array.isArray(course.categories) ? course.categories : []);
-              if (enabled) existing.add(attribute);
-              else existing.delete(attribute);
+              if (enabled) existing.add(CUSTOM_EMPHASIS_TAG);
+              else existing.delete(CUSTOM_EMPHASIS_TAG);
               return { ...course, categories: Array.from(existing) };
             })
           };
@@ -2918,16 +3302,16 @@ Now answer the student's question based on this context and any additional infor
     return (
       <div className="bg-white rounded-lg shadow p-6">
         {/* Header */}
-        <div className="mb-5">
+        <div className="mb-4">
           <h3 className="text-lg font-bold text-gray-900">Academic Record</h3>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-gray-600 mt-0.5">
             Transcript-aligned terms with grades. Drag courses between terms to correct parsing.
           </p>
         </div>
 
-        {/* Action buttons row */}
-        <div className="flex flex-wrap items-center gap-2 mb-4">
-          <label className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-100 cursor-pointer inline-flex items-center gap-1.5">
+        {/* Action buttons */}
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          <label className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-100 cursor-pointer inline-flex items-center gap-1.5">
             <Plus className="w-4 h-4" />
             <input
               ref={uploadInputRef}
@@ -2942,13 +3326,12 @@ Now answer the student's question based on this context and any additional infor
             />
             Upload PDF
           </label>
-          <div className="w-px h-6 bg-gray-300 mx-1" />
-
+          <div className="w-px h-5 bg-gray-300" />
           <button
             type="button"
             onClick={applyReviewedTranscript}
             disabled={isTranscriptSaving || (!isTranscriptDirty && reviewTerms.length === 0)}
-            className={`px-3 py-2 rounded-lg text-sm font-semibold inline-flex items-center gap-2 ${
+            className={`px-3 py-1.5 rounded-lg text-sm font-semibold inline-flex items-center gap-1.5 ${
               isTranscriptSaving || (!isTranscriptDirty && reviewTerms.length === 0)
                 ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
                 : 'text-white'
@@ -2962,7 +3345,6 @@ Now answer the student's question based on this context and any additional infor
             <Save className="w-4 h-4" />
             {isTranscriptSaving ? 'Saving...' : 'Update Record'}
           </button>
-
           {(reviewTerms.length > 0 || transcriptTerms.length > 0) && (
             <button
               type="button"
@@ -2977,29 +3359,32 @@ Now answer the student's question based on this context and any additional infor
                   setSelectedTranscriptYear('');
                 }
               }}
-              className="px-3 py-2 rounded-lg text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50"
+              className="px-3 py-1.5 rounded-lg text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50"
             >
               Clear Record
             </button>
           )}
-
-          {isTranscriptDirty && !isTranscriptSaving && (
-            <span className="text-xs text-amber-700 bg-amber-100 px-2 py-1 rounded-full inline-flex items-center gap-1">
-              <AlertTriangle className="w-3 h-3" />
-              Unsaved — press Update Record to save
-            </span>
-          )}
-          {transcriptLoading && (
-            <span className="text-sm text-gray-500">
-              {transcriptLoadingMessage || 'Parsing…'}
-            </span>
-          )}
-          {transcriptError && <span className="text-sm text-red-600">{transcriptError}</span>}
-          {storageError && <span className="text-sm text-red-600">{storageError}</span>}
-          {transcriptPdfName && (
-            <span className="text-sm text-gray-500 italic">PDF: {transcriptPdfName}</span>
-          )}
         </div>
+
+        {/* Status indicators */}
+        {(isTranscriptDirty || transcriptLoading || transcriptError || storageError || transcriptPdfName) && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-4 text-sm">
+            {isTranscriptDirty && !isTranscriptSaving && (
+              <span className="text-xs text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" />
+                Unsaved changes
+              </span>
+            )}
+            {transcriptLoading && (
+              <span className="text-gray-500">{transcriptLoadingMessage || 'Parsing…'}</span>
+            )}
+            {transcriptError && <span className="text-red-600">{transcriptError}</span>}
+            {storageError && <span className="text-red-600">{storageError}</span>}
+            {transcriptPdfName && (
+              <span className="text-gray-400 italic text-xs">PDF: {transcriptPdfName}</span>
+            )}
+          </div>
+        )}
 
         {/* Year tabs row */}
         {transcriptYearLabels.length > 0 && (
@@ -3117,12 +3502,7 @@ Now answer the student's question based on this context and any additional infor
                           >
                             {(() => {
                               const courseKey = `${term.label}-${course.code}`;
-                              const selectedTags = Array.isArray(course.categories)
-                                ? course.categories.filter((c) =>
-                                    attributeOptions.some((opt) => opt.id === c)
-                                  )
-                                : [];
-                              const tagsOpen = tagEditorCourseKey === courseKey;
+                              const isEmphasis = Array.isArray(course.categories) && course.categories.includes(CUSTOM_EMPHASIS_TAG);
                               const moveOpen = moveMenuCourseKey === courseKey;
                               // All term labels across all years, excluding the current one
                               const allTermOptions = transcriptYears.flatMap((yr) =>
@@ -3195,22 +3575,6 @@ Now answer the student's question based on this context and any additional infor
                                     >
                                       <Edit2 className="w-3 h-3" />
                                     </button>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setTagEditorCourseKey((prev) =>
-                                          prev === courseKey ? null : courseKey
-                                        );
-                                      }}
-                                      className={`text-xs px-2 py-0.5 rounded border transition-colors ${
-                                        tagsOpen
-                                          ? 'border-[#500000] text-[#500000] bg-[#500000]/5'
-                                          : 'border-gray-200 text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                                      }`}
-                                      title="Set requirement attributes"
-                                    >
-                                      Tags{selectedTags.length ? ` (${selectedTags.length})` : ''}
-                                    </button>
                                     <div className="relative">
                                       <button
                                         onClick={(e) => {
@@ -3218,7 +3582,6 @@ Now answer the student's question based on this context and any additional infor
                                           setMoveMenuCourseKey((prev) =>
                                             prev === courseKey ? null : courseKey
                                           );
-                                          setTagEditorCourseKey(null);
                                         }}
                                         className={`text-xs px-1.5 py-0.5 rounded border transition-colors ${
                                           moveOpen
@@ -3274,7 +3637,7 @@ Now answer the student's question based on this context and any additional infor
                                 )}
                               </div>
                             </div>
-                            {(course.transfer || course.honors || course.grade === 'IP' || course.grade === 'TIP' || !course.grade) && (
+                            {(course.transfer || course.honors || isPassFailGrade(course.grade) || course.grade === 'IP' || course.grade === 'TIP' || !course.grade) && (
                               <div className="mt-2 flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   {course.honors && (
@@ -3286,6 +3649,11 @@ Now answer the student's question based on this context and any additional infor
                                     <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 flex items-center gap-1">
                                       <CheckCircle className="w-3 h-3" />
                                       Transfer
+                                    </span>
+                                  )}
+                                  {!course.transfer && isPassFailGrade(course.grade) && (
+                                    <span className="text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-700">
+                                      {course.grade === 'S' ? 'Satisfactory' : course.grade === 'U' ? 'Unsatisfactory' : 'Pass'}
                                     </span>
                                   )}
                                   {(course.grade === 'IP' || course.grade === 'TIP' || !course.grade) && (
@@ -3362,59 +3730,25 @@ Now answer the student's question based on this context and any additional infor
                                 )}
                               </div>
                             )}
-                            {selectedTags.length > 0 && !tagsOpen && (
-                              <div className="mt-2 flex flex-wrap gap-1.5">
-                                {selectedTags.map((tag) => {
-                                  const label =
-                                    attributeOptions.find((option) => option.id === tag)?.label || tag;
-                                  return (
-                                    <span
-                                      key={tag}
-                                      className="text-[11px] px-2 py-0.5 rounded-full bg-[#500000]/10 text-[#500000]"
-                                    >
-                                      {label}
-                                    </span>
-                                  );
-                                })}
-                              </div>
-                            )}
-                            {tagsOpen && (
-                              <div className="mt-2 border-t border-gray-100 pt-2">
-                                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1">
-                                  Attributes
-                                </p>
-                                <div className="flex flex-wrap gap-3">
-                                  {attributeOptions.map((option) => {
-                                    const enabled = Array.isArray(course.categories)
-                                      ? course.categories.includes(option.id)
-                                      : false;
-                                    return (
-                                      <label
-                                        key={option.id}
-                                        className="flex items-center gap-1.5 cursor-pointer select-none"
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={enabled}
-                                          onChange={(e) => {
-                                            e.stopPropagation();
-                                            updateCourseAttribute(
-                                              term.label,
-                                              course.code,
-                                              option.id,
-                                              e.target.checked
-                                            );
-                                          }}
-                                          className="w-3.5 h-3.5 rounded border-gray-300 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
-                                        />
-                                        <span className="text-xs text-gray-600">{option.label}</span>
-                                      </label>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
+                            <div className="mt-2 flex items-center">
+                              <label
+                                className="flex items-center gap-1.5 cursor-pointer select-none"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isEmphasis}
+                                  onChange={(e) => {
+                                    e.stopPropagation();
+                                    toggleCourseEmphasis(term.label, course.code, e.target.checked);
+                                  }}
+                                  className="w-3.5 h-3.5 rounded border-gray-300 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
+                                />
+                                <span className={`text-xs ${isEmphasis ? 'text-[#500000] font-medium' : 'text-gray-500'}`}>
+                                  Count toward emphasis
+                                </span>
+                              </label>
+                            </div>
                                 </>
                               );
                             })()}
@@ -3690,17 +4024,26 @@ Now answer the student's question based on this context and any additional infor
                     ) : (
                       displayCourses.map((course) => {
                         const courseMeta = COURSES[course.code];
-                        const hasPrereqIssue =
-                          course.type === 'planned' &&
-                          courseMeta?.prereqs?.some((p) => !isCourseCompleted(p));
+                        const missingPrereqs = course.type === 'planned'
+                          ? (courseMeta?.prereqs || []).filter((p) => !isPrereqSatisfiedForSemester(p, term))
+                          : [];
+                        const hasPrereqIssue = missingPrereqs.length > 0;
+                        const plannedLaterPrereqs = hasPrereqIssue
+                          ? missingPrereqs.filter((p) => isCoursePlanned(p))
+                          : [];
+                        const trulyMissing = hasPrereqIssue
+                          ? missingPrereqs.filter((p) => !isCoursePlanned(p))
+                          : [];
 
                         return (
                           <div
                             key={`${term}-${course.code}-${course.type}`}
                             className={`p-3 rounded-lg border ${
-                              hasPrereqIssue
+                              trulyMissing.length > 0
                                 ? 'border-red-300 bg-red-50'
-                                : 'border-gray-200 bg-white'
+                                : plannedLaterPrereqs.length > 0
+                                  ? 'border-yellow-300 bg-yellow-50'
+                                  : 'border-gray-200 bg-white'
                             }`}
                           >
                             <div className="flex justify-between items-start">
@@ -3719,13 +4062,16 @@ Now answer the student's question based on this context and any additional infor
                                 <p className="text-xs text-gray-600 mt-1">
                                   {course.title || courseMeta?.title}
                                 </p>
-                                {hasPrereqIssue && (
+                                {trulyMissing.length > 0 && (
                                   <p className="text-xs text-red-600 mt-2 flex items-center gap-1">
                                     <AlertTriangle className="w-3 h-3" />
-                                    Missing prerequisites:{' '}
-                                    {courseMeta.prereqs
-                                      .filter((p) => !isCourseCompleted(p))
-                                      .join(', ')}
+                                    Missing prerequisites: {trulyMissing.join(', ')}
+                                  </p>
+                                )}
+                                {plannedLaterPrereqs.length > 0 && (
+                                  <p className="text-xs text-yellow-700 mt-1 flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3" />
+                                    Prerequisite planned but not in earlier semester: {plannedLaterPrereqs.join(', ')}
                                   </p>
                                 )}
                                 <label
@@ -3898,11 +4244,21 @@ Now answer the student's question based on this context and any additional infor
                               </span>
                             </div>
                             <p className="text-sm text-gray-600">{course.title}</p>
-                            {course.prereqs.length > 0 && (
-                              <p className="text-xs text-gray-500 mt-1">
-                                Prerequisites: {course.prereqs.join(', ')}
-                              </p>
-                            )}
+                            {course.prereqs.length > 0 && (() => {
+                              const satisfied = course.prereqs.filter((p) => isPrereqSatisfiedForSemester(p, selectedSemester));
+                              const unsatisfied = course.prereqs.filter((p) => !isPrereqSatisfiedForSemester(p, selectedSemester));
+                              return (
+                                <div className="text-xs mt-1">
+                                  <span className="text-gray-500">Prerequisites: </span>
+                                  {satisfied.map((p) => (
+                                    <span key={p} className="text-green-600 mr-1">{p} ✓</span>
+                                  ))}
+                                  {unsatisfied.map((p) => (
+                                    <span key={p} className="text-red-600 mr-1">{p} ✗</span>
+                                  ))}
+                                </div>
+                              );
+                            })()}
                           </div>
                           {isLocked && <span className="text-xs text-red-600">Locked</span>}
                           {alreadyTaken && (
@@ -4022,7 +4378,8 @@ Now answer the student's question based on this context and any additional infor
       const course = FLOWCHART_COURSES[code] || COURSES[code];
       if (!course) return 'locked';
       const prereqsMet =
-        course.prereqs.length === 0 || course.prereqs.every((p) => isCourseCompleted(p));
+        course.prereqs.length === 0 ||
+        course.prereqs.every((p) => isCourseCompleted(p) || isCourseInProgress(p) || isCoursePlanned(p));
       return prereqsMet ? 'available' : 'locked';
     };
     const collectPrereqs = (code, collected = new Set()) => {
@@ -4037,7 +4394,7 @@ Now answer the student's question based on this context and any additional infor
       const course = FLOWCHART_COURSES[code] || COURSES[code];
       if (!course?.prereqs?.length) return collected;
       course.prereqs.forEach((prereq) => {
-        if (isCourseCompleted(prereq)) return;
+        if (isCourseCompleted(prereq) || isCourseInProgress(prereq) || isCoursePlanned(prereq)) return;
         if (collected.has(prereq)) return;
         collected.add(prereq);
         collectMissingPrereqs(prereq, collected);

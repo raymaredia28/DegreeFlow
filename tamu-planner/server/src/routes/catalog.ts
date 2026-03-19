@@ -168,6 +168,8 @@ catalogRouter.post("/api/requirements/evaluate-local", async (req, res, next) =>
       // but still need emphasis courses for the emphasisCredits sub-rule.
       degreeEmphasisId = null,
       minorId = null,
+      hasHsLanguage = false,
+      hasSabrCourse = false,
     } = req.body || {};
 
     const requirementSets = await loadJson("requirements.json");
@@ -292,6 +294,8 @@ catalogRouter.post("/api/requirements/evaluate-local", async (req, res, next) =>
       requirementSet,
       studentCourses,
       emphasisCourseIds,
+      hasHsLanguage: Boolean(hasHsLanguage),
+      hasSabrCourse: Boolean(hasSabrCourse),
     });
 
     res.json(result);

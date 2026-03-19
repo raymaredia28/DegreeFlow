@@ -9,6 +9,25 @@ const normalizeCode = (raw) => {
   return spaced;
 };
 
+// Equivalent/renamed courses — only one from each group should count
+const EQUIVALENT_COURSE_GROUPS = [
+  ['CSCE 120', 'CSCE 121'],
+  ['CSCE 315', 'CSCE 331'],
+];
+
+const EQUIVALENT_MAP = new Map();
+EQUIVALENT_COURSE_GROUPS.forEach((group) => {
+  const canonical = group[0];
+  group.forEach((code) => EQUIVALENT_MAP.set(code, canonical));
+});
+
+const getCanonicalCode = (code) => EQUIVALENT_MAP.get(code) || code;
+
+const getEquivalentCodes = (code) => {
+  const group = EQUIVALENT_COURSE_GROUPS.find((g) => g.includes(code));
+  return group ? group.filter((c) => c !== code) : [];
+};
+
 const gradeValue = (grade) => {
   if (!grade) return null;
   const g = grade.toUpperCase().trim();
@@ -54,9 +73,19 @@ const courseCodeFromRecord = (course) =>
 
 const buildCourseIndex = (studentCourses) => {
   const map = new Map();
+  // Track which canonical equivalency groups are already represented
+  const seenCanonical = new Set();
+
   studentCourses.forEach((entry) => {
     const code = courseCodeFromRecord(entry.course);
-    map.set(code, {
+    const canonical = getCanonicalCode(code);
+
+    // If an equivalent is already indexed, skip to prevent double-counting
+    if (seenCanonical.has(canonical) && !map.has(code)) {
+      return;
+    }
+
+    const record = {
       code,
       grade: entry.grade,
       status: entry.status,
@@ -65,6 +94,16 @@ const buildCourseIndex = (studentCourses) => {
       department: entry.course.department,
       course_number: entry.course.course_number,
       course_id: entry.course.course_id
+    };
+
+    map.set(code, record);
+    seenCanonical.add(canonical);
+
+    // Also register under equivalent codes so requirement rules can match by either name
+    getEquivalentCodes(code).forEach((eqCode) => {
+      if (!map.has(eqCode)) {
+        map.set(eqCode, record);
+      }
     });
   });
   return map;
@@ -160,6 +199,15 @@ const evaluateAnyOf = (anyOf, context, minGrade) => {
 
 const evaluateTag = (tagRule, context, minGrade) => {
   const tag = tagRule.tag;
+
+  // Global overrides: if the student checked the global flag, satisfy immediately
+  if (tag === 'attr-hs-lang-2y' && context.hasHsLanguage) {
+    return { satisfied: true, credits: 0, used: [], missing: [] };
+  }
+  if (tag === 'attr-sabr' && context.hasSabrCourse) {
+    return { satisfied: true, credits: 0, used: [], missing: [] };
+  }
+
   const excludeSet = new Set((tagRule.exclude || []).map(normalizeCode));
   const eligible = Array.from(context.courseIndex.values()).filter(
     (course) =>
@@ -235,7 +283,37 @@ const evaluatePool = (poolRule, context, minGrade) => {
 
 const evaluateEmphasis = (rule, context, minGrade) => {
   const requiredCredits = rule.emphasisCredits || 0;
-  if (!context.emphasisCourseIds || context.emphasisCourseIds.size === 0) {
+  const usedCodes = new Set();
+  const matched = [];
+
+  // Match courses from the predefined emphasis pool
+  if (context.emphasisCourseIds && context.emphasisCourseIds.size > 0) {
+    Array.from(context.courseIndex.values()).forEach((course) => {
+      if (isCompleted(course, minGrade) && context.emphasisCourseIds.has(course.course_id)) {
+        const code = normalizeCode(`${course.department} ${course.course_number}`);
+        if (!usedCodes.has(code)) {
+          usedCodes.add(code);
+          matched.push(course);
+        }
+      }
+    });
+  }
+
+  // Also match courses the student manually tagged as custom-emphasis
+  Array.from(context.courseIndex.values()).forEach((course) => {
+    if (
+      isCompleted(course, minGrade) &&
+      (course.categories || []).includes('custom-emphasis')
+    ) {
+      const code = normalizeCode(`${course.department} ${course.course_number}`);
+      if (!usedCodes.has(code)) {
+        usedCodes.add(code);
+        matched.push(course);
+      }
+    }
+  });
+
+  if (matched.length === 0) {
     return {
       satisfied: false,
       credits: 0,
@@ -243,10 +321,7 @@ const evaluateEmphasis = (rule, context, minGrade) => {
       missing: ['Emphasis area courses (advisor-approved)']
     };
   }
-  const matched = Array.from(context.courseIndex.values()).filter(
-    (course) =>
-      isCompleted(course, minGrade) && context.emphasisCourseIds.has(course.course_id)
-  );
+
   const credits = sumCredits(matched);
   const used = matched.map((c) => normalizeCode(`${c.department} ${c.course_number}`));
   const satisfied = credits >= requiredCredits;
@@ -369,7 +444,7 @@ const summarizeGroup = (name, rules, context) => {
   };
 };
 
-const evaluateRequirements = ({ requirementSet, studentCourses, emphasisCourseIds }) => {
+const evaluateRequirements = ({ requirementSet, studentCourses, emphasisCourseIds, hasHsLanguage, hasSabrCourse }) => {
   const courseIndex = buildCourseIndex(studentCourses);
   const completedCourses = Array.from(courseIndex.values()).filter((course) =>
     isCompleted(course, null)
@@ -378,7 +453,9 @@ const evaluateRequirements = ({ requirementSet, studentCourses, emphasisCourseId
   const context = {
     courseIndex,
     completedCourses,
-    emphasisCourseIds
+    emphasisCourseIds,
+    hasHsLanguage: Boolean(hasHsLanguage),
+    hasSabrCourse: Boolean(hasSabrCourse)
   };
 
   const groups = (requirementSet.groups || []).map((group) =>
@@ -395,4 +472,4 @@ const evaluateRequirements = ({ requirementSet, studentCourses, emphasisCourseId
   };
 };
 
-export { evaluateRequirements, normalizeCode };
+export { evaluateRequirements, normalizeCode, EQUIVALENT_COURSE_GROUPS, getCanonicalCode, getEquivalentCodes };
