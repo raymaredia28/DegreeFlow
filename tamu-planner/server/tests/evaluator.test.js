@@ -2,7 +2,7 @@ import assert from 'assert';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { evaluateRequirements } from '../src/requirements/evaluator.js';
+import { evaluateRequirements, normalizeCode, EQUIVALENT_COURSE_GROUPS, getCanonicalCode, getEquivalentCodes } from '../src/requirements/evaluator.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.join(__dirname, '..', 'data');
@@ -426,6 +426,184 @@ const run = async () => {
     });
     const group = result.groups.find((g) => g.name === 'Foreign Language');
     assert.ok(!group?.satisfied, 'Foreign Language should fail without a 202 companion course');
+  });
+
+  // Transfer credit grade (TCR) should be treated as completed
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [makeCourse('ENGL 221', 3, 'TCR')];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const group = result.groups.find((g) => g.name === 'Language, Philosophy & Culture (3 credits)');
+    assert.ok(group?.satisfied, 'Course with TCR grade should satisfy requirements');
+  });
+
+  // Satisfactory (S) grade should be treated as completed
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [makeCourse('COMM 365', 3, 'S')];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const group = result.groups.find((g) => g.name === 'Social and Behavioral Sciences (3 credits)');
+    assert.ok(group?.satisfied, 'Course with S grade should satisfy requirements');
+  });
+
+  // Transfer A (TA) grade should be treated as completed
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [makeCourse('COMM 257', 3, 'TA')];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const group = result.groups.find((g) => g.name === 'Cultural Discourse (3 credits)');
+    assert.ok(group?.satisfied, 'Course with TA grade should satisfy requirements');
+  });
+
+  // In-progress (IP) grade should NOT count as completed
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [makeCourse('ENGL 221', 3, 'IP')];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const group = result.groups.find((g) => g.name === 'Language, Philosophy & Culture (3 credits)');
+    assert.ok(!group?.satisfied, 'Course with IP grade should not satisfy requirements');
+  });
+
+  // === Equivalency / anti-double-counting tests ===
+
+  // getCanonicalCode should return the canonical form
+  tests.push(async () => {
+    assert.strictEqual(getCanonicalCode('CSCE 121'), 'CSCE 120', 'CSCE 121 canonical should be CSCE 120');
+    assert.strictEqual(getCanonicalCode('CSCE 120'), 'CSCE 120', 'CSCE 120 canonical should be itself');
+    assert.strictEqual(getCanonicalCode('CSCE 331'), 'CSCE 315', 'CSCE 331 canonical should be CSCE 315');
+    assert.strictEqual(getCanonicalCode('CSCE 315'), 'CSCE 315', 'CSCE 315 canonical should be itself');
+    assert.strictEqual(getCanonicalCode('MATH 151'), 'MATH 151', 'Non-equivalent course should return itself');
+  });
+
+  // getEquivalentCodes should return the other course(s) in the group
+  tests.push(async () => {
+    const eq120 = getEquivalentCodes('CSCE 120');
+    assert.ok(eq120.includes('CSCE 121'), 'CSCE 120 should list CSCE 121 as equivalent');
+    assert.ok(!eq120.includes('CSCE 120'), 'CSCE 120 should not list itself');
+    const eq331 = getEquivalentCodes('CSCE 331');
+    assert.ok(eq331.includes('CSCE 315'), 'CSCE 331 should list CSCE 315 as equivalent');
+    const eqNone = getEquivalentCodes('MATH 151');
+    assert.strictEqual(eqNone.length, 0, 'Non-equivalent course should have empty equivalents');
+  });
+
+  // CSCE 120 should satisfy a requirement that asks for CSCE 120
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [makeCourse('CSCE 120', 3)];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const group = result.groups.find((g) => g.name.includes('Major Coursework'));
+    assert.ok(group.usedCourses.includes('CSCE 120'), 'CSCE 120 should be used');
+  });
+
+  // CSCE 121 should also satisfy a requirement that asks for CSCE 120 (equivalent)
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [makeCourse('CSCE 121', 3)];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const group = result.groups.find((g) => g.name.includes('Major Coursework'));
+    assert.ok(
+      group.usedCourses.includes('CSCE 120') || group.usedCourses.includes('CSCE 121'),
+      'CSCE 121 (equivalent to 120) should satisfy the CSCE 120 requirement'
+    );
+  });
+
+  // Both CSCE 120 and CSCE 121 together should not double-count
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [
+      makeCourse('CSCE 120', 3),
+      makeCourse('CSCE 121', 3)
+    ];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const group = result.groups.find((g) => g.name.includes('Major Coursework'));
+    const csce120Used = group.usedCourses.filter((c) => c === 'CSCE 120' || c === 'CSCE 121').length;
+    assert.ok(csce120Used <= 1, 'Equivalent courses 120/121 should not both appear in used courses');
+  });
+
+  // CSCE 331 should satisfy requirement that asks for CSCE 331
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [makeCourse('CSCE 331', 4)];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const group = result.groups.find((g) => g.name.includes('Major Coursework'));
+    assert.ok(
+      group.usedCourses.includes('CSCE 331') || group.usedCourses.includes('CSCE 315'),
+      'CSCE 331 should be used for its requirement'
+    );
+  });
+
+  // CSCE 315 should also satisfy requirement asking for CSCE 331 (equivalent)
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [makeCourse('CSCE 315', 4)];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const group = result.groups.find((g) => g.name.includes('Major Coursework'));
+    assert.ok(
+      group.usedCourses.includes('CSCE 331') || group.usedCourses.includes('CSCE 315'),
+      'CSCE 315 (equivalent to 331) should satisfy the CSCE 331 requirement'
+    );
+  });
+
+  // Both CSCE 315 and CSCE 331 together should not double-count
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [
+      makeCourse('CSCE 315', 4),
+      makeCourse('CSCE 331', 4)
+    ];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const group = result.groups.find((g) => g.name.includes('Major Coursework'));
+    const csce331Used = group.usedCourses.filter((c) => c === 'CSCE 315' || c === 'CSCE 331').length;
+    assert.ok(csce331Used <= 1, 'Equivalent courses 315/331 should not both appear in used courses');
+  });
+
+  // normalizeCode edge cases
+  tests.push(async () => {
+    assert.strictEqual(normalizeCode('CSCE120'), 'CSCE 120', 'Should split compact format');
+    assert.strictEqual(normalizeCode('csce 120'), 'CSCE 120', 'Should uppercase');
+    assert.strictEqual(normalizeCode('  CSCE  331  '), 'CSCE 331', 'Should trim and normalize spaces');
+    assert.strictEqual(normalizeCode(''), '', 'Empty string should return empty');
+    assert.strictEqual(normalizeCode(null), '', 'Null should return empty');
   });
 
   // Run tests

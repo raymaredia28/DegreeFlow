@@ -9,6 +9,25 @@ const normalizeCode = (raw) => {
   return spaced;
 };
 
+// Equivalent/renamed courses — only one from each group should count
+const EQUIVALENT_COURSE_GROUPS = [
+  ['CSCE 120', 'CSCE 121'],
+  ['CSCE 315', 'CSCE 331'],
+];
+
+const EQUIVALENT_MAP = new Map();
+EQUIVALENT_COURSE_GROUPS.forEach((group) => {
+  const canonical = group[0];
+  group.forEach((code) => EQUIVALENT_MAP.set(code, canonical));
+});
+
+const getCanonicalCode = (code) => EQUIVALENT_MAP.get(code) || code;
+
+const getEquivalentCodes = (code) => {
+  const group = EQUIVALENT_COURSE_GROUPS.find((g) => g.includes(code));
+  return group ? group.filter((c) => c !== code) : [];
+};
+
 const gradeValue = (grade) => {
   if (!grade) return null;
   const g = grade.toUpperCase().trim();
@@ -54,9 +73,19 @@ const courseCodeFromRecord = (course) =>
 
 const buildCourseIndex = (studentCourses) => {
   const map = new Map();
+  // Track which canonical equivalency groups are already represented
+  const seenCanonical = new Set();
+
   studentCourses.forEach((entry) => {
     const code = courseCodeFromRecord(entry.course);
-    map.set(code, {
+    const canonical = getCanonicalCode(code);
+
+    // If an equivalent is already indexed, skip to prevent double-counting
+    if (seenCanonical.has(canonical) && !map.has(code)) {
+      return;
+    }
+
+    const record = {
       code,
       grade: entry.grade,
       status: entry.status,
@@ -65,6 +94,16 @@ const buildCourseIndex = (studentCourses) => {
       department: entry.course.department,
       course_number: entry.course.course_number,
       course_id: entry.course.course_id
+    };
+
+    map.set(code, record);
+    seenCanonical.add(canonical);
+
+    // Also register under equivalent codes so requirement rules can match by either name
+    getEquivalentCodes(code).forEach((eqCode) => {
+      if (!map.has(eqCode)) {
+        map.set(eqCode, record);
+      }
     });
   });
   return map;
@@ -433,4 +472,4 @@ const evaluateRequirements = ({ requirementSet, studentCourses, emphasisCourseId
   };
 };
 
-export { evaluateRequirements, normalizeCode };
+export { evaluateRequirements, normalizeCode, EQUIVALENT_COURSE_GROUPS, getCanonicalCode, getEquivalentCodes };
