@@ -682,6 +682,8 @@ function App() {
   });
   const [selectedEmphasis, setSelectedEmphasis] = useState('Undecided');
   const [selectedMinor, setSelectedMinor] = useState('None');
+  const [hasHsLanguage, setHasHsLanguage] = useState(false);
+  const [hasSabrCourse, setHasSabrCourse] = useState(false);
   const [studentId, setStudentId] = useState(() => localStorage.getItem('studentId') || '');
   const AUTH_STORAGE_KEY = 'tamuPlannerAuthUser';
   const AUTH_TOKEN_STORAGE_KEY = 'tamuPlannerAuthToken';
@@ -879,7 +881,9 @@ function App() {
           selectedPlanYear,
           selectedTranscriptYear,
           selectedEmphasis,
-          selectedMinor
+          selectedMinor,
+          hasHsLanguage,
+          hasSabrCourse
         })
       });
 
@@ -898,6 +902,8 @@ function App() {
     selectedTranscriptYear,
     selectedEmphasis,
     selectedMinor,
+    hasHsLanguage,
+    hasSabrCourse,
     saveTranscriptToStorage,
     authHeaders
   ]);
@@ -924,6 +930,8 @@ function App() {
           selectedTranscriptYear,
           selectedEmphasis,
           selectedMinor,
+          hasHsLanguage,
+          hasSabrCourse,
           savedEvaluation: {
             degreeResult,
             requirementsResult,
@@ -952,6 +960,8 @@ function App() {
     selectedTranscriptYear,
     selectedEmphasis,
     selectedMinor,
+    hasHsLanguage,
+    hasSabrCourse,
     degreeResult,
     requirementsResult,
     minorResult,
@@ -1007,6 +1017,12 @@ function App() {
         }
         if (data.planner.selectedMinor) {
           setSelectedMinor(data.planner.selectedMinor);
+        }
+        if (data.planner.hasHsLanguage != null) {
+          setHasHsLanguage(data.planner.hasHsLanguage);
+        }
+        if (data.planner.hasSabrCourse != null) {
+          setHasSabrCourse(data.planner.hasSabrCourse);
         }
         if (data.planner.savedEvaluation) {
           const ev = data.planner.savedEvaluation;
@@ -1237,7 +1253,9 @@ function App() {
         emphasisId: null,
         degreeEmphasisId: selectedEmphasisId ?? null,
         minorId: null,
-        courses: Array.from(combined.values())
+        courses: Array.from(combined.values()),
+        hasHsLanguage,
+        hasSabrCourse
       };
 
       //console.log('Sending degree evaluation payload', degreePayload);
@@ -1266,7 +1284,9 @@ function App() {
         catalogYear: null,
         emphasisId: selectedEmphasisId,
         minorId: selectedMinorId,
-        courses: Array.from(combined.values())
+        courses: Array.from(combined.values()),
+        hasHsLanguage,
+        hasSabrCourse
       };
 
       const res = await fetch(`${API_BASE}/api/requirements/evaluate-local`, {
@@ -2653,6 +2673,26 @@ Now answer the student's question based on this context and any additional infor
               </div>
             </div>
           </div>
+          <div className="flex flex-wrap gap-x-6 gap-y-2">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={hasHsLanguage}
+                onChange={(e) => setHasHsLanguage(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
+              />
+              <span className="text-sm text-gray-700">Completed 2 years of same foreign language in HS</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={hasSabrCourse}
+                onChange={(e) => setHasSabrCourse(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
+              />
+              <span className="text-sm text-gray-700">Completed a Study Abroad (SABR) course</span>
+            </label>
+          </div>
           <div className="flex gap-4 text-sm text-gray-700">
             <span>Completed: {transcriptCreditsSummary.completedCredits}</span>
             <span>In Progress: {transcriptCreditsSummary.inProgressCredits}</span>
@@ -2819,7 +2859,6 @@ Now answer the student's question based on this context and any additional infor
   const AcademicRecordPanel = () => {
     const [editingCourse, setEditingCourse] = useState(null); // { termLabel, courseCode }
     const [editingCredits, setEditingCredits] = useState('');
-    const [tagEditorCourseKey, setTagEditorCourseKey] = useState(null);
     const [moveMenuCourseKey, setMoveMenuCourseKey] = useState(null);
     useEffect(() => {
       if (!moveMenuCourseKey) return undefined;
@@ -2832,10 +2871,7 @@ Now answer the student's question based on this context and any additional infor
         window.removeEventListener('keydown', handleKey);
       };
     }, [moveMenuCourseKey]);
-    const attributeOptions = [
-      { id: 'attr-sabr', label: 'SABR Attribute' },
-      { id: 'attr-hs-lang-2y', label: '2 Years Language in HS' }
-    ];
+    const CUSTOM_EMPHASIS_TAG = 'custom-emphasis';
 
     const updateCourseCredits = (termLabel, courseCode, newCredits) => {
       const credits = parseFloat(newCredits);
@@ -2863,7 +2899,7 @@ Now answer the student's question based on this context and any additional infor
       setEditingCredits('');
     };
 
-    const updateCourseAttribute = (termLabel, courseCode, attribute, enabled) => {
+    const toggleCourseEmphasis = (termLabel, courseCode, enabled) => {
       const updater = (prevTerms) =>
         prevTerms.map((term) => {
           if (term.label !== termLabel) return term;
@@ -2872,8 +2908,8 @@ Now answer the student's question based on this context and any additional infor
             courses: (term.courses || []).map((course) => {
               if (course.code !== courseCode) return course;
               const existing = new Set(Array.isArray(course.categories) ? course.categories : []);
-              if (enabled) existing.add(attribute);
-              else existing.delete(attribute);
+              if (enabled) existing.add(CUSTOM_EMPHASIS_TAG);
+              else existing.delete(CUSTOM_EMPHASIS_TAG);
               return { ...course, categories: Array.from(existing) };
             })
           };
@@ -3117,12 +3153,7 @@ Now answer the student's question based on this context and any additional infor
                           >
                             {(() => {
                               const courseKey = `${term.label}-${course.code}`;
-                              const selectedTags = Array.isArray(course.categories)
-                                ? course.categories.filter((c) =>
-                                    attributeOptions.some((opt) => opt.id === c)
-                                  )
-                                : [];
-                              const tagsOpen = tagEditorCourseKey === courseKey;
+                              const isEmphasis = Array.isArray(course.categories) && course.categories.includes(CUSTOM_EMPHASIS_TAG);
                               const moveOpen = moveMenuCourseKey === courseKey;
                               // All term labels across all years, excluding the current one
                               const allTermOptions = transcriptYears.flatMap((yr) =>
@@ -3195,22 +3226,6 @@ Now answer the student's question based on this context and any additional infor
                                     >
                                       <Edit2 className="w-3 h-3" />
                                     </button>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setTagEditorCourseKey((prev) =>
-                                          prev === courseKey ? null : courseKey
-                                        );
-                                      }}
-                                      className={`text-xs px-2 py-0.5 rounded border transition-colors ${
-                                        tagsOpen
-                                          ? 'border-[#500000] text-[#500000] bg-[#500000]/5'
-                                          : 'border-gray-200 text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                                      }`}
-                                      title="Set requirement attributes"
-                                    >
-                                      Tags{selectedTags.length ? ` (${selectedTags.length})` : ''}
-                                    </button>
                                     <div className="relative">
                                       <button
                                         onClick={(e) => {
@@ -3218,7 +3233,6 @@ Now answer the student's question based on this context and any additional infor
                                           setMoveMenuCourseKey((prev) =>
                                             prev === courseKey ? null : courseKey
                                           );
-                                          setTagEditorCourseKey(null);
                                         }}
                                         className={`text-xs px-1.5 py-0.5 rounded border transition-colors ${
                                           moveOpen
@@ -3362,59 +3376,25 @@ Now answer the student's question based on this context and any additional infor
                                 )}
                               </div>
                             )}
-                            {selectedTags.length > 0 && !tagsOpen && (
-                              <div className="mt-2 flex flex-wrap gap-1.5">
-                                {selectedTags.map((tag) => {
-                                  const label =
-                                    attributeOptions.find((option) => option.id === tag)?.label || tag;
-                                  return (
-                                    <span
-                                      key={tag}
-                                      className="text-[11px] px-2 py-0.5 rounded-full bg-[#500000]/10 text-[#500000]"
-                                    >
-                                      {label}
-                                    </span>
-                                  );
-                                })}
-                              </div>
-                            )}
-                            {tagsOpen && (
-                              <div className="mt-2 border-t border-gray-100 pt-2">
-                                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1">
-                                  Attributes
-                                </p>
-                                <div className="flex flex-wrap gap-3">
-                                  {attributeOptions.map((option) => {
-                                    const enabled = Array.isArray(course.categories)
-                                      ? course.categories.includes(option.id)
-                                      : false;
-                                    return (
-                                      <label
-                                        key={option.id}
-                                        className="flex items-center gap-1.5 cursor-pointer select-none"
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={enabled}
-                                          onChange={(e) => {
-                                            e.stopPropagation();
-                                            updateCourseAttribute(
-                                              term.label,
-                                              course.code,
-                                              option.id,
-                                              e.target.checked
-                                            );
-                                          }}
-                                          className="w-3.5 h-3.5 rounded border-gray-300 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
-                                        />
-                                        <span className="text-xs text-gray-600">{option.label}</span>
-                                      </label>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
+                            <div className="mt-2 flex items-center">
+                              <label
+                                className="flex items-center gap-1.5 cursor-pointer select-none"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isEmphasis}
+                                  onChange={(e) => {
+                                    e.stopPropagation();
+                                    toggleCourseEmphasis(term.label, course.code, e.target.checked);
+                                  }}
+                                  className="w-3.5 h-3.5 rounded border-gray-300 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
+                                />
+                                <span className={`text-xs ${isEmphasis ? 'text-[#500000] font-medium' : 'text-gray-500'}`}>
+                                  Count toward emphasis
+                                </span>
+                              </label>
+                            </div>
                                 </>
                               );
                             })()}

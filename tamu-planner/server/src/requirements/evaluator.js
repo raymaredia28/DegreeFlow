@@ -160,6 +160,15 @@ const evaluateAnyOf = (anyOf, context, minGrade) => {
 
 const evaluateTag = (tagRule, context, minGrade) => {
   const tag = tagRule.tag;
+
+  // Global overrides: if the student checked the global flag, satisfy immediately
+  if (tag === 'attr-hs-lang-2y' && context.hasHsLanguage) {
+    return { satisfied: true, credits: 0, used: [], missing: [] };
+  }
+  if (tag === 'attr-sabr' && context.hasSabrCourse) {
+    return { satisfied: true, credits: 0, used: [], missing: [] };
+  }
+
   const excludeSet = new Set((tagRule.exclude || []).map(normalizeCode));
   const eligible = Array.from(context.courseIndex.values()).filter(
     (course) =>
@@ -235,7 +244,37 @@ const evaluatePool = (poolRule, context, minGrade) => {
 
 const evaluateEmphasis = (rule, context, minGrade) => {
   const requiredCredits = rule.emphasisCredits || 0;
-  if (!context.emphasisCourseIds || context.emphasisCourseIds.size === 0) {
+  const usedCodes = new Set();
+  const matched = [];
+
+  // Match courses from the predefined emphasis pool
+  if (context.emphasisCourseIds && context.emphasisCourseIds.size > 0) {
+    Array.from(context.courseIndex.values()).forEach((course) => {
+      if (isCompleted(course, minGrade) && context.emphasisCourseIds.has(course.course_id)) {
+        const code = normalizeCode(`${course.department} ${course.course_number}`);
+        if (!usedCodes.has(code)) {
+          usedCodes.add(code);
+          matched.push(course);
+        }
+      }
+    });
+  }
+
+  // Also match courses the student manually tagged as custom-emphasis
+  Array.from(context.courseIndex.values()).forEach((course) => {
+    if (
+      isCompleted(course, minGrade) &&
+      (course.categories || []).includes('custom-emphasis')
+    ) {
+      const code = normalizeCode(`${course.department} ${course.course_number}`);
+      if (!usedCodes.has(code)) {
+        usedCodes.add(code);
+        matched.push(course);
+      }
+    }
+  });
+
+  if (matched.length === 0) {
     return {
       satisfied: false,
       credits: 0,
@@ -243,10 +282,7 @@ const evaluateEmphasis = (rule, context, minGrade) => {
       missing: ['Emphasis area courses (advisor-approved)']
     };
   }
-  const matched = Array.from(context.courseIndex.values()).filter(
-    (course) =>
-      isCompleted(course, minGrade) && context.emphasisCourseIds.has(course.course_id)
-  );
+
   const credits = sumCredits(matched);
   const used = matched.map((c) => normalizeCode(`${c.department} ${c.course_number}`));
   const satisfied = credits >= requiredCredits;
@@ -369,7 +405,7 @@ const summarizeGroup = (name, rules, context) => {
   };
 };
 
-const evaluateRequirements = ({ requirementSet, studentCourses, emphasisCourseIds }) => {
+const evaluateRequirements = ({ requirementSet, studentCourses, emphasisCourseIds, hasHsLanguage, hasSabrCourse }) => {
   const courseIndex = buildCourseIndex(studentCourses);
   const completedCourses = Array.from(courseIndex.values()).filter((course) =>
     isCompleted(course, null)
@@ -378,7 +414,9 @@ const evaluateRequirements = ({ requirementSet, studentCourses, emphasisCourseId
   const context = {
     courseIndex,
     completedCourses,
-    emphasisCourseIds
+    emphasisCourseIds,
+    hasHsLanguage: Boolean(hasHsLanguage),
+    hasSabrCourse: Boolean(hasSabrCourse)
   };
 
   const groups = (requirementSet.groups || []).map((group) =>

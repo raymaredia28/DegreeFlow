@@ -578,10 +578,9 @@
         }
       },
       {
-        "name": "General Electives (1 credit)",
+        "name": "First Year Experience (0 credits)",
         "rules": {
-          "minCredits": 1,
-          "note": "Any undergraduate course not used elsewhere",
+          "note": "FYEX 101 or ENGR 181 required (0 credits)",
           "items": [
             {
               "anyOf": [
@@ -1521,14 +1520,15 @@
     ]
   },
   {
-    "name": "CSCE Emphasis - Other / Double Degree",
+    "name": "CSCE Emphasis - Other / Double Degree / Post-baccalaureate",
     "catalog_year": "2025-2026",
     "groups": [
       {
         "name": "Other / Double Degree (12 credits)",
         "rules": {
-          "manual": true,
-          "note": "Use credits from another degree/major; adviser approval required; no double counting."
+          "items": [
+            { "emphasisCredits": 12, "note": "Mark courses as 'Count toward emphasis' in your Academic Record" }
+          ]
         }
       }
     ]
