@@ -54,11 +54,20 @@ GRADE_TOKENS = {
     "U",
     "P",
     "W",
+    "Q",
     "IP",
     "TA",
+    "TB",
+    "TC",
+    "TD",
+    "TF",
     "TCR",
     "TIP",
 }
+
+IN_PROGRESS_GRADES = {"IP", "TIP"}
+TRANSFER_GRADES = {"TA", "TB", "TC", "TD", "TF", "TCR", "TIP"}
+EXCLUDED_GRADES = {"Q"}
 
 CREDIT_RE = re.compile(r"^\d+\.\d{3}$")
 
@@ -120,6 +129,22 @@ def strip_trailing_noise(line: str) -> str:
     if match:
         return line[: match.start()].strip()
     return line
+
+
+def normalize_grade_token(token: str) -> str:
+    return re.sub(r"[^A-Z0-9+\-]", "", str(token or "").strip().upper())
+
+
+def is_in_progress_grade(grade: str) -> bool:
+    return normalize_grade_token(grade) in IN_PROGRESS_GRADES
+
+
+def is_transfer_grade(grade: str) -> bool:
+    return normalize_grade_token(grade) in TRANSFER_GRADES
+
+
+def is_excluded_grade(grade: str) -> bool:
+    return normalize_grade_token(grade) in EXCLUDED_GRADES
 
 
 def clean_department_code(dept: str) -> str:
@@ -249,18 +274,28 @@ def parse_course(line: str, in_progress_mode: bool) -> Optional[Course]:
 
     grade = "IP" if in_progress_mode else ""
     grade_idx = None
-    if credit_idx + 1 < len(rest) and rest[credit_idx + 1] in GRADE_TOKENS:
-        grade_idx = credit_idx + 1
-        grade = rest[grade_idx]
-    else:
-        grade_candidates = [i for i, tok in enumerate(rest) if tok in GRADE_TOKENS]
+
+    if credit_idx + 1 < len(rest):
+        next_grade = normalize_grade_token(rest[credit_idx + 1])
+        if next_grade in GRADE_TOKENS:
+            grade_idx = credit_idx + 1
+            grade = next_grade
+
+    if grade_idx is None:
+        grade_candidates = []
+        for i, tok in enumerate(rest):
+            normalized = normalize_grade_token(tok)
+            if normalized in GRADE_TOKENS:
+                grade_candidates.append((i, normalized))
         if grade_candidates:
-            before = [i for i in grade_candidates if i < credit_idx]
+            before = [item for item in grade_candidates if item[0] < credit_idx]
             if before:
-                grade_idx = before[-1]
+                grade_idx, grade = before[-1]
             else:
-                grade_idx = grade_candidates[0]
-            grade = rest[grade_idx]
+                grade_idx, grade = grade_candidates[0]
+
+    if is_excluded_grade(grade):
+        return None
 
     title_end = credit_idx
     if grade_idx is not None and grade_idx < credit_idx:
@@ -279,7 +314,7 @@ def parse_course(line: str, in_progress_mode: bool) -> Optional[Course]:
         return None
 
     code = f"{dept} {num}"
-    transfer = grade in ("TA", "TCR", "TIP")
+    transfer = is_transfer_grade(grade)
     return Course(code=code, title=title, credits=credits, grade=grade, transfer=transfer)
 
 
@@ -426,6 +461,7 @@ def parse_page_columns_words(page, split_columns: bool = True) -> List[TermBlock
                 if current and current.courses:
                     blocks.append(current)
                     current = None
+                in_progress_mode = False
                 last_was_course = False
                 continue
 
@@ -434,19 +470,21 @@ def parse_page_columns_words(page, split_columns: bool = True) -> List[TermBlock
                 continue
 
             tokens = line.split()
-            if len(tokens) == 1 and tokens[0] in {"R", "N", "L", "I"}:
-                last_was_course = False
-                continue
-            if len(tokens) == 1 and tokens[0] in GRADE_TOKENS:
-                if (
-                    current
-                    and current.courses
-                    and last_was_course
-                    and current.courses[-1].grade in ("", "IP")
-                ):
-                    current.courses[-1].grade = tokens[0]
-                last_was_course = False
-                continue
+            if len(tokens) == 1:
+                tok = normalize_grade_token(tokens[0])
+                if tok in {"R", "N", "L", "I"}:
+                    # Marker can appear between a course row and its grade.
+                    # Keep last_was_course so a following standalone grade is still attached.
+                    continue
+                if tok in GRADE_TOKENS:
+                    grade_tok = tok
+                    if current and current.courses and last_was_course:
+                        if is_excluded_grade(grade_tok):
+                            current.courses.pop()
+                        elif current.courses[-1].grade in ("", "IP"):
+                            current.courses[-1].grade = grade_tok
+                    last_was_course = False
+                    continue
 
             course = parse_course(line, in_progress_mode)
             if course:
@@ -455,7 +493,7 @@ def parse_page_columns_words(page, split_columns: bool = True) -> List[TermBlock
                     pending_label = None
                     pending_code = None
                 current.courses.append(course)
-                if course.grade == "IP" or in_progress_mode:
+                if is_in_progress_grade(course.grade):
                     current.status = "In Progress"
                 elif course.transfer and current.status != "In Progress":
                     current.status = "Transfer"
@@ -707,6 +745,7 @@ def parse_lines(lines: List[str]) -> List[TermBlock]:
             if current and current.courses:
                 blocks.append(current)
                 current = None
+            in_progress_mode = False
             last_was_course = False
             continue
 
@@ -715,19 +754,20 @@ def parse_lines(lines: List[str]) -> List[TermBlock]:
             continue
 
         tokens = line.split()
-        if len(tokens) == 1 and tokens[0] in {"R", "N", "L", "I"}:
-            last_was_course = False
-            continue
-        if len(tokens) == 1 and tokens[0] in GRADE_TOKENS:
-            if (
-                current
-                and current.courses
-                and last_was_course
-                and current.courses[-1].grade in ("", "IP")
-            ):
-                current.courses[-1].grade = tokens[0]
-            last_was_course = False
-            continue
+        if len(tokens) == 1:
+            tok = normalize_grade_token(tokens[0])
+            if tok in {"R", "N", "L", "I"}:
+                # Marker can appear between a course row and its grade.
+                # Keep last_was_course so a following standalone grade is still attached.
+                continue
+            if tok in GRADE_TOKENS:
+                if current and current.courses and last_was_course:
+                    if is_excluded_grade(tok):
+                        current.courses.pop()
+                    elif current.courses[-1].grade in ("", "IP"):
+                        current.courses[-1].grade = tok
+                last_was_course = False
+                continue
 
         course = parse_course(line, in_progress_mode)
         if course:
@@ -736,7 +776,7 @@ def parse_lines(lines: List[str]) -> List[TermBlock]:
                 pending_label = None
                 pending_code = None
             current.courses.append(course)
-            if course.grade == "IP" or in_progress_mode:
+            if is_in_progress_grade(course.grade):
                 current.status = "In Progress"
             elif course.transfer and current.status != "In Progress":
                 current.status = "Transfer"
@@ -834,13 +874,14 @@ def parse_pdf(path: str):
                 "transfer": c.transfer,
             }
             for c in block.courses
+            if not is_excluded_grade(c.grade)
         )
         if block.status == "In Progress":
             merged[label]["status"] = "In Progress"
         elif block.status == "Transfer" and merged[label]["status"] != "In Progress":
             merged[label]["status"] = "Transfer"
 
-    terms = sorted(merged.values(), key=lambda t: term_sort_key(t["label"]))
+    terms = sorted((t for t in merged.values() if t.get("courses")), key=lambda t: term_sort_key(t["label"]))
     
     result = {"terms": terms}
     if totals:

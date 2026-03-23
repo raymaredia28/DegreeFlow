@@ -164,14 +164,51 @@ const toTitleCase = (str) => {
 
 const TERM_REGEX = /\b(Fall|Spring|Summer|Winter)\s+(20\d{2})\b/;
 const COURSE_REGEX = /\b([A-Z]{2,4})\s+(\d{3})\b/;
-const GRADE_REGEX = /\b(A|A-|B\+|B|B-|C\+|C|C-|D\+|D|D-|F|S|U|P|W|IP|TA|TCR|TIP)\b/;
+const GRADE_REGEX = /\b(A|A-|B\+|B|B-|C\+|C|C-|D\+|D|D-|F|S|U|P|W|Q|IP|TA|TB|TC|TD|TF|TCR|TIP)\b/;
 
-// Transfer grades: TA (Transfer A), TCR (Transfer Credit), TIP (Transfer In Progress)
+// Transfer grades include TA/TB/TC/TD/TF, TCR (Transfer Credit), and TIP (Transfer In Progress)
 // Pass/fail grades: S (Satisfactory), U (Unsatisfactory), P (Pass)
-const TRANSFER_GRADES = new Set(['TA', 'TCR', 'TIP']);
+const TRANSFER_GRADES = new Set(['TA', 'TB', 'TC', 'TD', 'TF', 'TCR', 'TIP']);
 const PASS_FAIL_GRADES = new Set(['S', 'U', 'P']);
-const isTransferGrade = (grade) => TRANSFER_GRADES.has(grade);
-const isPassFailGrade = (grade) => PASS_FAIL_GRADES.has(grade);
+const normalizeGrade = (grade) =>
+  typeof grade === 'string' ? grade.trim().toUpperCase() : '';
+const isTransferGrade = (grade) => TRANSFER_GRADES.has(normalizeGrade(grade));
+const isPassFailGrade = (grade) => PASS_FAIL_GRADES.has(normalizeGrade(grade));
+const isInProgressGrade = (grade) => {
+  const normalized = normalizeGrade(grade);
+  return normalized === 'IP' || normalized === 'TIP';
+};
+const isCourseMarkedInProgress = (course, fallbackTermStatus = '') => {
+  const normalizedGrade = normalizeGrade(course?.grade);
+  if (isInProgressGrade(normalizedGrade)) return true;
+  if (course?.transfer || isTransferGrade(normalizedGrade)) return false;
+  if (!normalizedGrade) {
+    const termStatus = String(course?.termStatus || fallbackTermStatus || '').trim();
+    return termStatus === 'In Progress';
+  }
+  return false;
+};
+const EXCLUDED_TRANSCRIPT_GRADES = new Set(['Q']);
+const isExcludedTranscriptGrade = (grade) =>
+  EXCLUDED_TRANSCRIPT_GRADES.has(normalizeGrade(grade));
+const sanitizeTranscriptTermsForDisplay = (terms = []) =>
+  (Array.isArray(terms) ? terms : [])
+    .map((term) => {
+      const courses = (Array.isArray(term?.courses) ? term.courses : [])
+        .filter((course) => !isExcludedTranscriptGrade(course?.grade));
+      const hasInProgress = courses.some((course) =>
+        isCourseMarkedInProgress({ ...course, termStatus: term?.status })
+      );
+      const hasTransfer = courses.some((course) =>
+        Boolean(course?.transfer) || isTransferGrade(course?.grade)
+      );
+      return {
+        ...term,
+        status: hasInProgress ? 'In Progress' : hasTransfer ? 'Transfer' : 'Evaluated',
+        courses
+      };
+    })
+    .filter((term) => term.courses.length > 0);
 const CHAT_ACTION_BLOCK_REGEX = /\[DEGREEFLOW_ACTIONS\]([\s\S]*?)\[\/DEGREEFLOW_ACTIONS\]/i;
 
 // Courses that are equivalent (renamed/replaced). Each array is a group of
@@ -429,13 +466,14 @@ const parseTranscriptLines = (lines) => {
     }
 
     const courseLineMatch = line.match(
-      /^([A-Z]{2,4})\s+(\d{3})\s+(.+?)\s+(\d+(?:\.\d{3})?)\s+([A-Z][+\-]?|IP|TA|TCR|TIP|S|U|P|W)\b/
+      /^([A-Z]{2,4})\s+(\d{3})\s+(.+?)\s+(\d+(?:\.\d{3})?)\s+([A-Z][+\-]?|IP|TA|TB|TC|TD|TF|TCR|TIP|S|U|P|W|Q)\b/
     );
     if (courseLineMatch && currentTerm) {
       const [, subj, num, title, creditsStr, gradeRaw] = courseLineMatch;
       const code = `${subj} ${num}`;
       const credits = Number(creditsStr);
-      const grade = gradeRaw;
+      const grade = normalizeGrade(gradeRaw);
+      if (isExcludedTranscriptGrade(grade)) return true;
       const resolvedTitle = toTitleCase(title.trim() || code);
       const resolvedCredits = Number.isFinite(credits) && credits > 0 ? credits : 0;
       currentTerm.courses.push({
@@ -458,7 +496,8 @@ const parseTranscriptLines = (lines) => {
     if (!line.startsWith(courseMatch[0])) return false;
     const code = `${courseMatch[1]} ${courseMatch[2]}`;
     const gradeMatch = line.match(GRADE_REGEX);
-    const grade = gradeMatch?.[1] ?? '';
+    const grade = normalizeGrade(gradeMatch?.[1] ?? '');
+    if (isExcludedTranscriptGrade(grade)) return true;
     const creditsMatch = line.match(/\b(\d+\.\d{3}|\d+)\b(?!.*\b\d\b)/);
     const credits = creditsMatch ? Number(creditsMatch[1]) : 0;
     const withoutCode = line.replace(courseMatch[0], '').trim();
@@ -601,7 +640,7 @@ const buildTranscriptIndex = (terms, excludedTransfers = new Set()) => {
     term.courses.forEach((course) => {
       if (!course.code) return;
       if (course.transfer && excludedTransfers.has(course.code)) return;
-      const isInProgress = course.grade === 'IP' || course.grade === 'TIP';
+      const isInProgress = isCourseMarkedInProgress({ ...course, termStatus: term.status });
       const status = isInProgress ? 'in-progress' : 'completed';
       const existing = map.get(course.code);
       if (!existing || existing.status !== 'in-progress') {
@@ -1028,10 +1067,11 @@ function App() {
       }
 
       if (data.transcript?.terms?.length > 0) {
-        setTranscriptTerms(data.transcript.terms);
-        setReviewTerms(data.transcript.terms);
+        const sanitizedTerms = sanitizeTranscriptTermsForDisplay(data.transcript.terms);
+        setTranscriptTerms(sanitizedTerms);
+        setReviewTerms(sanitizedTerms);
         setIsTranscriptDirty(false);
-        const normalized = normalizeTranscript(data.transcript.terms);
+        const normalized = normalizeTranscript(sanitizedTerms);
         if (normalized.length > 0) {
           setSelectedTranscriptYear(normalized[normalized.length - 1].year);
         }
@@ -1251,7 +1291,7 @@ function App() {
           credits: Number(course.credits) || Number(meta.credits) || 0,
           categories: Array.from(new Set([...catalogCategories, ...userCategories])),
           grade: course.grade || null,
-          status: (!course.grade || course.grade === 'IP' || course.grade === 'TIP') ? 'in-progress' : 'completed'
+          status: isCourseMarkedInProgress(course) ? 'in-progress' : 'completed'
         });
       });
 
@@ -1400,11 +1440,14 @@ function App() {
   const transcriptCourseList = useMemo(
     () =>
       transcriptTerms.flatMap((term) =>
-        (term.courses || []).map((course) => ({
-          ...course,
-          credits: sanitizeCredits(course.credits),
-          termLabel: term.label
-        }))
+        (term.courses || [])
+          .filter((course) => !isExcludedTranscriptGrade(course?.grade))
+          .map((course) => ({
+            ...course,
+            credits: sanitizeCredits(course.credits),
+            termLabel: term.label,
+            termStatus: term.status || ''
+          }))
       ),
     [transcriptTerms]
   );
@@ -1571,7 +1614,7 @@ function App() {
   const deriveTermStatus = (courses = []) => {
     let status = 'Evaluated';
     for (const course of courses) {
-      if (course?.grade === 'IP' || course?.grade === 'TIP' || !course?.grade) return 'In Progress';
+      if (isCourseMarkedInProgress(course)) return 'In Progress';
       if (course?.transfer || isTransferGrade(course?.grade)) status = 'Transfer';
     }
     return status;
@@ -1614,9 +1657,11 @@ function App() {
     const savedId = await saveTranscriptToStorage(reviewTerms);
     setIsTranscriptSaving(false);
     if (!savedId && reviewTerms.length > 0) return; // Only bail on error if we had data
-    setTranscriptTerms(reviewTerms);
+    const sanitizedReviewTerms = sanitizeTranscriptTermsForDisplay(reviewTerms);
+    setTranscriptTerms(sanitizedReviewTerms);
+    setReviewTerms(sanitizedReviewTerms);
     setTranscriptTotals(reviewTotals ?? transcriptTotals);
-    const normalized = normalizeTranscript(reviewTerms);
+    const normalized = normalizeTranscript(sanitizedReviewTerms);
     if (normalized.length > 0) {
       setSelectedTranscriptYear(normalized[normalized.length - 1].year);
     }
@@ -1808,9 +1853,10 @@ function App() {
       if (result.studentName) {
         updateDisplayStudentName(result.studentName);
       }
-      setTranscriptTerms(result.terms);
+      const sanitizedTerms = sanitizeTranscriptTermsForDisplay(result.terms);
+      setTranscriptTerms(sanitizedTerms);
       setTranscriptTotals(result.totals ?? null);
-      setReviewTerms(result.terms);
+      setReviewTerms(sanitizedTerms);
       setReviewTotals(result.totals ?? null);
       setIsTranscriptDirty(false);
       setShowTranscriptReview(false);
@@ -1946,20 +1992,22 @@ function App() {
       
       const transcriptCoursesForChat = transcriptTerms.flatMap((term) =>
         (term.courses || [])
-          .filter((course) => normalizeCode(course.code))
+          .filter((course) => normalizeCode(course.code) && !isExcludedTranscriptGrade(course?.grade))
           .map((course) => {
             const code = normalizeCode(course.code);
             const catalogMeta = COURSES[code] || {};
-            const grade = String(course.grade || '').trim().toUpperCase();
-            const inProgress = !grade || grade === 'IP' || grade === 'TIP';
+            const grade = normalizeGrade(course.grade);
+            const transfer = Boolean(course.transfer || isTransferGrade(grade));
+            const inProgress = isCourseMarkedInProgress({ grade, transfer, termStatus: term.status });
             return {
               code,
               title: course.title || catalogMeta.title || '',
               grade: grade || 'N/A',
               credits: sanitizeCredits(course.credits ?? catalogMeta.credits ?? 0),
-              transfer: Boolean(course.transfer),
+              transfer,
               status: inProgress ? 'in-progress' : 'completed',
-              termLabel: term.label || 'Unknown Term'
+              termLabel: term.label || 'Unknown Term',
+              termStatus: term.status || ''
             };
           })
       );
@@ -3637,7 +3685,7 @@ Now answer the student's question based on this context and any additional infor
                                 )}
                               </div>
                             </div>
-                            {(course.transfer || course.honors || isPassFailGrade(course.grade) || course.grade === 'IP' || course.grade === 'TIP' || !course.grade) && (
+                            {(course.transfer || course.honors || isPassFailGrade(course.grade) || isCourseMarkedInProgress({ ...course, termStatus: term.status })) && (
                               <div className="mt-2 flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   {course.honors && (
@@ -3656,7 +3704,7 @@ Now answer the student's question based on this context and any additional infor
                                       {course.grade === 'S' ? 'Satisfactory' : course.grade === 'U' ? 'Unsatisfactory' : 'Pass'}
                                     </span>
                                   )}
-                                  {(course.grade === 'IP' || course.grade === 'TIP' || !course.grade) && (
+                                  {isCourseMarkedInProgress({ ...course, termStatus: term.status }) && (
                                     <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700">
                                       In Progress
                                     </span>
