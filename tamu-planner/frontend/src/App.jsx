@@ -601,6 +601,122 @@ const parseTranscriptTotals = (lines) => {
   return totals;
 };
 
+const buildExportHtmlFromDegreeResult = (degreeResult, transcriptTerms = [], sourceLabel = '') => {
+  const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const groups = Array.isArray(degreeResult?.groups) ? degreeResult.groups : [];
+
+  const courseIndex = new Map();
+  (transcriptTerms || []).forEach((term) => {
+    (term.courses || []).forEach((c) => {
+      const key = (c.code || '').replace(/\s+/g, ' ').trim().toUpperCase();
+      if (key && !courseIndex.has(key)) {
+        courseIndex.set(key, { ...c, termLabel: term.label, termStatus: term.status });
+      }
+    });
+  });
+
+  const overallSatisfied = groups.filter((g) => g.satisfied).length;
+  const overallTotal = groups.length;
+  const pctDone = overallTotal > 0 ? Math.round((overallSatisfied / overallTotal) * 100) : 0;
+
+  const summaryRow = `<tr>
+    <td><strong>Overall</strong></td>
+    <td>${overallSatisfied === overallTotal ? 'Met' : 'Not Met'}</td>
+    <td>${overallSatisfied}/${overallTotal} groups</td>
+    <td>${pctDone}%</td>
+  </tr>`;
+
+  const areasSections = groups.map((group) => {
+    const name = esc(group.name || '');
+    const satisfied = group.satisfied;
+    const metLabel = satisfied ? 'Met' : 'Not Met';
+    const earned = Number(group.earnedCredits ?? 0);
+    const required = Number(group.requiredCredits ?? 0);
+    const pct = required > 0 ? Math.min(Math.round((earned / required) * 100), 100) : (satisfied ? 100 : 0);
+
+    const creditLine = required > 0
+      ? `Earned: ${earned} / ${required} credits (${pct}%)`
+      : (satisfied ? 'Satisfied' : 'Not satisfied');
+
+    const usedCourses = group.usedCourses || [];
+    let courseRows = '';
+    if (usedCourses.length > 0) {
+      courseRows = usedCourses.map((code) => {
+        const c = courseIndex.get(code) || {};
+        const credits = c.credits != null ? Number(c.credits).toFixed(2) : '';
+        const grade = esc(c.grade || '');
+        const title = esc(c.title || '');
+        const term = esc(c.termLabel || '');
+        const transfer = c.transfer ? 'T' : 'H';
+        return `<tr>
+          <td>${esc(code)}</td><td>${title}</td><td>${credits}</td><td>${grade}</td><td>${term}</td><td>${transfer}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    const missingHtml = (group.missing || []).length > 0
+      ? `<p class="missing">Still needed: ${group.missing.map(esc).join('; ')}</p>`
+      : '';
+
+    return `<div class="area">
+      <div class="area-hdr ${satisfied ? 'met' : 'notmet'}">
+        <strong>${name}</strong> <span class="badge">${metLabel}</span>
+      </div>
+      <p class="area-summary">${creditLine}</p>
+      ${courseRows ? `<table class="rows"><thead><tr>
+        <th>Course</th><th>Title</th><th>Credits</th><th>Grade</th><th>Term</th><th>Source</th>
+      </tr></thead><tbody>${courseRows}</tbody></table>` : ''}
+      ${missingHtml}
+    </div>`;
+  }).join('');
+
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>DegreeFlow — Degree Evaluation Export</title>
+<style>
+  @page { margin: 16mm 12mm; }
+  body { font-family: "Segoe UI", Arial, sans-serif; margin: 0; padding: 24px 28px; color: #111827; font-size: 11px; }
+  h1 { margin: 0; color: #500000; font-size: 18px; }
+  .subtitle { margin: 2px 0 14px 0; color: #4b5563; font-size: 11px; }
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px; margin-bottom: 16px; font-size: 11px; }
+  .info-grid span.label { font-weight: 600; }
+  .progress-bar { height: 10px; border-radius: 5px; background: #e5e7eb; margin: 8px 0 16px 0; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 5px; }
+  table.summary { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+  table.summary th, table.summary td { border: 1px solid #d1d5db; padding: 6px 10px; font-size: 11px; text-align: left; }
+  table.summary th { background: #500000; color: white; }
+  .area { margin-bottom: 14px; page-break-inside: avoid; }
+  .area-hdr { padding: 5px 10px; border-radius: 4px; font-size: 12px; }
+  .area-hdr.met { background: #dcfce7; color: #166534; }
+  .area-hdr.notmet { background: #fee2e2; color: #991b1b; }
+  .badge { float: right; font-weight: 600; }
+  .area-summary { margin: 4px 0 6px 0; color: #4b5563; font-size: 10px; }
+  .missing { margin: 2px 0 6px 0; color: #991b1b; font-size: 10px; font-style: italic; }
+  table.rows { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
+  table.rows th, table.rows td { border: 1px solid #d1d5db; padding: 3px 6px; font-size: 10px; text-align: left; }
+  table.rows th { background: #f3f4f6; font-weight: 600; }
+</style>
+</head>
+<body>
+  <h1>Degree Evaluation Export</h1>
+  <p class="subtitle">${esc(degreeResult?.requirementSet?.name || 'Degree Evaluation')}${degreeResult?.requirementSet?.catalog_year ? ' &mdash; Catalog ' + esc(degreeResult.requirementSet.catalog_year) : ''}</p>
+  <div class="info-grid">
+    <div><span class="label">Source:</span> ${esc(sourceLabel || 'Computed in DegreeFlow')}</div>
+    <div><span class="label">Generated:</span> ${new Date().toLocaleString()}</div>
+  </div>
+  <div class="progress-bar"><div class="progress-fill" style="width:${pctDone}%;background:${pctDone === 100 ? '#16a34a' : '#500000'}"></div></div>
+  <table class="summary"><thead><tr><th>Requirement</th><th>Status</th><th>Progress</th><th>%</th></tr></thead><tbody>${summaryRow}${groups.map((g) => {
+    const e = Number(g.earnedCredits ?? 0), r = Number(g.requiredCredits ?? 0);
+    const p = r > 0 ? Math.min(Math.round((e / r) * 100), 100) : (g.satisfied ? 100 : 0);
+    return `<tr><td>${esc(g.name)}</td><td>${g.satisfied ? 'Met' : 'Not Met'}</td><td>${e}/${r} credits</td><td>${p}%</td></tr>`;
+  }).join('')}</tbody></table>
+  ${areasSections}
+</body>
+</html>`;
+};
+
 const FLOWCHART_COURSES = {
   'ENGR 102': { title: 'Engr Lab I Computation', prereqs: [] },
   'CSCE 120': { title: 'Program Design & Concepts', prereqs: [] },
@@ -844,6 +960,8 @@ function App() {
   const [chatMessages, setChatMessages] = useState([]);
   const [requirementsResult, setRequirementsResult] = useState(null);
   const [degreeResult, setDegreeResult] = useState(null);
+  const [uploadedDocumentType, setUploadedDocumentType] = useState('');
+  const [evaluationMode, setEvaluationMode] = useState('computed');
   const [reqLoading, setReqLoading] = useState(false);
   const [reqError, setReqError] = useState('');
   const [reqWarning, setReqWarning] = useState('');
@@ -1014,7 +1132,9 @@ function App() {
             degreeResult,
             requirementsResult,
             minorResult,
-            reqWarning
+            reqWarning,
+            uploadedDocumentType,
+            evaluationMode
           }
         })
       });
@@ -1044,6 +1164,8 @@ function App() {
     requirementsResult,
     minorResult,
     reqWarning,
+    uploadedDocumentType,
+    evaluationMode,
     authHeaders,
     showToast
   ]);
@@ -1109,6 +1231,8 @@ function App() {
           if (ev.requirementsResult) setRequirementsResult(ev.requirementsResult);
           if (ev.minorResult) setMinorResult(ev.minorResult);
           if (ev.reqWarning) setReqWarning(ev.reqWarning);
+          if (ev.uploadedDocumentType) setUploadedDocumentType(ev.uploadedDocumentType);
+          if (ev.evaluationMode) setEvaluationMode(ev.evaluationMode);
         }
       }
       return true;
@@ -1132,6 +1256,11 @@ function App() {
     setReviewTerms([]);
     setTranscriptTotals(null);
     setTranscriptPdfName('');
+    setUploadedDocumentType('');
+    setEvaluationMode('computed');
+    setDegreeResult(null);
+    setRequirementsResult(null);
+    setMinorResult(null);
     setSemesterPlans(initSemesterPlans({}));
     setSelectedTranscriptYear('');
     setActiveTab('login');
@@ -1350,6 +1479,7 @@ function App() {
       }
       const degreeData = await degreeRes.json();
       setDegreeResult(degreeData);
+      setEvaluationMode('computed');
       if (degreeData.warnings?.length) setReqWarning(degreeData.warnings.join(' | '));
 
       const hasTrackSelection = Boolean(selectedEmphasisId || selectedMinorId);
@@ -1831,23 +1961,55 @@ function App() {
     setTranscriptError('');
     setTranscriptLoading(true);
 
-    const endpoint = `${API_BASE}/storage/parse-transcript`;
-    setTranscriptLoadingMessage('Uploading transcript…');
+    setTranscriptLoadingMessage('Reading PDF text…');
 
     try {
-      const dataBase64 = await fileToBase64(file);
-      const response = await fetch(endpoint, {
+      let rawLines = await extractPdfLines(file);
+      if (shouldForceOcr(rawLines) || !hasTermInLines(rawLines)) {
+        rawLines = await extractPdfOcrLines(file, setTranscriptLoadingMessage);
+      }
+      const lines = preprocessTranscriptLines(rawLines);
+
+      setTranscriptLoadingMessage('Detecting document type…');
+      const detectResp = await fetch(`${API_BASE}/storage/detect-document-type`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileName: file.name, dataBase64 })
+        body: JSON.stringify({ lines })
       });
-      const result = await response.json();
-      if (!response.ok || !Array.isArray(result.terms)) {
-        setTranscriptError(result?.error || 'Unable to parse this transcript.');
-        return;
+      const detect = await detectResp.json().catch(() => ({}));
+      const detectedType = detect?.documentType || 'unknown';
+      setUploadedDocumentType(detectedType);
+
+      const dataBase64 = await fileToBase64(file);
+
+      let result;
+      if (detectedType === 'degree-evaluation') {
+        setTranscriptLoadingMessage('Extracting courses from degree evaluation…');
+        const response = await fetch(`${API_BASE}/storage/parse-degree-evaluation`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lines })
+        });
+        result = await response.json().catch(() => ({}));
+        if (!response.ok || !Array.isArray(result?.terms)) {
+          setTranscriptError(result?.error || 'Unable to extract courses from this degree evaluation PDF.');
+          return;
+        }
+      } else {
+        setTranscriptLoadingMessage('Uploading transcript…');
+        const response = await fetch(`${API_BASE}/storage/parse-transcript`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileName: file.name, dataBase64 })
+        });
+        result = await response.json();
+        if (!response.ok || !Array.isArray(result?.terms)) {
+          setTranscriptError(result?.error || 'Unable to parse this transcript.');
+          return;
+        }
       }
-      if (result.terms.length === 0) {
-        setTranscriptError('No terms detected. Please try a different transcript file.');
+      if (!result.terms || result.terms.length === 0) {
+        setTranscriptError('No terms/courses detected. Please try a different file.');
         return;
       }
       if (result.studentName) {
@@ -1860,6 +2022,13 @@ function App() {
       setReviewTotals(result.totals ?? null);
       setIsTranscriptDirty(false);
       setShowTranscriptReview(false);
+      setEvaluationMode('computed');
+      if (detectedType === 'degree-evaluation') {
+        showToast('Degree evaluation courses extracted. Run Generate to evaluate.', 'success');
+      }
+      if (detectedType === 'unknown') {
+        setReqWarning('Document type detection uncertain. Parsed as transcript using Python parser.');
+      }
     } catch (err) {
       setTranscriptError('Unable to parse this PDF. Please try a different transcript file.');
     } finally {
@@ -3159,7 +3328,12 @@ Now answer the student's question based on this context and any additional infor
           ) : null}
         </div>
 
-        {minorResult && (
+        {minorResult && (() => {
+          const minorGroups = minorResult.groups || [];
+          const minorSatisfied = minorGroups.filter((g) => g.satisfied).length;
+          const minorTotal = minorGroups.length;
+          const minorPct = minorTotal > 0 ? Math.round((minorSatisfied / minorTotal) * 100) : 0;
+          return (
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center justify-between mb-2">
               <div>
@@ -3169,6 +3343,22 @@ Now answer the student's question based on this context and any additional infor
                   {minorResult.requirementSet?.catalog_year &&
                     `(${minorResult.requirementSet.catalog_year})`}
                 </p>
+              </div>
+            </div>
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 mb-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">
+                  Minor Progress: {minorSatisfied}/{minorTotal} requirement groups satisfied
+                </span>
+                <span className="text-sm font-bold" style={{ color: minorPct === 100 ? '#16a34a' : '#500000' }}>
+                  {minorPct}%
+                </span>
+              </div>
+              <div className="h-3 rounded-full bg-gray-200 overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{ width: `${minorPct}%`, backgroundColor: minorPct === 100 ? '#16a34a' : '#500000' }}
+                />
               </div>
             </div>
             <div className="space-y-2">
@@ -3247,7 +3437,8 @@ Now answer the student's question based on this context and any additional infor
               })}
             </div>
           </div>
-        )}
+          );
+        })()}
       </div>
     );
   };
@@ -3402,6 +3593,7 @@ Now answer the student's question based on this context and any additional infor
                   setTranscriptTotals(null);
                   setReviewTotals(null);
                   setTranscriptPdfName('');
+                  setUploadedDocumentType('');
                   setTranscriptError('');
                   setIsTranscriptDirty(true);
                   setSelectedTranscriptYear('');
@@ -3430,6 +3622,11 @@ Now answer the student's question based on this context and any additional infor
             {storageError && <span className="text-red-600">{storageError}</span>}
             {transcriptPdfName && (
               <span className="text-gray-400 italic text-xs">PDF: {transcriptPdfName}</span>
+            )}
+            {uploadedDocumentType && (
+              <span className="text-xs text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                Detected: {uploadedDocumentType === 'degree-evaluation' ? 'Degree Evaluation' : uploadedDocumentType === 'transcript' ? 'Transcript' : 'Unknown'}
+              </span>
             )}
           </div>
         )}
@@ -4813,6 +5010,27 @@ Now answer the student's question based on this context and any additional infor
                         </div>
                       </div>
 
+                      {degreeResult && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const html = buildExportHtmlFromDegreeResult(
+                              degreeResult,
+                              transcriptTerms,
+                              'Computed in DegreeFlow'
+                            );
+                            const printWindow = window.open('', '_blank', 'width=1100,height=900');
+                            if (!printWindow) return;
+                            printWindow.document.write(html);
+                            printWindow.document.close();
+                            printWindow.focus();
+                            setTimeout(() => printWindow.print(), 200);
+                          }}
+                          className="flex items-center gap-2 border border-white/60 px-4 py-2 rounded-lg text-white hover:bg-white/10"
+                        >
+                          Export PDF
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => {

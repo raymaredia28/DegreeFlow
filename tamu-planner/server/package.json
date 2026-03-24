@@ -8,7 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "validate:data": "node scripts/validate-data.js",
-    "test": "node tests/evaluator.test.js"
+    "test": "node tests/evaluator.test.js && node --loader ts-node/esm tests/documentParsing.test.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",
