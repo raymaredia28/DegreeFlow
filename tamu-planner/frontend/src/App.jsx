@@ -19,7 +19,8 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  Info
 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4000';
@@ -2878,7 +2879,8 @@ Now answer the student's question based on this context and any additional infor
               const ariaLabel = required > 0
                 ? `${earned} of ${required} credits completed${exceeded ? `, ${extraCredits} extra` : ''}`
                 : (group.satisfied ? 'Satisfied' : 'Not satisfied');
-              const hasDetails = (group.missing?.length > 0) || (group.usedCourses?.length > 0);
+              const hasOverflow = group.overflowCourses?.length > 0;
+              const hasDetails = (group.missing?.length > 0) || (group.usedCourses?.length > 0) || hasOverflow;
 
               return (
                 <details key={group.name} className="rounded border border-gray-200 group">
@@ -2947,6 +2949,9 @@ Now answer the student's question based on this context and any additional infor
                     <div className="px-3 pb-2 ml-6 border-t border-gray-100 mt-1 pt-2 space-y-1">
                       {group.usedCourses?.length > 0 && (
                         <p className="text-xs text-gray-500">Used: {group.usedCourses.join(', ')}</p>
+                      )}
+                      {hasOverflow && (
+                        <p className="text-xs text-blue-600">Overflow: {group.overflowCourses.join(', ')}</p>
                       )}
                       {group.missing?.length > 0 && (
                         <p className="text-xs text-red-600">Missing: {group.missing.join(', ')}</p>
@@ -3016,6 +3021,33 @@ Now answer the student's question based on this context and any additional infor
                     </div>
                   </details>
                 )}
+
+                {/* Work Not Applied section */}
+                {degreeResult.workNotApplied?.length > 0 && (
+                  <details>
+                    <summary className="cursor-pointer select-none flex items-center gap-2 text-sm font-semibold text-blue-700 py-2 px-2 rounded hover:bg-blue-50 transition-colors">
+                      <ChevronDown className="w-4 h-4 details-chevron flex-shrink-0" />
+                      <Info className="w-4 h-4 flex-shrink-0" />
+                      Work Not Applied ({degreeResult.workNotApplied.length} course{degreeResult.workNotApplied.length !== 1 ? 's' : ''})
+                    </summary>
+                    <div className="space-y-2 mt-2">
+                      <p className="text-xs text-gray-500 ml-6">These courses are not currently being used to satisfy any degree requirement group.</p>
+                      {degreeResult.workNotApplied.map((entry) => (
+                        <div key={entry.code} className="rounded border border-blue-200 bg-blue-50/50 px-3 py-2 ml-6">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-gray-900">{entry.code}</span>
+                            <span className="text-xs text-gray-500">{entry.credits} credit{entry.credits !== 1 ? 's' : ''} · {entry.status}</span>
+                          </div>
+                          {entry.potentialGroups?.length > 0 && (
+                            <p className="text-xs text-blue-700 mt-1">
+                              Could apply to: {entry.potentialGroups.join(', ')}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
               </div>
             );
           })() : null}
@@ -3034,7 +3066,8 @@ Now answer the student's question based on this context and any additional infor
               const ariaLabel = required > 0
                 ? `${earned} of ${required} credits completed${exceeded ? `, ${extraCredits} extra` : ''}`
                 : (group.satisfied ? 'Satisfied' : 'Not satisfied');
-              const hasDetails = (group.missing?.length > 0) || (group.usedCourses?.length > 0);
+              const hasOverflow = group.overflowCourses?.length > 0;
+              const hasDetails = (group.missing?.length > 0) || (group.usedCourses?.length > 0) || hasOverflow;
 
               return (
                 <details key={group.name} className="rounded border border-gray-200 group">
@@ -3103,6 +3136,9 @@ Now answer the student's question based on this context and any additional infor
                     <div className="px-3 pb-2 ml-6 border-t border-gray-100 mt-1 pt-2 space-y-1">
                       {group.usedCourses?.length > 0 && (
                         <p className="text-xs text-gray-500">Used: {group.usedCourses.join(', ')}</p>
+                      )}
+                      {hasOverflow && (
+                        <p className="text-xs text-blue-600">Overflow: {group.overflowCourses.join(', ')}</p>
                       )}
                       {group.missing?.length > 0 && (
                         <p className="text-xs text-red-600">Missing: {group.missing.join(', ')}</p>
@@ -3181,7 +3217,8 @@ Now answer the student's question based on this context and any additional infor
                 const ariaLabel = required > 0
                   ? `${earned} of ${required} credits completed${exceeded ? `, ${extraCredits} extra` : ''}`
                   : (group.satisfied ? 'Satisfied' : 'Not satisfied');
-                const hasDetails = (group.missing?.length > 0) || (group.usedCourses?.length > 0);
+                const hasOverflow = group.overflowCourses?.length > 0;
+                const hasDetails = (group.missing?.length > 0) || (group.usedCourses?.length > 0) || hasOverflow;
 
                 return (
                   <details
@@ -3236,6 +3273,9 @@ Now answer the student's question based on this context and any additional infor
                       <div className="px-3 pb-2 ml-6 border-t border-gray-100 mt-1 pt-2 space-y-1">
                         {group.usedCourses?.length > 0 && (
                           <p className="text-xs text-gray-500">Used: {group.usedCourses.join(', ')}</p>
+                        )}
+                        {hasOverflow && (
+                          <p className="text-xs text-blue-600">Overflow: {group.overflowCourses.join(', ')}</p>
                         )}
                         {group.missing?.length > 0 && (
                           <p className="text-xs text-red-600">Missing: {group.missing.join(', ')}</p>
