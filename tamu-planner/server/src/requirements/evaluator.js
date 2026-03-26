@@ -351,28 +351,58 @@ const evaluateItems = (items, context, minGrade) => {
   const results = [];
   items.forEach((item) => {
     if (item.course) {
-      results.push(evaluateCourseRule(item.course, context, minGrade));
+      results.push({ ...evaluateCourseRule(item.course, context, minGrade), _type: 'course' });
       return;
     }
     if (item.anyOf) {
-      results.push(evaluateAnyOf(item.anyOf, context, minGrade));
+      results.push({ ...evaluateAnyOf(item.anyOf, context, minGrade), _type: 'anyOf' });
       return;
     }
     if (item.tag) {
-      results.push(evaluateTag(item, context, minGrade));
+      results.push({ ...evaluateTag(item, context, minGrade), _type: 'tag' });
       return;
     }
     if (item.pool) {
-      results.push(evaluatePool(item, context, minGrade));
+      results.push({ ...evaluatePool(item, context, minGrade), _type: 'pool' });
       return;
     }
     if (item.emphasisCredits) {
-      results.push(evaluateEmphasis(item, context, minGrade));
+      results.push({ ...evaluateEmphasis(item, context, minGrade), _type: 'emphasis' });
       return;
     }
   });
 
   return results;
+};
+
+const computeOverflowCourses = (usedCourses, mandatoryCourses, earnedCredits, requiredCredits, context) => {
+  if (requiredCredits === null || earnedCredits <= requiredCredits) return [];
+
+  const flexCodes = Array.from(usedCourses).filter(code => !mandatoryCourses.has(code));
+  if (flexCodes.length === 0) return [];
+
+  const mandatoryCredits = Array.from(mandatoryCourses).reduce((sum, code) => {
+    const course = context.courseIndex.get(code);
+    return sum + (course ? creditValue(course) : 0);
+  }, 0);
+
+  const neededFlexCredits = Math.max(0, requiredCredits - mandatoryCredits);
+
+  const flexWithCredits = flexCodes
+    .map(code => ({ code, credits: creditValue(context.courseIndex.get(code)) }))
+    .sort((a, b) => b.credits - a.credits);
+
+  const overflow = [];
+  let accumulated = 0;
+  for (const item of flexWithCredits) {
+    if (accumulated >= neededFlexCredits) {
+      overflow.push(item.code);
+    } else {
+      accumulated += item.credits;
+    }
+  }
+
+  return overflow;
 };
 
 const summarizeGroup = (name, rules, context, { deriveCredits = false } = {}) => {
@@ -384,6 +414,7 @@ const summarizeGroup = (name, rules, context, { deriveCredits = false } = {}) =>
       satisfied: false,
       missing: [rules.note || 'Manual requirement'],
       usedCourses: [],
+      overflowCourses: [],
       warnings: []
     };
   }
@@ -392,19 +423,26 @@ const summarizeGroup = (name, rules, context, { deriveCredits = false } = {}) =>
   const missing = [];
   const warnings = [];
   const usedCourses = new Set();
+  const mandatoryCourses = new Set();
 
   if (rules.allOf) {
     rules.allOf.forEach((code) => {
       const result = evaluateCourseRule(code, context, minGrade);
       if (!result.satisfied) missing.push(...(result.missing || []));
-      (result.used || []).forEach((c) => usedCourses.add(c));
+      (result.used || []).forEach((c) => {
+        usedCourses.add(c);
+        mandatoryCourses.add(c);
+      });
     });
   }
 
   if (rules.anyOf) {
     const result = evaluateAnyOf(rules.anyOf, context, minGrade);
     if (!result.satisfied) missing.push(...(result.missing || []));
-    (result.used || []).forEach((c) => usedCourses.add(c));
+    (result.used || []).forEach((c) => {
+      usedCourses.add(c);
+      mandatoryCourses.add(c);
+    });
   }
 
   if (rules.pool) {
@@ -417,7 +455,12 @@ const summarizeGroup = (name, rules, context, { deriveCredits = false } = {}) =>
     const results = evaluateItems(rules.items, context, minGrade);
     results.forEach((result) => {
       if (!result.satisfied && result.missing) missing.push(...result.missing);
-      (result.used || []).forEach((c) => usedCourses.add(c));
+      (result.used || []).forEach((c) => {
+        usedCourses.add(c);
+        if (result._type === 'course' || result._type === 'anyOf') {
+          mandatoryCourses.add(c);
+        }
+      });
     });
   }
 
@@ -441,7 +484,7 @@ const summarizeGroup = (name, rules, context, { deriveCredits = false } = {}) =>
       warnings.push(
         rules.maxWarning || `Only ${rules.maxCount} of ${codes.join(', ')} may be used.`
       );
-      satisfied = false; // enforce strictly
+      satisfied = false;
     }
   }
 
@@ -469,6 +512,8 @@ const summarizeGroup = (name, rules, context, { deriveCredits = false } = {}) =>
     if (subTotal > 0) derivedRequired = subTotal;
   }
 
+  const overflowCourses = computeOverflowCourses(usedCourses, mandatoryCourses, credits, minCredits, context);
+
   return {
     name,
     requiredCredits: derivedRequired,
@@ -476,8 +521,104 @@ const summarizeGroup = (name, rules, context, { deriveCredits = false } = {}) =>
     satisfied,
     missing,
     usedCourses: Array.from(usedCourses),
+    overflowCourses,
     warnings
   };
+};
+
+const computeWorkNotApplied = (groups, courseIndex) => {
+  const allUsed = new Set();
+  groups.forEach(group => {
+    (group.usedCourses || []).forEach(code => allUsed.add(code));
+  });
+
+  const seenRecords = new Set();
+  const unapplied = [];
+
+  for (const [, course] of courseIndex.entries()) {
+    if (seenRecords.has(course)) continue;
+    seenRecords.add(course);
+
+    if (allUsed.has(course.code)) continue;
+    if (getEquivalentCodes(course.code).some(eq => allUsed.has(eq))) continue;
+    if (!isCompleted(course, null)) continue;
+
+    unapplied.push({
+      code: course.code,
+      credits: creditValue(course),
+      status: course.status || 'completed',
+      reason: 'Not matched by any requirement group',
+      potentialGroups: []
+    });
+  }
+
+  return unapplied;
+};
+
+const courseMatchesRule = (course, code, rules) => {
+  if (rules.manual) return false;
+
+  if (rules.allOf && rules.allOf.map(normalizeCode).includes(code)) return true;
+
+  if (rules.anyOf) {
+    const hit = rules.anyOf.some(option => {
+      if (typeof option === 'string') return normalizeCode(option) === code;
+      if (option?.allOf) return option.allOf.map(normalizeCode).includes(code);
+      if (option?.tag) return matchesTag(course, option.tag);
+      return false;
+    });
+    if (hit) return true;
+  }
+
+  if (rules.pool) {
+    const poolSet = new Set(rules.pool.map(normalizeCode));
+    const excludeSet = new Set((rules.exclude || []).map(normalizeCode));
+    if (poolSet.has(code) && !excludeSet.has(code)) return true;
+  }
+
+  if (rules.items) {
+    const hit = rules.items.some(item => {
+      if (item.course) return normalizeCode(item.course) === code;
+      if (item.anyOf) {
+        return item.anyOf.some(option => {
+          if (typeof option === 'string') return normalizeCode(option) === code;
+          if (option?.allOf) return option.allOf.map(normalizeCode).includes(code);
+          if (option?.tag) return matchesTag(course, option.tag);
+          return false;
+        });
+      }
+      if (item.tag) return matchesTag(course, item.tag);
+      if (item.pool) {
+        const ps = new Set(item.pool.map(normalizeCode));
+        const es = new Set((item.exclude || []).map(normalizeCode));
+        return ps.has(code) && !es.has(code);
+      }
+      return false;
+    });
+    if (hit) return true;
+  }
+
+  return false;
+};
+
+const findAlternativePlacements = (unappliedCourses, requirementSet, courseIndex) => {
+  if (!unappliedCourses.length) return unappliedCourses;
+
+  const groups = requirementSet.groups || [];
+
+  return unappliedCourses.map(entry => {
+    const course = courseIndex.get(entry.code);
+    if (!course) return entry;
+
+    const potentialGroups = [];
+    groups.forEach(group => {
+      if (courseMatchesRule(course, entry.code, group.rules || {})) {
+        potentialGroups.push(group.name);
+      }
+    });
+
+    return { ...entry, potentialGroups };
+  });
 };
 
 const evaluateRequirements = ({ requirementSet, studentCourses, emphasisCourseIds, hasHsLanguage, hasSabrCourse }) => {
@@ -499,13 +640,17 @@ const evaluateRequirements = ({ requirementSet, studentCourses, emphasisCourseId
     summarizeGroup(group.name, group.rules || {}, context, { deriveCredits: isMinor })
   );
 
+  let workNotApplied = computeWorkNotApplied(groups, courseIndex);
+  workNotApplied = findAlternativePlacements(workNotApplied, requirementSet, courseIndex);
+
   return {
     requirementSet: {
       name: requirementSet.name,
       catalog_year: requirementSet.catalog_year
     },
     groups,
-    warnings: groups.flatMap((group) => group.warnings || [])
+    warnings: groups.flatMap((group) => group.warnings || []),
+    workNotApplied
   };
 };
 
