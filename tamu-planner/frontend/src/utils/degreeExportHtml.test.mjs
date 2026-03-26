@@ -1,51 +1,48 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-
+import { describe, it, expect } from 'vitest';
 import { buildExportHtmlFromDegreeResult } from './degreeExportHtml.mjs';
 
-test('export HTML includes planned future course metadata', () => {
-  const degreeResult = {
-    requirementSet: { name: 'Test Degree', catalog_year: 2024 },
-    groups: [
-      {
-        name: 'Area A',
-        satisfied: false,
-        earnedCredits: 0,
-        requiredCredits: 3,
-        usedCourses: ['CSCE 999'],
-        missing: []
-      }
-    ]
-  };
-
-  // Simulate the export pipeline augmenting transcript terms with planned terms.
-  const exportTerms = [
-    {
-      label: 'Fall 2025',
-      status: 'Planned',
-      courses: [
+describe('buildExportHtmlFromDegreeResult', () => {
+  it('export HTML includes planned future course metadata', () => {
+    const degreeResult = {
+      requirementSet: { name: 'Test Degree', catalog_year: 2024 },
+      groups: [
         {
-          code: 'CSCE 999',
-          title: 'Planned Course Title',
-          credits: 3,
-          grade: 'PLANNED',
-          transfer: false
+          name: 'Area A',
+          satisfied: false,
+          earnedCredits: 0,
+          requiredCredits: 3,
+          usedCourses: ['CSCE 999'],
+          missing: []
         }
       ]
-    }
-  ];
+    };
 
-  const html = buildExportHtmlFromDegreeResult(degreeResult, exportTerms, 'Computed in DegreeFlow', {
-    minor: 'Minor - Math'
+    const exportTerms = [
+      {
+        label: 'Fall 2025',
+        status: 'Planned',
+        courses: [
+          {
+            code: 'CSCE 999',
+            title: 'Planned Course Title',
+            credits: 3,
+            grade: 'PLANNED',
+            transfer: false
+          }
+        ]
+      }
+    ];
+
+    const html = buildExportHtmlFromDegreeResult(degreeResult, exportTerms, 'Computed in DegreeFlow', {
+      minor: 'Minor - Math'
+    });
+
+    expect(html).toContain('CSCE 999');
+    expect(html).toContain('Planned Course Title');
+    expect(html).toContain('Fall 2025');
+    expect(html).toContain('PLANNED');
+    expect(html).toContain('<td>H</td>');
+    expect(html).toContain('Minor:');
+    expect(html).toContain('Minor - Math');
   });
-
-  assert.ok(html.includes('CSCE 999'));
-  assert.ok(html.includes('Planned Course Title'));
-  assert.ok(html.includes('Fall 2025'));
-  assert.ok(html.includes('PLANNED'));
-  // Source column uses `T` for transfer and `H` otherwise
-  assert.ok(html.includes('<td>H</td>'));
-  assert.ok(html.includes('Minor:'));
-  assert.ok(html.includes('Minor - Math'));
 });
-
