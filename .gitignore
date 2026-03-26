@@ -13,3 +13,6 @@ tamu-planner/server/.env
 tamu-planner/server/.env.render
 tamu-planner/server/data/local-db.json
 
+# Firebase
+firebase-debug.log
+
