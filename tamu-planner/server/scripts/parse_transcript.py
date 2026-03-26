@@ -27,12 +27,12 @@ NOISE_RE = re.compile(
 )
 
 TRAILING_MARKER_RE = re.compile(
-    r"\b(EHRS|Ehrs|GPA|Qpts|INSTITUTION|TOTAL|TOTALS|OVERALL|UndergraduateTotals)\b",
+    r"\b(EHRS|Ehrs|GPA|Q\s*pts|Qpts|INSTITUTION|TOTAL|TOTALS|OVERALL|UndergraduateTotals)\b",
     re.IGNORECASE,
 )
 
 SUMMARY_LINE_RE = re.compile(
-    r"(Term|Transcript)\s*Totals|UndergraduateTotals|EarnedHrs|GPA[-\s]*Hrs|Qpts|"
+    r"(Term|Transcript)\s*Totals|UndergraduateTotals|EarnedHrs|GPA[-\s]*Hrs|Q\s*pts|Qpts|"
     r"TOTALINSTITUTION|TOTALTRANSFER|OVERALL|Page\s*\d+\s*of\s*\d+",
     re.IGNORECASE,
 )
@@ -282,17 +282,19 @@ def parse_course(line: str, in_progress_mode: bool) -> Optional[Course]:
             grade = next_grade
 
     if grade_idx is None:
-        grade_candidates = []
+        # Fallback: choose a grade token only if it is close to the credit field.
+        # This avoids falsely reading stray OCR tokens (e.g., split "Q pts") as
+        # a dropped-course grade for valid zero-credit courses.
+        nearby = []
         for i, tok in enumerate(rest):
             normalized = normalize_grade_token(tok)
-            if normalized in GRADE_TOKENS:
-                grade_candidates.append((i, normalized))
-        if grade_candidates:
-            before = [item for item in grade_candidates if item[0] < credit_idx]
-            if before:
-                grade_idx, grade = before[-1]
-            else:
-                grade_idx, grade = grade_candidates[0]
+            if normalized in GRADE_TOKENS and abs(i - credit_idx) <= 2:
+                # Prefer tokens to the right of credits, then nearest distance.
+                side_rank = 0 if i > credit_idx else 1
+                nearby.append((side_rank, abs(i - credit_idx), i, normalized))
+        if nearby:
+            nearby.sort()
+            _, _, grade_idx, grade = nearby[0]
 
     if is_excluded_grade(grade):
         return None
@@ -479,7 +481,7 @@ def parse_page_columns_words(page, split_columns: bool = True) -> List[TermBlock
                 if tok in GRADE_TOKENS:
                     grade_tok = tok
                     if current and current.courses and last_was_course:
-                        if is_excluded_grade(grade_tok):
+                        if is_excluded_grade(grade_tok) and current.courses[-1].grade in ("", "IP"):
                             current.courses.pop()
                         elif current.courses[-1].grade in ("", "IP"):
                             current.courses[-1].grade = grade_tok
@@ -696,6 +698,7 @@ def parse_lines(lines: List[str]) -> List[TermBlock]:
     current: Optional[TermBlock] = None
     pending_label: Optional[str] = None
     pending_code: Optional[str] = None
+    pending_dept: Optional[str] = None
     in_progress_mode = False
     last_was_course = False
 
@@ -703,7 +706,31 @@ def parse_lines(lines: List[str]) -> List[TermBlock]:
         if not line:
             continue
 
+        # Some transcripts split a course row into two lines, e.g.:
+        #   NCSCE
+        #   399 HIGH-IMPACT EXPERIENCE 0.000
+        # Carry a standalone department token to the next line.
+        if pending_dept:
+            rebuilt = f"{pending_dept} {line}"
+            rebuilt_course = parse_course(rebuilt, in_progress_mode)
+            if rebuilt_course:
+                if current is None:
+                    current = TermBlock(label=pending_label, status="Evaluated", term_code=pending_code, in_progress_mode=in_progress_mode)
+                    pending_label = None
+                    pending_code = None
+                current.courses.append(rebuilt_course)
+                if is_in_progress_grade(rebuilt_course.grade):
+                    current.status = "In Progress"
+                elif rebuilt_course.transfer and current.status != "In Progress":
+                    current.status = "Transfer"
+                pending_dept = None
+                last_was_course = True
+                continue
+            if line.split() and line.split()[0].isdigit():
+                pending_dept = None
+
         if IN_PROGRESS_RE.search(line):
+            pending_dept = None
             in_progress_mode = True
             continue
 
@@ -723,10 +750,12 @@ def parse_lines(lines: List[str]) -> List[TermBlock]:
                 current = TermBlock(label=label, status="Evaluated", term_code=pending_code, in_progress_mode=in_progress_mode)
             pending_label = None
             pending_code = None
+            pending_dept = None
             last_was_course = False
             continue
 
         if NOISE_RE.search(line):
+            pending_dept = None
             last_was_course = False
             continue
 
@@ -738,6 +767,7 @@ def parse_lines(lines: List[str]) -> List[TermBlock]:
                 current = TermBlock(label=pending_label, status="Evaluated", term_code=pending_code, in_progress_mode=in_progress_mode)
                 pending_label = None
                 pending_code = None
+            pending_dept = None
             last_was_course = False
             continue
 
@@ -745,11 +775,13 @@ def parse_lines(lines: List[str]) -> List[TermBlock]:
             if current and current.courses:
                 blocks.append(current)
                 current = None
+            pending_dept = None
             in_progress_mode = False
             last_was_course = False
             continue
 
         if SUMMARY_LINE_RE.search(line):
+            pending_dept = None
             last_was_course = False
             continue
 
@@ -762,10 +794,16 @@ def parse_lines(lines: List[str]) -> List[TermBlock]:
                 continue
             if tok in GRADE_TOKENS:
                 if current and current.courses and last_was_course:
-                    if is_excluded_grade(tok):
+                    if is_excluded_grade(tok) and current.courses[-1].grade in ("", "IP"):
                         current.courses.pop()
                     elif current.courses[-1].grade in ("", "IP"):
                         current.courses[-1].grade = tok
+                pending_dept = None
+                last_was_course = False
+                continue
+            dept_candidate = clean_department_code(tokens[0].upper())
+            if dept_candidate.isalpha() and 2 <= len(dept_candidate) <= 6:
+                pending_dept = dept_candidate
                 last_was_course = False
                 continue
 
@@ -780,6 +818,7 @@ def parse_lines(lines: List[str]) -> List[TermBlock]:
                 current.status = "In Progress"
             elif course.transfer and current.status != "In Progress":
                 current.status = "Transfer"
+            pending_dept = None
             last_was_course = True
             continue
         

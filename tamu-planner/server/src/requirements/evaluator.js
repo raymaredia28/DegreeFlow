@@ -363,6 +363,153 @@ const evaluateItems = (items, context, minGrade) => {
   return results;
 };
 
+const extractCodesFromAnyOf = (anyOf = []) => {
+  const codes = [];
+  anyOf.forEach((option) => {
+    if (typeof option === 'string') {
+      const code = normalizeCode(option);
+      if (code) codes.push(code);
+      return;
+    }
+    if (option?.course && typeof option.course === 'string') {
+      const code = normalizeCode(option.course);
+      if (code) codes.push(code);
+      return;
+    }
+    if (Array.isArray(option?.allOf)) {
+      option.allOf.forEach((raw) => {
+        const code = normalizeCode(raw);
+        if (code) codes.push(code);
+      });
+      return;
+    }
+    if (Array.isArray(option?.pool)) {
+      option.pool.forEach((raw) => {
+        const code = normalizeCode(raw);
+        if (code) codes.push(code);
+      });
+    }
+  });
+  return Array.from(new Set(codes));
+};
+
+const buildRecommendationBuckets = (rules = {}) => {
+  const buckets = [];
+
+  const pushBucket = (bucket) => {
+    if (!bucket || typeof bucket !== 'object') return;
+    const normalizedCodes = Array.from(
+      new Set((Array.isArray(bucket.codes) ? bucket.codes : []).map(normalizeCode).filter(Boolean))
+    );
+    const isCodeOptionalType = bucket.type === 'tag' || bucket.type === 'emphasisCredits';
+    if (!isCodeOptionalType && normalizedCodes.length === 0) return;
+    buckets.push({
+      ...bucket,
+      codes: normalizedCodes
+    });
+  };
+
+  if (Array.isArray(rules.allOf)) {
+    rules.allOf.forEach((code) => {
+      pushBucket({
+        type: 'required',
+        codes: [code]
+      });
+    });
+  }
+
+  if (Array.isArray(rules.anyOf)) {
+    pushBucket({
+      type: 'anyOf',
+      codes: extractCodesFromAnyOf(rules.anyOf),
+      minCredits: rules.minCredits ?? null,
+      minCount: rules.minCount ?? null,
+      note: rules.note || null
+    });
+  }
+
+  if (Array.isArray(rules.pool)) {
+    pushBucket({
+      type: 'pool',
+      codes: rules.pool,
+      minCredits: rules.minCredits ?? null,
+      minCount: rules.minCount ?? null,
+      note: rules.note || null
+    });
+  }
+
+  if (Array.isArray(rules.items)) {
+    rules.items.forEach((item) => {
+      if (item?.course) {
+        pushBucket({
+          type: 'required',
+          codes: [item.course],
+          note: item.note || null
+        });
+      }
+
+      if (Array.isArray(item?.allOf)) {
+        pushBucket({
+          type: 'allOf',
+          codes: item.allOf,
+          note: item.note || null
+        });
+      }
+
+      if (Array.isArray(item?.anyOf)) {
+        pushBucket({
+          type: 'anyOf',
+          codes: extractCodesFromAnyOf(item.anyOf),
+          minCredits: item.minCredits ?? null,
+          minCount: item.minCount ?? null,
+          note: item.note || null
+        });
+      }
+
+      if (Array.isArray(item?.pool)) {
+        pushBucket({
+          type: 'pool',
+          codes: item.pool,
+          minCredits: item.minCredits ?? null,
+          minCount: item.minCount ?? null,
+          note: item.note || null
+        });
+      }
+
+      if (item?.tag) {
+        pushBucket({
+          type: 'tag',
+          tag: item.tag,
+          minCredits: item.minCredits ?? null,
+          minCount: item.minCount ?? null,
+          note: item.note || null,
+          codes: []
+        });
+      }
+
+      if (item?.emphasisCredits) {
+        pushBucket({
+          type: 'emphasisCredits',
+          minCredits: item.emphasisCredits,
+          note: item.note || null,
+          codes: []
+        });
+      }
+    });
+  }
+
+  if (rules.emphasisCredits) {
+    pushBucket({
+      type: 'emphasisCredits',
+      minCredits: rules.emphasisCredits,
+      note: rules.note || null,
+      codes: []
+    });
+  }
+
+  return buckets;
+};
+
 const summarizeGroup = (name, rules, context) => {
   if (rules.manual) {
     return {
@@ -372,7 +519,8 @@ const summarizeGroup = (name, rules, context) => {
       satisfied: false,
       missing: [rules.note || 'Manual requirement'],
       usedCourses: [],
-      warnings: []
+      warnings: [],
+      recommendationBuckets: []
     };
   }
 
@@ -440,7 +588,8 @@ const summarizeGroup = (name, rules, context) => {
     satisfied,
     missing,
     usedCourses: Array.from(usedCourses),
-    warnings
+    warnings,
+    recommendationBuckets: buildRecommendationBuckets(rules)
   };
 };
 
