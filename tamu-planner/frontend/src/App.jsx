@@ -4034,14 +4034,21 @@ Now answer the student's question based on this context and any additional infor
               const transcriptCourses = transcriptTerm?.courses || [];
               const plannedCourses = semesterPlans[term] || [];
               const displayCourses = [
-                ...transcriptCourses.map((course) => ({
-                  type: 'transcript',
-                  code: course.code,
-                  title: course.title,
-                  credits: course.credits,
-                  grade: course.grade,
-                  status: transcriptTerm?.status
-                })),
+                ...transcriptCourses.map((course) => {
+                  const courseStatus = isCourseMarkedInProgress({ ...course, termStatus: transcriptTerm?.status })
+                    ? 'In Progress'
+                    : course.transfer || isTransferGrade(course.grade)
+                      ? 'Transfer'
+                      : 'Evaluated';
+                  return {
+                    type: 'transcript',
+                    code: course.code,
+                    title: course.title,
+                    credits: course.credits,
+                    grade: course.grade,
+                    status: courseStatus
+                  };
+                }),
                 ...plannedCourses
                   .filter((code) => !transcriptCourses.some((c) => c.code === code))
                   .map((code) => ({
