@@ -22,6 +22,9 @@ import {
   RefreshCw
 } from 'lucide-react';
 
+import { computeEvaluationSignature } from './utils/evaluationFreshness.mjs';
+import { computeCreditProgressFromEvalResult } from './utils/evalCreditProgress.mjs';
+
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4000';
 
 const fileToBase64 = (file) =>
@@ -601,7 +604,7 @@ const parseTranscriptTotals = (lines) => {
   return totals;
 };
 
-const buildExportHtmlFromDegreeResult = (degreeResult, transcriptTerms = [], sourceLabel = '') => {
+const buildExportHtmlFromDegreeResult = (degreeResult, transcriptTerms = [], sourceLabel = '', meta = {}) => {
   const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const groups = Array.isArray(degreeResult?.groups) ? degreeResult.groups : [];
 
@@ -705,6 +708,7 @@ const buildExportHtmlFromDegreeResult = (degreeResult, transcriptTerms = [], sou
   <div class="info-grid">
     <div><span class="label">Source:</span> ${esc(sourceLabel || 'Computed in DegreeFlow')}</div>
     <div><span class="label">Generated:</span> ${new Date().toLocaleString()}</div>
+    ${meta?.minor ? `<div><span class="label">Minor:</span> ${esc(meta.minor)}</div>` : ''}
   </div>
   <div class="progress-bar"><div class="progress-fill" style="width:${pctDone}%;background:${pctDone === 100 ? '#16a34a' : '#500000'}"></div></div>
   <table class="summary"><thead><tr><th>Requirement</th><th>Status</th><th>Progress</th><th>%</th></tr></thead><tbody>${summaryRow}${groups.map((g) => {
@@ -713,6 +717,50 @@ const buildExportHtmlFromDegreeResult = (degreeResult, transcriptTerms = [], sou
     return `<tr><td>${esc(g.name)}</td><td>${g.satisfied ? 'Met' : 'Not Met'}</td><td>${e}/${r} credits</td><td>${p}%</td></tr>`;
   }).join('')}</tbody></table>
   ${areasSections}
+  ${(() => {
+    const mr = meta?.minorResult;
+    if (!mr || !Array.isArray(mr.groups) || mr.groups.length === 0) return '';
+    const minorName = esc(mr.requirementSet?.name || 'Minor');
+    const minorGroups = mr.groups;
+    const minorSummaryRows = minorGroups.map((g) => {
+      const e = Number(g.earnedCredits ?? 0), r = Number(g.requiredCredits ?? 0);
+      const p = r > 0 ? Math.min(Math.round((e / r) * 100), 100) : (g.satisfied ? 100 : 0);
+      return '<tr><td>' + esc(g.name) + '</td><td>' + (g.satisfied ? 'Met' : 'Not Met') + '</td><td>' + e + '/' + r + ' credits</td><td>' + p + '%</td></tr>';
+    }).join('');
+    const minorAreaSections = minorGroups.map((group) => {
+      const gName = esc(group.name || '');
+      const satisfied = group.satisfied;
+      const metLabel = satisfied ? 'Met' : 'Not Met';
+      const earned = Number(group.earnedCredits ?? 0);
+      const required = Number(group.requiredCredits ?? 0);
+      const pct = required > 0 ? Math.min(Math.round((earned / required) * 100), 100) : (satisfied ? 100 : 0);
+      const creditLine = required > 0
+        ? 'Earned: ' + earned + ' / ' + required + ' credits (' + pct + '%)'
+        : (satisfied ? 'Satisfied' : 'Not satisfied');
+      const usedCourses = group.usedCourses || [];
+      let courseRows = '';
+      if (usedCourses.length > 0) {
+        courseRows = usedCourses.map((code) => {
+          const c = courseIndex.get(code) || {};
+          const credits = c.credits != null ? Number(c.credits).toFixed(2) : '';
+          const grade = esc(c.grade || '');
+          const title = esc(c.title || '');
+          const term = esc(c.termLabel || '');
+          const transfer = c.transfer ? 'T' : 'H';
+          return '<tr><td>' + esc(code) + '</td><td>' + title + '</td><td>' + credits + '</td><td>' + grade + '</td><td>' + term + '</td><td>' + transfer + '</td></tr>';
+        }).join('');
+      }
+      const missingHtml = (group.missing || []).length > 0
+        ? '<p class="missing">Still needed: ' + group.missing.map(esc).join('; ') + '</p>'
+        : '';
+      return '<div class="area"><div class="area-hdr ' + (satisfied ? 'met' : 'notmet') + '"><strong>' + gName + '</strong> <span class="badge">' + metLabel + '</span></div><p class="area-summary">' + creditLine + '</p>' +
+        (courseRows ? '<table class="rows"><thead><tr><th>Course</th><th>Title</th><th>Credits</th><th>Grade</th><th>Term</th><th>Source</th></tr></thead><tbody>' + courseRows + '</tbody></table>' : '') +
+        missingHtml + '</div>';
+    }).join('');
+    return '<h2 style="color:#500000;font-size:14px;margin:24px 0 8px 0;">' + minorName + '</h2>' +
+      '<table class="summary"><thead><tr><th>Requirement</th><th>Status</th><th>Progress</th><th>%</th></tr></thead><tbody>' + minorSummaryRows + '</tbody></table>' +
+      minorAreaSections;
+  })()}
 </body>
 </html>`;
 };
@@ -962,6 +1010,12 @@ function App() {
   const [degreeResult, setDegreeResult] = useState(null);
   const [uploadedDocumentType, setUploadedDocumentType] = useState('');
   const [evaluationMode, setEvaluationMode] = useState('computed');
+  // Tracks whether the currently displayed evaluation matches the current planner inputs.
+  const [lastEvaluationSignature, setLastEvaluationSignature] = useState(null);
+  const lastEvaluationSnapshotRef = useRef(null);
+  const [exportPromptOpen, setExportPromptOpen] = useState(false);
+  const [exportPromptStale, setExportPromptStale] = useState(false);
+  const [exportPromptBusy, setExportPromptBusy] = useState(false);
   const [reqLoading, setReqLoading] = useState(false);
   const [reqError, setReqError] = useState('');
   const [reqWarning, setReqWarning] = useState('');
@@ -1182,6 +1236,8 @@ function App() {
       });
       if (!resp.ok) return false;
       const data = await resp.json();
+      let loadedTranscriptTermsForEval = null;
+      let loadedSemesterPlansForEval = null;
 
       if (data.studentId) {
         localStorage.setItem('studentId', String(data.studentId));
@@ -1193,6 +1249,7 @@ function App() {
         setTranscriptTerms(sanitizedTerms);
         setReviewTerms(sanitizedTerms);
         setIsTranscriptDirty(false);
+        loadedTranscriptTermsForEval = sanitizedTerms;
         const normalized = normalizeTranscript(sanitizedTerms);
         if (normalized.length > 0) {
           setSelectedTranscriptYear(normalized[normalized.length - 1].year);
@@ -1202,7 +1259,9 @@ function App() {
       if (data.planner) {
         if (data.planner.semesterPlans) {
           suppressDirtyRef.current = true;
-          setSemesterPlans(initSemesterPlans(data.planner.semesterPlans));
+          const loadedPlans = initSemesterPlans(data.planner.semesterPlans);
+          setSemesterPlans(loadedPlans);
+          loadedSemesterPlansForEval = loadedPlans;
         }
         if (data.planner.selectedPlanYear) {
           setSelectedPlanYear(data.planner.selectedPlanYear);
@@ -1233,6 +1292,21 @@ function App() {
           if (ev.reqWarning) setReqWarning(ev.reqWarning);
           if (ev.uploadedDocumentType) setUploadedDocumentType(ev.uploadedDocumentType);
           if (ev.evaluationMode) setEvaluationMode(ev.evaluationMode);
+
+          // Saved evaluation is assumed to match the saved transcript/planner inputs.
+          const sig = computeEvaluationSignature({
+            transcriptTerms: loadedTranscriptTermsForEval || [],
+            semesterPlans: loadedSemesterPlansForEval || initSemesterPlans({}),
+            selectedEmphasis: data.planner.selectedEmphasis,
+            selectedMinor: data.planner.selectedMinor,
+            hasHsLanguage: data.planner.hasHsLanguage,
+            hasSabrCourse: data.planner.hasSabrCourse
+          });
+          setLastEvaluationSignature(sig);
+          lastEvaluationSnapshotRef.current = {
+            transcriptTerms: JSON.parse(JSON.stringify(loadedTranscriptTermsForEval || [])),
+            semesterPlans: JSON.parse(JSON.stringify(loadedSemesterPlansForEval || initSemesterPlans({})))
+          };
         }
       }
       return true;
@@ -1404,6 +1478,19 @@ function App() {
       if (coursesIndex.size === 0) {
         throw new Error('Catalog not loaded yet. Try again in a moment.');
       }
+      // Snapshot the exact planner inputs that this evaluation uses.
+      // This supports export-time staleness detection and keeps exported term placement consistent.
+      const evaluationSignatureSnapshot = computeEvaluationSignature({
+        transcriptTerms,
+        semesterPlans,
+        selectedEmphasis,
+        selectedMinor,
+        hasHsLanguage,
+        hasSabrCourse
+      });
+      const transcriptTermsSnapshot = JSON.parse(JSON.stringify(transcriptTerms || []));
+      const semesterPlansSnapshot = JSON.parse(JSON.stringify(semesterPlans || {}));
+
       // Build combined course list: transcript (completed + in-progress) + planned (manual adds too)
       const combined = new Map();
       transcriptCourseList.forEach((course) => {
@@ -1480,13 +1567,19 @@ function App() {
       const degreeData = await degreeRes.json();
       setDegreeResult(degreeData);
       setEvaluationMode('computed');
+      // Evaluation is now based on the snapped planner inputs from above.
+      setLastEvaluationSignature(evaluationSignatureSnapshot);
+      lastEvaluationSnapshotRef.current = {
+        transcriptTerms: transcriptTermsSnapshot,
+        semesterPlans: semesterPlansSnapshot
+      };
       if (degreeData.warnings?.length) setReqWarning(degreeData.warnings.join(' | '));
 
       const hasTrackSelection = Boolean(selectedEmphasisId || selectedMinorId);
       if (!hasTrackSelection) {
         setRequirementsResult(null);
         setMinorResult(null);
-        return;
+        return { degreeResult: degreeData, requirementsResult: null, minorResult: null };
       }
 
       const payload = {
@@ -1511,6 +1604,7 @@ function App() {
       //console.log('requirements evaluation result', data);
       setRequirementsResult(data);
       // Evaluate minor separately (if selected) to show minor-specific progress
+      let computedMinorData = null;
       if (selectedMinorId) {
         const minorPayload = { ...payload, emphasisId: null, minorId: selectedMinorId };
         const minorRes = await fetch(`${API_BASE}/api/requirements/evaluate-local`, {
@@ -1521,6 +1615,7 @@ function App() {
         if (minorRes.ok) {
           const minorData = await minorRes.json();
           setMinorResult(minorData);
+          computedMinorData = minorData;
         } else {
           setMinorResult(null);
         }
@@ -1528,9 +1623,16 @@ function App() {
         setMinorResult(null);
       }
       if (data.warnings?.length) setReqWarning(data.warnings.join(' | '));
+
+      return {
+        degreeResult: degreeData,
+        requirementsResult: data,
+        minorResult: computedMinorData
+      };
     } catch (err) {
       setReqError(err.message);
       setMinorResult(null);
+      return null;
     } finally {
       setReqLoading(false);
     }
@@ -3013,18 +3115,29 @@ Now answer the student's question based on this context and any additional infor
                 {reqLoading ? 'Generating…' : 'Generate'}
               </button>
               {degreeResult && (
-                <button
-                  onClick={saveEvaluationToStorage}
-                  disabled={evalSaving}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {evalSaving ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Save className="w-4 h-4" />
-                  )}
-                  {evalSaving ? 'Saving…' : 'Save'}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={handleExportPdfClick}
+                    disabled={reqLoading || exportPromptBusy || coursesIndex.size === 0}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded border border-white/60 text-white bg-white/10 hover:bg-white/15 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    style={{ backgroundColor: '#500000' }}
+                  >
+                    Export PDF
+                  </button>
+                  <button
+                    onClick={saveEvaluationToStorage}
+                    disabled={evalSaving}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {evalSaving ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Save className="w-4 h-4" />
+                    )}
+                    {evalSaving ? 'Saving…' : 'Save'}
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -3115,7 +3228,17 @@ Now answer the student's question based on this context and any additional infor
                   {hasDetails && (
                     <div className="px-3 pb-2 ml-6 border-t border-gray-100 mt-1 pt-2 space-y-1">
                       {group.usedCourses?.length > 0 && (
-                        <p className="text-xs text-gray-500">Used: {group.usedCourses.join(', ')}</p>
+                        <div className="text-xs text-gray-500">
+                          <p className="font-medium text-gray-600">Used courses</p>
+                          <ul className="mt-1 space-y-1">
+                            {group.usedCourses.map((code) => (
+                              <li key={code} className="flex flex-col sm:flex-row sm:items-baseline sm:gap-2">
+                                <span className="font-semibold text-gray-700">{code}</span>
+                                <span className="text-gray-500">{COURSES[code]?.title || ''}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
                       )}
                       {group.missing?.length > 0 && (
                         <p className="text-xs text-red-600">Missing: {group.missing.join(', ')}</p>
@@ -3271,7 +3394,17 @@ Now answer the student's question based on this context and any additional infor
                   {hasDetails && (
                     <div className="px-3 pb-2 ml-6 border-t border-gray-100 mt-1 pt-2 space-y-1">
                       {group.usedCourses?.length > 0 && (
-                        <p className="text-xs text-gray-500">Used: {group.usedCourses.join(', ')}</p>
+                        <div className="text-xs text-gray-500">
+                          <p className="font-medium text-gray-600">Used courses</p>
+                          <ul className="mt-1 space-y-1">
+                            {group.usedCourses.map((code) => (
+                              <li key={code} className="flex flex-col sm:flex-row sm:items-baseline sm:gap-2">
+                                <span className="font-semibold text-gray-700">{code}</span>
+                                <span className="text-gray-500">{COURSES[code]?.title || ''}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
                       )}
                       {group.missing?.length > 0 && (
                         <p className="text-xs text-red-600">Missing: {group.missing.join(', ')}</p>
@@ -3332,7 +3465,10 @@ Now answer the student's question based on this context and any additional infor
           const minorGroups = minorResult.groups || [];
           const minorSatisfied = minorGroups.filter((g) => g.satisfied).length;
           const minorTotal = minorGroups.length;
-          const minorPct = minorTotal > 0 ? Math.round((minorSatisfied / minorTotal) * 100) : 0;
+          const minorCreditProgress = computeCreditProgressFromEvalResult(minorResult);
+          const minorPct = minorCreditProgress.requiredCredits > 0
+            ? Math.round(minorCreditProgress.pct)
+            : (minorTotal > 0 ? Math.round((minorSatisfied / minorTotal) * 100) : 0);
           return (
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center justify-between mb-2">
@@ -3348,7 +3484,9 @@ Now answer the student's question based on this context and any additional infor
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 mb-3">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-gray-700">
-                  Minor Progress: {minorSatisfied}/{minorTotal} requirement groups satisfied
+                  {minorCreditProgress.requiredCredits > 0
+                    ? `Minor Credits: ${minorCreditProgress.earnedCredits}/${minorCreditProgress.requiredCredits} credits`
+                    : `Minor Progress: ${minorSatisfied}/${minorTotal} requirement groups satisfied`}
                 </span>
                 <span className="text-sm font-bold" style={{ color: minorPct === 100 ? '#16a34a' : '#500000' }}>
                   {minorPct}%
@@ -3425,7 +3563,17 @@ Now answer the student's question based on this context and any additional infor
                     {hasDetails && (
                       <div className="px-3 pb-2 ml-6 border-t border-gray-100 mt-1 pt-2 space-y-1">
                         {group.usedCourses?.length > 0 && (
-                          <p className="text-xs text-gray-500">Used: {group.usedCourses.join(', ')}</p>
+                          <div className="text-xs text-gray-500">
+                            <p className="font-medium text-gray-600">Used courses</p>
+                            <ul className="mt-1 space-y-1">
+                              {group.usedCourses.map((code) => (
+                                <li key={code} className="flex flex-col sm:flex-row sm:items-baseline sm:gap-2">
+                                  <span className="font-semibold text-gray-700">{code}</span>
+                                  <span className="text-gray-500">{COURSES[code]?.title || ''}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
                         )}
                         {group.missing?.length > 0 && (
                           <p className="text-xs text-red-600">Missing: {group.missing.join(', ')}</p>
@@ -4882,6 +5030,185 @@ Now answer the student's question based on this context and any additional infor
     );
   };
 
+  const buildExportTermsFromSnapshot = (snapshot) => {
+    const exportTerms = [];
+
+    // Transcript terms already include term placement + in-progress/completed grades.
+    const transcriptSnapTerms = Array.isArray(snapshot?.transcriptTerms)
+      ? snapshot.transcriptTerms
+      : transcriptTerms;
+    exportTerms.push(...(transcriptSnapTerms || []));
+
+    // Add planned future terms so exported PDFs include planner-aware course placement.
+    const semPlansSnap = snapshot?.semesterPlans || semesterPlans;
+    const entries = Object.entries(semPlansSnap || {});
+    entries.forEach(([termLabel, codes]) => {
+      if (!Array.isArray(codes) || codes.length === 0) return;
+
+      const plannedCourses = codes
+        .map((rawCode) => String(rawCode ?? '').replace(/\s+/g, ' ').trim())
+        .filter(Boolean)
+        .map((code) => {
+          const codeUpper = code.toUpperCase();
+          const meta = COURSES[codeUpper] || {};
+          return {
+            code,
+            title: meta.title || '',
+            credits: Number(meta.credits ?? 0),
+            grade: 'PLANNED',
+            transfer: false
+          };
+        });
+
+      exportTerms.push({
+        label: termLabel,
+        status: 'Planned',
+        courses: plannedCourses
+      });
+    });
+
+    return exportTerms;
+  };
+
+  const exportDegreeEvaluationPdf = (degreeEvalResult) => {
+    const snapshot = lastEvaluationSnapshotRef.current;
+    const exportTerms = buildExportTermsFromSnapshot(snapshot);
+
+    const html = buildExportHtmlFromDegreeResult(
+      degreeEvalResult,
+      exportTerms,
+      'Computed in DegreeFlow',
+      {
+        minor:
+          selectedMinor && selectedMinor !== 'None'
+            ? selectedMinor
+            : minorResult?.requirementSet?.name || '',
+        minorResult: minorResult || null
+      }
+    );
+
+    const printWindow = window.open('', '_blank', 'width=1100,height=900');
+    if (!printWindow) return;
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => printWindow.print(), 200);
+  };
+
+  const handleExportPdfClick = () => {
+    if (!degreeResult) return;
+
+    const currentSig = computeEvaluationSignature({
+      transcriptTerms,
+      semesterPlans,
+      selectedEmphasis,
+      selectedMinor,
+      hasHsLanguage,
+      hasSabrCourse
+    });
+
+    const stale = !lastEvaluationSignature || currentSig !== lastEvaluationSignature;
+    setExportPromptStale(stale);
+    setExportPromptOpen(true);
+  };
+
+  const ExportDecisionModal = () => {
+    if (!exportPromptOpen) return null;
+
+    const onClose = () => {
+      setExportPromptOpen(false);
+    };
+
+    const onContinue = () => {
+      setExportPromptOpen(false);
+      exportDegreeEvaluationPdf(degreeResult);
+    };
+
+    const onCancel = () => {
+      onClose();
+    };
+
+    const onRegenerate = async () => {
+      if (exportPromptBusy) return;
+      setExportPromptBusy(true);
+      try {
+        const regen = await evaluateRequirementsLocal();
+        if (!regen?.degreeResult) return;
+        setExportPromptOpen(false);
+        exportDegreeEvaluationPdf(regen.degreeResult);
+      } finally {
+        setExportPromptBusy(false);
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6">
+          <h2 className="text-lg font-bold text-gray-900 mb-2">
+            {exportPromptStale ? 'Export uses an outdated evaluation?' : 'Export uses the latest evaluation?'}
+          </h2>
+          <p className="text-sm text-gray-700 mb-5">
+            {exportPromptStale
+              ? 'Your planner has changed since this evaluation was generated. You can regenerate, or export the current evaluation anyway.'
+              : 'This evaluation matches your current planner inputs. You can continue exporting.'}
+          </p>
+
+          <div className="flex gap-3 justify-end">
+            {exportPromptStale ? (
+              <>
+                <button
+                  type="button"
+                  onClick={onRegenerate}
+                  disabled={exportPromptBusy}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
+                  style={{ backgroundColor: '#500000' }}
+                >
+                  {exportPromptBusy ? 'Regenerating…' : 'Regenerate Degree Evaluation'}
+                </button>
+                <button
+                  type="button"
+                  onClick={onContinue}
+                  disabled={exportPromptBusy}
+                  className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Continue Export
+                </button>
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  disabled={exportPromptBusy}
+                  className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={onContinue}
+                  disabled={exportPromptBusy}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
+                  style={{ backgroundColor: '#500000' }}
+                >
+                  Continue
+                </button>
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  disabled={exportPromptBusy}
+                  className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const TranscriptConsentModal = () => {
     if (!consentPendingFile) return null;
     return (
@@ -5009,28 +5336,6 @@ Now answer the student's question based on this context and any additional infor
                           <div className="text-[11px] text-white/80">{authUser.email}</div>
                         </div>
                       </div>
-
-                      {degreeResult && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const html = buildExportHtmlFromDegreeResult(
-                              degreeResult,
-                              transcriptTerms,
-                              'Computed in DegreeFlow'
-                            );
-                            const printWindow = window.open('', '_blank', 'width=1100,height=900');
-                            if (!printWindow) return;
-                            printWindow.document.write(html);
-                            printWindow.document.close();
-                            printWindow.focus();
-                            setTimeout(() => printWindow.print(), 200);
-                          }}
-                          className="flex items-center gap-2 border border-white/60 px-4 py-2 rounded-lg text-white hover:bg-white/10"
-                        >
-                          Export PDF
-                        </button>
-                      )}
                       <button
                         type="button"
                         onClick={() => {
@@ -5110,6 +5415,7 @@ Now answer the student's question based on this context and any additional infor
       </main>
 
       <TranscriptConsentModal />
+      <ExportDecisionModal />
 
       {!isFlowFullscreen && (
         <div className="fixed right-0 bottom-6 z-50 flex items-end pointer-events-none">

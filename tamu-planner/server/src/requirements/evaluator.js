@@ -225,8 +225,14 @@ const evaluateTag = (tagRule, context, minGrade) => {
   const creditCapOk = maxCredits === null ? true : credits <= maxCredits;
   const satisfied = creditOk && countOk && creditCapOk;
   const missing = [];
-  if (!creditOk) missing.push(`Need ${minCredits} credits from tag ${tag}`);
-  if (minCount !== null && count < minCount) missing.push(`Need ${minCount} courses from tag ${tag}`);
+  if (!creditOk && minCredits !== null) {
+    const remaining = Math.max(0, minCredits - credits);
+    missing.push(`Need ${remaining} credits from tag ${tag}`);
+  }
+  if (minCount !== null && count < minCount) {
+    const remaining = Math.max(0, minCount - count);
+    missing.push(`Need ${remaining} courses from tag ${tag}`);
+  }
   if (maxCount !== null && count > maxCount) missing.push(`Max ${maxCount} courses for tag ${tag}`);
   if (maxCredits !== null && credits > maxCredits) missing.push(`Max ${maxCredits} credits for tag ${tag}`);
   return { satisfied, credits, used: eligible.map((c) => c.code), missing };
@@ -268,8 +274,14 @@ const evaluatePool = (poolRule, context, minGrade) => {
   const satisfied = creditOk && countOk && creditCapOk;
 
   const missing = [];
-  if (!creditOk) missing.push(`Need ${minCredits} credits from pool`);
-  if (minCount !== null && count < minCount) missing.push(`Need ${minCount} courses from pool`);
+  if (!creditOk && minCredits !== null) {
+    const remaining = Math.max(0, minCredits - credits);
+    missing.push(`Need ${remaining} credits from pool`);
+  }
+  if (minCount !== null && count < minCount) {
+    const remaining = Math.max(0, minCount - count);
+    missing.push(`Need ${remaining} courses from pool`);
+  }
   if (maxCount !== null && count > maxCount) missing.push(`Max ${maxCount} courses from pool`);
   if (maxCredits !== null && credits > maxCredits) missing.push(`Max ${maxCredits} credits from pool`);
 
@@ -363,7 +375,7 @@ const evaluateItems = (items, context, minGrade) => {
   return results;
 };
 
-const summarizeGroup = (name, rules, context) => {
+const summarizeGroup = (name, rules, context, { deriveCredits = false } = {}) => {
   if (rules.manual) {
     return {
       name,
@@ -433,9 +445,33 @@ const summarizeGroup = (name, rules, context) => {
     }
   }
 
+  // For minor groups only: derive a display-friendly requiredCredits when the
+  // group has no top-level minCredits by walking sub-rules and estimating
+  // 3 credits per course.
+  let derivedRequired = minCredits;
+  if (deriveCredits && (derivedRequired === null || derivedRequired === 0)) {
+    let subTotal = 0;
+    const estimateItem = (item) => {
+      if (item.countOnly) return;
+      if (item.minCredits) { subTotal += item.minCredits; return; }
+      if (item.pool && item.minCount) { subTotal += item.minCount * 3; return; }
+      if (item.allOf) { subTotal += item.allOf.length * 3; return; }
+      if (item.anyOf) { subTotal += 3; return; }
+      if (item.course) { subTotal += 3; return; }
+    };
+    if (rules.items) (rules.items || []).forEach(estimateItem);
+    if (rules.allOf) subTotal += rules.allOf.length * 3;
+    if (rules.anyOf && !rules.pool) subTotal += 3;
+    if (rules.pool) {
+      if (rules.minCredits) subTotal += rules.minCredits;
+      else if (rules.minCount) subTotal += rules.minCount * 3;
+    }
+    if (subTotal > 0) derivedRequired = subTotal;
+  }
+
   return {
     name,
-    requiredCredits: minCredits,
+    requiredCredits: derivedRequired,
     earnedCredits: credits,
     satisfied,
     missing,
@@ -458,8 +494,9 @@ const evaluateRequirements = ({ requirementSet, studentCourses, emphasisCourseId
     hasSabrCourse: Boolean(hasSabrCourse)
   };
 
+  const isMinor = (requirementSet.name || '').startsWith('Minor -');
   const groups = (requirementSet.groups || []).map((group) =>
-    summarizeGroup(group.name, group.rules || {}, context)
+    summarizeGroup(group.name, group.rules || {}, context, { deriveCredits: isMinor })
   );
 
   return {

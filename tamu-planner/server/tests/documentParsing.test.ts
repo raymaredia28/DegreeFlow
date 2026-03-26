@@ -80,6 +80,35 @@ const run = async () => {
         grade: "R",
         term: "202611",
         source: "R"
+      },
+      {
+        course: "MATH 151",
+        title: "ENGINEERING MATH I",
+        credits: 4,
+        // Missing grade but home-institution source should not be treated as in-progress.
+        grade: "",
+        term: "202431",
+        source: "H",
+        transfer: false
+      },
+      {
+        course: "CSCE 199",
+        title: "SPECIAL TOPICS",
+        credits: 1,
+        // Missing grade but registered source should be treated as in-progress.
+        grade: "",
+        term: "202511",
+        source: "R"
+      },
+      {
+        course: "HIST 110",
+        title: "MODERN HISTORY",
+        credits: 3,
+        // Transfer should be detected from source 'TA' even if transfer boolean is missing/false.
+        grade: "",
+        term: "202031",
+        source: "TA",
+        transfer: false
       }
     ]
   });
@@ -100,11 +129,38 @@ const run = async () => {
 
     const transfer = terms.find(t => t.label === "Fall 2020");
     assert.ok(transfer, "Should have Fall 2020 term for transfer course");
-    assert.strictEqual(transfer!.courses[0].transfer, true);
+    assert.ok(
+      transfer!.courses.some((c) => c.code === "ENGL 103" && c.transfer === true),
+      "Transfer should be recognized for ENGL 103"
+    );
+    assert.ok(
+      transfer!.courses.some((c) => c.code === "HIST 110" && c.transfer === true),
+      "Transfer should be recognized from source 'TA' (HIST 110)"
+    );
 
     const inProgress = terms.find(t => t.label === "Spring 2026");
     assert.ok(inProgress, "Should have Spring 2026 term for in-progress course");
     assert.strictEqual(inProgress!.status, "In Progress");
+    assert.ok(
+      inProgress!.courses.some((c) => c.code === "CSCE 482" && c.grade === "IP"),
+      "Degree-eval grade token 'R' should be normalized to 'IP'"
+    );
+
+    const spring2025 = terms.find(t => t.label === "Spring 2025");
+    assert.ok(spring2025, "Should have Spring 2025 term for in-progress course with missing grade");
+    assert.strictEqual(spring2025!.status, "In Progress");
+    assert.ok(
+      spring2025!.courses.some((c) => c.code === "CSCE 199" && c.grade === "IP"),
+      "Missing grade with source 'R' should normalize to in-progress 'IP'"
+    );
+
+    const fall2024 = terms.find(t => t.label === "Fall 2024");
+    assert.ok(fall2024, "Should have Fall 2024 term for completed course with missing grade");
+    assert.notStrictEqual(fall2024!.status, "In Progress");
+    assert.ok(
+      fall2024!.courses.some((c) => c.code === "MATH 151" && (c.grade === "" || c.grade === undefined)),
+      "Missing grade with home-institution source should remain grade-less (not in-progress)"
+    );
   }
 
   // ── normalizeToTranscriptFormat: deduplication ──

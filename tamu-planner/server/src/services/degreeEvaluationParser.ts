@@ -95,8 +95,26 @@ export const normalizeToTranscriptFormat = (raw: unknown) => {
     const grade = (c.grade || "").trim().toUpperCase();
     const termCode = (c.term || "").trim();
     const label = termCode ? termCodeToLabel(termCode) : "Unknown Term";
-    const isTransfer = c.transfer === true || (c.source || "").toUpperCase() === "T";
-    const isInProgress = grade === "" || grade === "IP" || grade === "R" || (c.source || "").toUpperCase() === "R";
+    const sourceUpper = (c.source || "").toUpperCase();
+    // Keep this aligned with the frontend conventions used by `isCourseMarkedInProgress`.
+    const TRANSFER_GRADES = new Set(["TA", "TB", "TC", "TD", "TF", "TCR", "TIP"]);
+    const IN_PROGRESS_GRADES = new Set(["IP", "TIP", "R"]);
+
+    const isTransfer =
+      c.transfer === true ||
+      sourceUpper === "T" ||
+      sourceUpper === "TA" ||
+      TRANSFER_GRADES.has(grade);
+
+    // The frontend expects in-progress to be represented as `IP`/`TIP` (not `R`).
+    const isInProgress = sourceUpper === "R" || IN_PROGRESS_GRADES.has(grade);
+
+    // Normalize AI grade tokens into frontend-friendly ones.
+    // - `R` -> `IP`
+    // - if source is `R` but grade is missing, still treat as in-progress
+    let normalizedGrade = grade;
+    if (normalizedGrade === "R") normalizedGrade = "IP";
+    if (sourceUpper === "R" && !normalizedGrade) normalizedGrade = "IP";
 
     const dedupeKey = `${code}|${label}`;
     if (seenCourseKeys.has(dedupeKey)) continue;
@@ -116,7 +134,7 @@ export const normalizeToTranscriptFormat = (raw: unknown) => {
       code,
       title: (c.title || "").trim(),
       credits,
-      grade,
+      grade: normalizedGrade,
       transfer: isTransfer
     });
   }

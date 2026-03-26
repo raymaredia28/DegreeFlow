@@ -376,6 +376,34 @@ const run = async () => {
     assert.ok(!group?.satisfied, 'Citizenship should fail if duplicate history course is used instead of two distinct courses');
   });
 
+  // Citizenship should show internally consistent "remaining" missing values for 9/12 case
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [
+      makeCourse('POLS 206', 3),
+      makeCourse('POLS 207', 3),
+      makeCourse('HIST 105', 3)
+    ];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const group = result.groups.find((g) => g.name === 'Citizenship (12 credits)');
+    assert.ok(group, 'Citizenship group should exist');
+    assert.ok(!group.satisfied, 'Citizenship should not be satisfied at 9/12');
+    assert.strictEqual(group.requiredCredits, 12);
+    assert.strictEqual(group.earnedCredits, 9);
+    assert.ok(
+      Array.isArray(group.missing) && group.missing.some((m) => String(m).includes('Need 3 credits from pool')),
+      `Expected remaining credits missing to be 3, got: ${(group.missing || []).join(' | ')}`
+    );
+    assert.ok(
+      Array.isArray(group.missing) && group.missing.some((m) => String(m).includes('Need 1 courses from pool')),
+      `Expected remaining courses missing to be 1, got: ${(group.missing || []).join(' | ')}`
+    );
+  });
+
   // High Impact should pass via SABR attribute tag
   tests.push(async () => {
     const req = await loadReqSet('CSCE Degree - Core');
