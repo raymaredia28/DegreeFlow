@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 // @ts-ignore – plain JS module, no type declarations
 import { evaluateRequirements } from "../requirements/evaluator.js";
+import { catalogStorage } from "../storage/catalogStorage.js";
 
 export const catalogRouter = Router();
 
@@ -18,7 +19,7 @@ const loadJson = async (filename: string) => {
 
 catalogRouter.get("/api/courses", async (_req, res, next) => {
   try {
-    const courses = await loadJson("courses.json");
+    const courses = await catalogStorage.getAllCourses();
     res.json({ courses });
   } catch (err) {
     next(err);
@@ -222,7 +223,7 @@ catalogRouter.post("/api/requirements/evaluate-local", async (req, res, next) =>
       return res.status(404).json({ error: "Requirement set not found" });
     }
 
-    const allCourses = await loadJson("courses.json");
+    const allCourses = await catalogStorage.getAllCourses();
 
     // Build catalog index keyed by the primary course code (e.g. "ACCT 209").
     // courses.json stores the code in c.codes[0] or via primary_subject/primary_number.

@@ -41,7 +41,13 @@ export type AuthUser = {
   email: string;
   name: string;
   picture: string;
+  isAdmin: boolean;
 };
+
+export function isAdminEmail(email: string): boolean {
+  if (!email) return false;
+  return env.adminEmails.includes(email.toLowerCase());
+}
 
 /**
  * Try to extract claims from a JWT without verification (dev mode only).
@@ -73,7 +79,8 @@ export async function verifyBearerToken(authorizationHeader?: string): Promise<A
     const uid = (claims?.user_id as string) || (claims?.sub as string) || raw || "dev-user";
     const email = (claims?.email as string) || `${uid}@dev.local`;
     const name = (claims?.name as string) || "Dev User";
-    return { uid, email, name, picture: (claims?.picture as string) || "" };
+    const admin = env.adminEmails.length === 0 ? true : isAdminEmail(email);
+    return { uid, email, name, picture: (claims?.picture as string) || "", isAdmin: admin };
   }
 
   if (!authorizationHeader || !authorizationHeader.startsWith("Bearer ")) {
@@ -84,10 +91,12 @@ export async function verifyBearerToken(authorizationHeader?: string): Promise<A
   const token = authorizationHeader.slice("Bearer ".length).trim();
   const decoded = await getAuth().verifyIdToken(token);
 
+  const email = decoded.email ?? "";
   return {
     uid: decoded.uid,
-    email: decoded.email ?? "",
+    email,
     name: decoded.name ?? "",
-    picture: decoded.picture ?? ""
+    picture: decoded.picture ?? "",
+    isAdmin: isAdminEmail(email),
   };
 }

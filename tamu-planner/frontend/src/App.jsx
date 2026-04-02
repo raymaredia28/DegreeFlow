@@ -3,6 +3,7 @@ import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mj
 import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import tamuLogo from './assets/tamu-logo.svg';
 import { DegreeProgress } from './components/DegreeProgress';
+import { AdminPanel } from './components/AdminPanel';
 import { signInWithPopup, signOut } from 'firebase/auth';
 import { firebaseAuth, googleProvider } from './firebase';
 import {
@@ -938,6 +939,7 @@ function App() {
       return null;
     }
   });
+  const [isAdmin, setIsAdmin] = useState(false);
   const [authToken, setAuthToken] = useState(() => localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || '');
   const authHeaders = useCallback(
     (extras = {}) => ({
@@ -1245,6 +1247,8 @@ function App() {
         setStudentId(String(data.studentId));
       }
 
+      setIsAdmin(data.isAdmin === true);
+
       if (data.transcript?.terms?.length > 0) {
         const sanitizedTerms = sanitizeTranscriptTermsForDisplay(data.transcript.terms);
         setTranscriptTerms(sanitizedTerms);
@@ -1325,6 +1329,7 @@ function App() {
     localStorage.removeItem('studentId');
     setAuthUser(null);
     setAuthToken('');
+    setIsAdmin(false);
     setDisplayStudentName('');
     setStudentId('');
     setTranscriptTerms([]);
@@ -5416,7 +5421,8 @@ Now answer the student's question based on this context and any additional infor
                   {[
                     { id: 'dashboard', label: 'Dashboard' },
                     { id: 'planner', label: 'Planner' },
-                    { id: 'prerequisites', label: 'Prerequisites' }
+                    { id: 'prerequisites', label: 'Prerequisites' },
+                    ...(isAdmin ? [{ id: 'admin', label: 'Admin' }] : []),
                   ].map((tab) => (
                     <button
                       key={tab.id}
@@ -5457,6 +5463,9 @@ Now answer the student's question based on this context and any additional infor
               onFullscreenChange={setIsFlowFullscreen}
             />
           ) : <LoginPage />)}
+          {activeTab === 'admin' && authUser && isAdmin && (
+            <AdminPanel apiBase={API_BASE} authHeaders={authHeaders} />
+          )}
           {activeTab === 'login' && <LoginPage />}
         </div>
       </main>
