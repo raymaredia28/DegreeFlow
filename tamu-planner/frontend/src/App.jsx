@@ -109,6 +109,52 @@ const RISKY_COMBOS = [
   }
 ];
 
+const COURSE_DIFFICULTY = {
+  'CSCE 110': 'easy', 'CSCE 111': 'easy', 'CSCE 120': 'easy', 'CSCE 121': 'medium',
+  'CSCE 181': 'easy', 'CSCE 206': 'easy',
+  'CSCE 221': 'hard', 'CSCE 222': 'medium',
+  'CSCE 312': 'hard', 'CSCE 313': 'hard', 'CSCE 314': 'medium', 'CSCE 315': 'medium',
+  'CSCE 310': 'hard', 'CSCE 331': 'hard',
+  'CSCE 410': 'hard', 'CSCE 411': 'hard', 'CSCE 412': 'medium',
+  'CSCE 420': 'hard', 'CSCE 421': 'hard', 'CSCE 430': 'medium', 'CSCE 431': 'medium',
+  'CSCE 433': 'medium', 'CSCE 435': 'hard', 'CSCE 436': 'medium',
+  'CSCE 440': 'hard', 'CSCE 441': 'medium', 'CSCE 442': 'medium', 'CSCE 443': 'medium',
+  'CSCE 444': 'medium', 'CSCE 445': 'medium', 'CSCE 446': 'medium',
+  'CSCE 451': 'hard', 'CSCE 452': 'hard', 'CSCE 461': 'medium', 'CSCE 462': 'medium',
+  'CSCE 463': 'hard', 'CSCE 464': 'medium', 'CSCE 465': 'hard',
+  'CSCE 470': 'medium', 'CSCE 477': 'medium', 'CSCE 481': 'medium', 'CSCE 482': 'medium',
+  'CSCE 483': 'medium', 'CSCE 489': 'medium',
+  'MATH 131': 'easy', 'MATH 141': 'easy', 'MATH 142': 'medium',
+  'MATH 147': 'medium', 'MATH 148': 'medium',
+  'MATH 151': 'medium', 'MATH 152': 'hard', 'MATH 171': 'medium', 'MATH 172': 'hard',
+  'MATH 251': 'medium', 'MATH 302': 'medium', 'MATH 304': 'medium',
+  'MATH 308': 'medium', 'MATH 311': 'hard',
+  'STAT 211': 'easy', 'STAT 212': 'easy', 'STAT 302': 'medium',
+  'PHYS 206': 'medium', 'PHYS 207': 'medium', 'PHYS 208': 'hard', 'PHYS 209': 'hard',
+  'PHYS 218': 'hard', 'PHYS 219': 'hard',
+  'ENGR 102': 'easy', 'ENGR 216': 'medium', 'ENGR 217': 'medium',
+  'ECEN 214': 'medium', 'ECEN 248': 'medium', 'ECEN 314': 'hard', 'ECEN 350': 'hard',
+  'ENGL 104': 'easy', 'ENGL 210': 'easy', 'COMM 203': 'easy', 'COMM 205': 'easy',
+  'CHEM 101': 'easy', 'CHEM 102': 'easy', 'CHEM 107': 'medium', 'CHEM 117': 'medium',
+};
+
+const getCourseDifficulty = (code) => {
+  if (!code) return null;
+  const upper = code.toUpperCase().replace(/\s+/g, ' ').trim();
+  if (COURSE_DIFFICULTY[upper]) return COURSE_DIFFICULTY[upper];
+  const num = parseInt(upper.replace(/[^0-9]/g, ''), 10);
+  if (!Number.isFinite(num)) return null;
+  if (num >= 400) return 'hard';
+  if (num >= 200) return 'medium';
+  return 'easy';
+};
+
+const DIFFICULTY_CONFIG = {
+  easy:   { label: 'Easy',   color: '#16a34a', bg: '#dcfce7', text: '#166534' },
+  medium: { label: 'Medium', color: '#ca8a04', bg: '#fef9c3', text: '#854d0e' },
+  hard:   { label: 'Hard',   color: '#dc2626', bg: '#fee2e2', text: '#991b1b' },
+};
+
 const normalizeTranscript = (terms) => {
   const termOrder = { Fall: 0, Winter: 1, Spring: 2, Summer: 3 };
   const years = new Map();
@@ -718,6 +764,28 @@ const buildExportHtmlFromDegreeResult = (degreeResult, transcriptTerms = [], sou
     return `<tr><td>${esc(g.name)}</td><td>${g.satisfied ? 'Met' : 'Not Met'}</td><td>${e}/${r} credits</td><td>${p}%</td></tr>`;
   }).join('')}</tbody></table>
   ${areasSections}
+  ${(() => {
+    const wna = Array.isArray(degreeResult?.workNotApplied) ? degreeResult.workNotApplied : [];
+    if (wna.length === 0) return '';
+    const wnaRows = wna.map((entry) => {
+      const c = courseIndex.get(entry.code) || {};
+      const credits = entry.credits != null ? Number(entry.credits).toFixed(2) : (c.credits != null ? Number(c.credits).toFixed(2) : '');
+      const grade = esc(c.grade || '');
+      const title = esc(c.title || '');
+      const term = esc(c.termLabel || '');
+      const transfer = c.transfer ? 'T' : 'H';
+      const potential = (entry.potentialGroups || []).length > 0
+        ? entry.potentialGroups.map(esc).join(', ')
+        : '';
+      return `<tr><td>${esc(entry.code)}</td><td>${title}</td><td>${credits}</td><td>${grade}</td><td>${term}</td><td>${transfer}</td><td>${potential}</td></tr>`;
+    }).join('');
+    const totalCredits = wna.reduce((sum, e) => sum + (Number(e.credits) || 0), 0);
+    return `<h2 style="color:#500000;font-size:14px;margin:24px 0 8px 0;">Work Not Applied</h2>
+    <p class="area-summary">${wna.length} course${wna.length !== 1 ? 's' : ''} (${totalCredits} credits) completed but not matched to any requirement group</p>
+    <table class="rows"><thead><tr>
+      <th>Course</th><th>Title</th><th>Credits</th><th>Grade</th><th>Term</th><th>Source</th><th>Could Apply To</th>
+    </tr></thead><tbody>${wnaRows}</tbody></table>`;
+  })()}
   ${(() => {
     const mr = meta?.minorResult;
     if (!mr || !Array.isArray(mr.groups) || mr.groups.length === 0) return '';
@@ -4413,8 +4481,28 @@ Now answer the student's question based on this context and any additional infor
                     <div>
                       <h4 className="font-semibold text-gray-900">{term}</h4>
                       <p className="text-xs text-gray-600">
-                        {termValidation.totalCredits} credits • Difficulty:{' '}
-                        {termValidation.totalDifficulty}/25
+                        {termValidation.totalCredits} credits
+                        {(() => {
+                          const planned = (semesterPlans[term] || []);
+                          if (planned.length === 0) return null;
+                          const counts = { easy: 0, medium: 0, hard: 0 };
+                          planned.forEach((code) => {
+                            const d = getCourseDifficulty(code);
+                            if (d && counts[d] !== undefined) counts[d]++;
+                          });
+                          const total = counts.easy + counts.medium + counts.hard;
+                          if (total === 0) return null;
+                          const level = counts.hard >= 3 || (counts.hard >= 2 && counts.medium >= 2) ? 'hard'
+                            : counts.hard === 0 && counts.medium <= 1 ? 'easy' : 'medium';
+                          const cfg = DIFFICULTY_CONFIG[level];
+                          return (
+                            <span>
+                              {' • Est. Load: '}
+                              <span style={{ color: cfg.color, fontWeight: 600 }}>{cfg.label}</span>
+                              <span className="text-gray-400"> ({counts.easy}E / {counts.medium}M / {counts.hard}H)</span>
+                            </span>
+                          );
+                        })()}
                       </p>
                       {isViewOnly && (
                         <p className="text-xs text-blue-600 mt-1">Current term</p>
@@ -4493,6 +4581,20 @@ Now answer the student's question based on this context and any additional infor
                                   <span className="text-xs bg-gray-200 px-2 py-1 rounded">
                                     {course.credits} cr
                                   </span>
+                                  {course.type === 'planned' && (() => {
+                                    const diff = getCourseDifficulty(course.code);
+                                    const cfg = diff ? DIFFICULTY_CONFIG[diff] : null;
+                                    if (!cfg) return null;
+                                    return (
+                                      <span
+                                        className="text-xs font-semibold px-2 py-1 rounded"
+                                        style={{ backgroundColor: cfg.bg, color: cfg.text }}
+                                        title="Advisory estimate based on course patterns and available data"
+                                      >
+                                        {cfg.label}
+                                      </span>
+                                    );
+                                  })()}
                                   {course.type === 'transcript' && (
                                     <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
                                       {course.status || 'Recorded'}
