@@ -1046,6 +1046,7 @@ function App() {
   const [semesterPlans, setSemesterPlans] = useState(() => initSemesterPlans({}));
   const [searchQuery, setSearchQuery] = useState('');
   const [showCourseModal, setShowCourseModal] = useState(false);
+  const [showDifficultyInfo, setShowDifficultyInfo] = useState(null);
   const [planError, setPlanError] = useState('');
   const [toast, setToast] = useState(null); // { message, type: 'success' | 'error' | 'info' }
   const toastTimerRef = useRef(null);
@@ -4476,77 +4477,82 @@ Now answer the student's question based on this context and any additional infor
               const isEditable = true;
               const isViewOnly = termState === 'current';
               return (
-                <div key={term} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <h4 className="font-semibold text-gray-900">{term}</h4>
-                      <p className="text-xs text-gray-600">
-                        {termValidation.totalCredits} credits
-                        {(() => {
-                          const planned = (semesterPlans[term] || []);
-                          if (planned.length === 0) return null;
-                          const counts = { easy: 0, medium: 0, hard: 0 };
-                          planned.forEach((code) => {
-                            const d = getCourseDifficulty(code);
-                            if (d && counts[d] !== undefined) counts[d]++;
-                          });
-                          const total = counts.easy + counts.medium + counts.hard;
-                          if (total === 0) return null;
-                          const level = counts.hard >= 3 || (counts.hard >= 2 && counts.medium >= 2) ? 'hard'
-                            : counts.hard === 0 && counts.medium <= 1 ? 'easy' : 'medium';
-                          const cfg = DIFFICULTY_CONFIG[level];
-                          return (
-                            <span>
-                              {' • Est. Load: '}
-                              <span style={{ color: cfg.color, fontWeight: 600 }}>{cfg.label}</span>
-                              <span className="text-gray-400"> ({counts.easy}E / {counts.medium}M / {counts.hard}H)</span>
-                            </span>
-                          );
-                        })()}
-                      </p>
-                      {isViewOnly && (
-                        <p className="text-xs text-blue-600 mt-1">Current term</p>
-                      )}
-                      {termState === 'past' && (
-                        <p className="text-xs text-gray-500 mt-1">Past term</p>
-                      )}
+                <div key={term} className="border border-gray-200 rounded-lg bg-gray-50 overflow-hidden">
+                  {/* ── Term Header ── */}
+                  <div className="px-4 pt-4 pb-3 border-b border-gray-200 bg-white">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <h4 className="font-bold text-gray-900 text-base truncate">{term}</h4>
+                        {isViewOnly && (
+                          <span className="shrink-0 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">Current</span>
+                        )}
+                        {termState === 'past' && (
+                          <span className="shrink-0 text-xs bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full font-medium">Past</span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!isEditable) return;
+                          setSelectedSemester(term);
+                          setShowCourseModal(true);
+                          setSearchQuery('');
+                          setPlanError('');
+                        }}
+                        className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium ${
+                          isEditable
+                            ? 'text-white'
+                            : 'text-gray-400 bg-gray-200 cursor-not-allowed'
+                        }`}
+                        style={isEditable ? { backgroundColor: '#500000' } : {}}
+                        onMouseEnter={(e) => { if (isEditable) e.currentTarget.style.backgroundColor = '#3d0000'; }}
+                        onMouseLeave={(e) => { if (isEditable) e.currentTarget.style.backgroundColor = '#500000'; }}
+                        disabled={!isEditable}
+                      >
+                        <Plus className="w-3 h-3" />
+                        Add
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!isEditable) return;
-                        setSelectedSemester(term);
-                        setShowCourseModal(true);
-                        setSearchQuery('');
-                        setPlanError('');
-                      }}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs ${
-                        isEditable
-                          ? 'text-white'
-                          : 'text-gray-400 bg-gray-200 cursor-not-allowed'
-                      }`}
-                      style={isEditable ? { backgroundColor: '#500000' } : {}}
-                      onMouseEnter={(e) => {
-                        if (isEditable) {
-                          e.currentTarget.style.backgroundColor = '#3d0000';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (isEditable) {
-                          e.currentTarget.style.backgroundColor = '#500000';
-                        }
-                      }}
-                      disabled={!isEditable}
-                    >
-                      <Plus className="w-3 h-3" />
-                      Add Course
-                    </button>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-gray-700">
+                        {termValidation.totalCredits} credits
+                      </span>
+                      {(() => {
+                        const planned = (semesterPlans[term] || []);
+                        if (planned.length === 0) return null;
+                        const counts = { easy: 0, medium: 0, hard: 0 };
+                        planned.forEach((code) => {
+                          const d = getCourseDifficulty(code);
+                          if (d && counts[d] !== undefined) counts[d]++;
+                        });
+                        const total = counts.easy + counts.medium + counts.hard;
+                        if (total === 0) return null;
+                        const level = counts.hard >= 3 || (counts.hard >= 2 && counts.medium >= 2) ? 'hard'
+                          : counts.hard === 0 && counts.medium <= 1 ? 'easy' : 'medium';
+                        const cfg = DIFFICULTY_CONFIG[level];
+                        return (
+                          <>
+                            <span className="text-gray-300 text-xs">|</span>
+                            <span
+                              className="text-xs font-bold px-2 py-0.5 rounded-md border"
+                              style={{ borderColor: cfg.color, color: cfg.text, backgroundColor: cfg.bg }}
+                            >
+                              ⚡ {cfg.label} Load
+                            </span>
+                            <span className="text-xs text-gray-400">
+                              ({counts.easy > 0 ? `${counts.easy}E` : ''}{counts.easy > 0 && counts.medium > 0 ? '·' : ''}{counts.medium > 0 ? `${counts.medium}M` : ''}{(counts.easy > 0 || counts.medium > 0) && counts.hard > 0 ? '·' : ''}{counts.hard > 0 ? `${counts.hard}H` : ''})
+                            </span>
+                          </>
+                        );
+                      })()}
+                    </div>
                   </div>
 
-                  <div className="space-y-2">
+                  {/* ── Course List ── */}
+                  <div className="p-3 space-y-2">
                     {displayCourses.length === 0 ? (
-                      <div className="text-center py-6 text-gray-500 text-sm">
-                        <Calendar className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                      <div className="text-center py-8 text-gray-400 text-sm">
+                        <Calendar className="w-8 h-8 mx-auto mb-2 opacity-40" />
                         <p>No courses planned</p>
                       </div>
                     ) : (
@@ -4563,6 +4569,9 @@ Now answer the student's question based on this context and any additional infor
                           ? missingPrereqs.filter((p) => !isCoursePlanned(p))
                           : [];
 
+                        const diffLevel = course.type === 'planned' ? getCourseDifficulty(course.code) : null;
+                        const diffCfg = diffLevel ? DIFFICULTY_CONFIG[diffLevel] : null;
+
                         return (
                           <div
                             key={`${term}-${course.code}-${course.type}`}
@@ -4574,50 +4583,47 @@ Now answer the student's question based on this context and any additional infor
                                   : 'border-gray-200 bg-white'
                             }`}
                           >
-                            <div className="flex justify-between items-start">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2">
-                                  <h4 className="font-semibold text-gray-900">{course.code}</h4>
-                                  <span className="text-xs bg-gray-200 px-2 py-1 rounded">
+                            <div className="flex justify-between items-start gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <h4 className="font-semibold text-sm text-gray-900">{course.code}</h4>
+                                  <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-medium">
                                     {course.credits} cr
                                   </span>
-                                  {course.type === 'planned' && (() => {
-                                    const diff = getCourseDifficulty(course.code);
-                                    const cfg = diff ? DIFFICULTY_CONFIG[diff] : null;
-                                    if (!cfg) return null;
-                                    return (
-                                      <span
-                                        className="text-xs font-semibold px-2 py-1 rounded"
-                                        style={{ backgroundColor: cfg.bg, color: cfg.text }}
-                                        title="Advisory estimate based on course patterns and available data"
-                                      >
-                                        {cfg.label}
-                                      </span>
-                                    );
-                                  })()}
                                   {course.type === 'transcript' && (
-                                    <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
+                                    <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium">
                                       {course.status || 'Recorded'}
                                     </span>
                                   )}
+                                  {diffCfg && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); setShowDifficultyInfo(course.code); }}
+                                      className="text-xs font-bold px-1.5 py-0.5 rounded-md border cursor-pointer hover:opacity-80 transition-opacity"
+                                      style={{ borderColor: diffCfg.color, color: diffCfg.color, backgroundColor: 'transparent' }}
+                                      title="Click for difficulty info"
+                                    >
+                                      ● {diffCfg.label}
+                                    </button>
+                                  )}
                                 </div>
-                                <p className="text-xs text-gray-600 mt-1">
+                                <p className="text-xs text-gray-500 mt-1 truncate">
                                   {course.title || courseMeta?.title}
                                 </p>
                                 {trulyMissing.length > 0 && (
-                                  <p className="text-xs text-red-600 mt-2 flex items-center gap-1">
-                                    <AlertTriangle className="w-3 h-3" />
-                                    Missing prerequisites: {trulyMissing.join(', ')}
+                                  <p className="text-xs text-red-600 mt-1.5 flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3 shrink-0" />
+                                    Missing prereqs: {trulyMissing.join(', ')}
                                   </p>
                                 )}
                                 {plannedLaterPrereqs.length > 0 && (
                                   <p className="text-xs text-yellow-700 mt-1 flex items-center gap-1">
-                                    <AlertTriangle className="w-3 h-3" />
-                                    Prerequisite planned but not in earlier semester: {plannedLaterPrereqs.join(', ')}
+                                    <AlertTriangle className="w-3 h-3 shrink-0" />
+                                    Prereq not in earlier semester: {plannedLaterPrereqs.join(', ')}
                                   </p>
                                 )}
                                 <label
-                                  className="flex items-center gap-1.5 mt-1.5 cursor-pointer select-none"
+                                  className="flex items-center gap-1.5 mt-2 cursor-pointer select-none"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <input
@@ -4648,9 +4654,9 @@ Now answer the student's question based on this context and any additional infor
                                     if (!isEditable) return;
                                     removeCourseFromSemester(course.code, term);
                                   }}
-                                  className={`text-gray-400 ${
+                                  className={`shrink-0 p-1 rounded text-gray-400 ${
                                     isEditable
-                                      ? 'hover:text-red-600'
+                                      ? 'hover:text-red-600 hover:bg-red-50'
                                       : 'cursor-not-allowed opacity-50'
                                   }`}
                                   disabled={!isEditable}
@@ -4671,6 +4677,74 @@ Now answer the student's question based on this context and any additional infor
         </div>
 
         <AcademicRecordPanel />
+
+        {/* ── Difficulty Info Modal ── */}
+        {showDifficultyInfo && (() => {
+          const code = showDifficultyInfo;
+          const diff = getCourseDifficulty(code);
+          const cfg = diff ? DIFFICULTY_CONFIG[diff] : null;
+          const meta = COURSES[code];
+          const courseNum = parseInt(code.replace(/[^0-9]/g, ''), 10) || 0;
+          return (
+            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setShowDifficultyInfo(null)}>
+              <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                <div className="px-6 py-4 border-b border-gray-100" style={{ backgroundColor: cfg ? cfg.bg : '#f3f4f6' }}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-bold text-lg text-gray-900">{code}</h3>
+                      <p className="text-sm text-gray-600">{meta?.title || 'Course'}</p>
+                    </div>
+                    {cfg && (
+                      <span className="text-sm font-bold px-3 py-1 rounded-full border" style={{ borderColor: cfg.color, color: cfg.color }}>
+                        ● {cfg.label}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="px-6 py-4 space-y-4">
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-1">Estimated Difficulty</h4>
+                    <div className="flex gap-1">
+                      {['easy', 'medium', 'hard'].map((lvl) => {
+                        const c = DIFFICULTY_CONFIG[lvl];
+                        const active = lvl === diff;
+                        return (
+                          <div key={lvl} className={`flex-1 text-center py-1.5 rounded text-xs font-semibold border ${active ? 'ring-2 ring-offset-1' : 'opacity-40'}`}
+                            style={{ borderColor: c.color, color: active ? c.text : c.color, backgroundColor: active ? c.bg : 'transparent', ...(active ? { ringColor: c.color } : {}) }}>
+                            {c.label}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-1">How is this determined?</h4>
+                    <p className="text-xs text-gray-600 leading-relaxed">
+                      {COURSE_DIFFICULTY[code]
+                        ? 'This rating is based on a curated mapping of known course workloads, informed by historical student experiences and course characteristics.'
+                        : `This is an estimated rating derived from the course number (${courseNum}). Upper-division courses (300-400 level) and graduate courses (500+) are generally rated as more difficult.`
+                      }
+                    </p>
+                  </div>
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    <p className="text-xs text-amber-800">
+                      <strong>Advisory only</strong> — This is an estimate for planning support. Actual difficulty varies by instructor, semester, and individual preparation. Not an official university rating.
+                    </p>
+                  </div>
+                </div>
+                <div className="px-6 py-3 border-t border-gray-100 bg-gray-50 flex justify-end">
+                  <button
+                    onClick={() => setShowDifficultyInfo(null)}
+                    className="px-4 py-1.5 text-sm font-medium rounded-lg text-white"
+                    style={{ backgroundColor: '#500000' }}
+                  >
+                    Got it
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {showCourseModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
