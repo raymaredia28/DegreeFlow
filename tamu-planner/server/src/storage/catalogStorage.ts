@@ -14,16 +14,53 @@ export interface CatalogStorageProvider {
 
 const COURSES_FILE = path.resolve("data", "courses.json");
 
-/** Strip undefined values from objects -- Firestore rejects them. */
+/**
+ * Sanitize an object for Firestore:
+ * - Strip undefined values (Firestore rejects them)
+ * - Convert nested arrays to arrays of objects with a `group` wrapper,
+ *   since Firestore does not support arrays within arrays.
+ *   e.g. [[{code:"A"}]] becomes [{group:[{code:"A"}]}]
+ */
 function sanitizeForFirestore(obj: any): any {
   if (obj === null || obj === undefined) return null;
-  if (Array.isArray(obj)) return obj.map(sanitizeForFirestore);
+  if (Array.isArray(obj)) {
+    return obj.map((item) => {
+      if (Array.isArray(item)) {
+        return { group: item.map(sanitizeForFirestore) };
+      }
+      return sanitizeForFirestore(item);
+    });
+  }
   if (typeof obj === "object") {
     const clean: Record<string, any> = {};
     for (const [key, value] of Object.entries(obj)) {
       if (value !== undefined) {
         clean[key] = sanitizeForFirestore(value);
       }
+    }
+    return clean;
+  }
+  return obj;
+}
+
+/**
+ * Reverse the Firestore sanitization: unwrap `{group:[...]}` back to
+ * nested arrays so the rest of the app sees the original shape.
+ */
+function deserializeFromFirestore(obj: any): any {
+  if (obj === null || obj === undefined) return null;
+  if (Array.isArray(obj)) {
+    return obj.map((item) => {
+      if (item && typeof item === "object" && "group" in item && Array.isArray(item.group) && Object.keys(item).length === 1) {
+        return item.group.map(deserializeFromFirestore);
+      }
+      return deserializeFromFirestore(item);
+    });
+  }
+  if (typeof obj === "object") {
+    const clean: Record<string, any> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      clean[key] = deserializeFromFirestore(value);
     }
     return clean;
   }
@@ -148,14 +185,14 @@ const firestoreCatalogStorage: CatalogStorageProvider = {
     await ensureSeeded();
     const db = getDb();
     const snapshot = await db.collection(COURSES_COLLECTION).get();
-    return snapshot.docs.map((doc) => doc.data());
+    return snapshot.docs.map((doc) => deserializeFromFirestore(doc.data()));
   },
 
   async getCourseById(courseId) {
     await ensureSeeded();
     const db = getDb();
     const doc = await db.collection(COURSES_COLLECTION).doc(String(courseId)).get();
-    return doc.exists ? doc.data()! : null;
+    return doc.exists ? deserializeFromFirestore(doc.data()!) : null;
   },
 
   async addCourse(course) {
@@ -171,7 +208,7 @@ const firestoreCatalogStorage: CatalogStorageProvider = {
     const newId = maxId + 1;
 
     const newCourse = { ...course, course_id: newId };
-    await db.collection(COURSES_COLLECTION).doc(String(newId)).set(newCourse);
+    await db.collection(COURSES_COLLECTION).doc(String(newId)).set(sanitizeForFirestore(newCourse));
     return newCourse;
   },
 
@@ -182,8 +219,8 @@ const firestoreCatalogStorage: CatalogStorageProvider = {
     const doc = await docRef.get();
     if (!doc.exists) return null;
 
-    const updated = { ...doc.data(), ...updates, course_id: courseId };
-    await docRef.set(updated, { merge: true });
+    const updated = { ...deserializeFromFirestore(doc.data()), ...updates, course_id: courseId };
+    await docRef.set(sanitizeForFirestore(updated), { merge: true });
     return updated;
   },
 
