@@ -376,6 +376,34 @@ const run = async () => {
     assert.ok(!group?.satisfied, 'Citizenship should fail if duplicate history course is used instead of two distinct courses');
   });
 
+  // Citizenship should show internally consistent "remaining" missing values for 9/12 case
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [
+      makeCourse('POLS 206', 3),
+      makeCourse('POLS 207', 3),
+      makeCourse('HIST 105', 3)
+    ];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const group = result.groups.find((g) => g.name === 'Citizenship (12 credits)');
+    assert.ok(group, 'Citizenship group should exist');
+    assert.ok(!group.satisfied, 'Citizenship should not be satisfied at 9/12');
+    assert.strictEqual(group.requiredCredits, 12);
+    assert.strictEqual(group.earnedCredits, 9);
+    assert.ok(
+      Array.isArray(group.missing) && group.missing.some((m) => String(m).includes('Need 3 credits from pool')),
+      `Expected remaining credits missing to be 3, got: ${(group.missing || []).join(' | ')}`
+    );
+    assert.ok(
+      Array.isArray(group.missing) && group.missing.some((m) => String(m).includes('Need 1 courses from pool')),
+      `Expected remaining courses missing to be 1, got: ${(group.missing || []).join(' | ')}`
+    );
+  });
+
   // High Impact should pass via SABR attribute tag
   tests.push(async () => {
     const req = await loadReqSet('CSCE Degree - Core');
@@ -604,6 +632,113 @@ const run = async () => {
     assert.strictEqual(normalizeCode('  CSCE  331  '), 'CSCE 331', 'Should trim and normalize spaces');
     assert.strictEqual(normalizeCode(''), '', 'Empty string should return empty');
     assert.strictEqual(normalizeCode(null), '', 'Null should return empty');
+  });
+
+  // === Work Not Applied / Overflow tests ===
+
+  // workNotApplied should list courses not used by any group
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [
+      makeCourse('ENGL 221', 3),
+      makeCourse('ART 999', 3)
+    ];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const unapplied = result.workNotApplied || [];
+    const unappliedCodes = unapplied.map(e => e.code);
+    assert.ok(unappliedCodes.includes('ART 999'), 'ART 999 (not in any pool) should be work not applied');
+    assert.ok(!unappliedCodes.includes('ENGL 221'), 'ENGL 221 (used in LPC) should not be in work not applied');
+  });
+
+  // workNotApplied should be empty when all courses are used
+  tests.push(async () => {
+    const req = await loadReqSet('Minor - Business');
+    const studentCourses = [
+      makeCourse('ACCT 209', 3),
+      makeCourse('MGMT 309', 3),
+      makeCourse('FINC 409', 3),
+      makeCourse('MKTG 409', 3),
+      makeCourse('ISTM 209', 3),
+      makeCourse('MGMT 209', 3)
+    ];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    assert.strictEqual((result.workNotApplied || []).length, 0, 'All courses used — workNotApplied should be empty');
+  });
+
+  // workNotApplied entries should include potentialGroups for courses that could match a rule
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [
+      makeCourse('ENGL 221', 3),
+      makeCourse('ENGL 210', 3)
+    ];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const entry = (result.workNotApplied || []).find(e => e.code === 'ENGL 210');
+    if (entry) {
+      assert.ok(entry.potentialGroups.length > 0, 'ENGL 210 should suggest potential groups (LPC pool)');
+    }
+  });
+
+  // overflowCourses on a pool group that exceeds minCredits
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Emphasis - Cybersecurity');
+    const studentCourses = [
+      makeCourse('CYBR 484', 3),
+      makeCourse('ECEN 424', 3),
+      makeCourse('ESET 315', 3),
+      makeCourse('ITSV 308', 3),
+      makeCourse('ESET 269', 3)
+    ];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const group = result.groups[0];
+    assert.ok(group.satisfied, 'Cybersecurity emphasis should be satisfied');
+    assert.ok(group.overflowCourses.length > 0, 'Should have overflow courses when exceeding minCredits');
+  });
+
+  // overflowCourses should be empty when credits match exactly
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Emphasis - Cybersecurity');
+    const studentCourses = [
+      makeCourse('CYBR 484', 3),
+      makeCourse('ECEN 424', 3),
+      makeCourse('ESET 315', 3),
+      makeCourse('ITSV 308', 3)
+    ];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const group = result.groups[0];
+    assert.ok(group.satisfied, 'Cybersecurity emphasis should be satisfied');
+    assert.strictEqual(group.overflowCourses.length, 0, 'No overflow when credits match exactly');
+  });
+
+  // Manual groups should have empty overflowCourses
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Emphasis - STEM Areas');
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses: [],
+      emphasisCourseIds: new Set()
+    });
+    assert.deepStrictEqual(result.groups[0].overflowCourses, [], 'Manual group should have empty overflow');
   });
 
   // Run tests

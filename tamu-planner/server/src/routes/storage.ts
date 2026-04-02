@@ -6,6 +6,13 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
+import { env } from "../config/env.js";
+import { detectDocumentType } from "../services/documentType.js";
+import {
+  buildDegreeEvaluationPrompt,
+  normalizeToTranscriptFormat,
+  extractJsonFromAiResponse
+} from "../services/degreeEvaluationParser.js";
 import {
   getOrCreateStudent,
   getPlannerState,
@@ -42,6 +49,14 @@ const transcriptSchema = z.object({
 const parsePayloadSchema = z.object({
   fileName: z.string().optional(),
   dataBase64: z.string()
+});
+
+const detectDocumentPayloadSchema = z.object({
+  lines: z.array(z.string())
+});
+
+const parseDegreeEvalPayloadSchema = z.object({
+  lines: z.array(z.string()).min(1)
 });
 
 const getAuthUser = async (req: Request, res: Response) => {
@@ -87,6 +102,104 @@ storageRouter.post("/storage/parse-transcript", async (req, res) => {
     return res.status(500).json({ error: message });
   } finally {
     await fs.unlink(tmpPath).catch(() => {});
+  }
+});
+
+storageRouter.post("/storage/detect-document-type", async (req, res) => {
+  const parsed = detectDocumentPayloadSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload", issues: parsed.error.issues });
+  }
+  return res.json(detectDocumentType(parsed.data.lines));
+});
+
+storageRouter.post("/storage/parse-degree-evaluation", async (req, res) => {
+  const parsed = parseDegreeEvalPayloadSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload", issues: parsed.error.issues });
+  }
+
+  if (!env.tamuAiApiKey) {
+    return res.status(500).json({ error: "TAMU AI API key not configured" });
+  }
+
+  const callAi = async (attempt: number) => {
+    const prompt = buildDegreeEvaluationPrompt(parsed.data.lines);
+    console.log(`[degree-eval] AI attempt ${attempt}, sending ${parsed.data.lines.length} lines (prompt ${prompt.length} chars)`);
+    const response = await fetch(`${env.tamuAiApiEndpoint}/api/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.tamuAiApiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "protected.gemini-2.0-flash-lite",
+        stream: false,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You extract course data as JSON from university degree evaluation documents. " +
+              "Return ONLY raw JSON. No markdown fences, no explanation."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      const details = await response.text();
+      console.error(`[degree-eval] AI HTTP ${response.status} (attempt ${attempt}):`, details.slice(0, 500));
+      return { error: `Degree evaluation AI request failed (HTTP ${response.status})`, details, status: response.status };
+    }
+
+    const aiData = await response.json();
+    const rawContent: string = aiData?.choices?.[0]?.message?.content || "";
+    console.log(`[degree-eval] AI raw response length: ${rawContent.length} (attempt ${attempt})`);
+    if (rawContent.length < 20) {
+      console.error(`[degree-eval] AI returned very short content:`, rawContent);
+    }
+
+    const parsedContent = extractJsonFromAiResponse(rawContent);
+    if (parsedContent === null) {
+      console.error(`[degree-eval] extractJsonFromAiResponse returned null (attempt ${attempt}). Raw snippet:`, rawContent.slice(0, 500));
+      return { error: `AI returned non-JSON content (attempt ${attempt})`, rawSnippet: rawContent.slice(0, 500) };
+    }
+
+    const normalized = normalizeToTranscriptFormat(parsedContent);
+    if (!normalized.ok) {
+      console.error(`[degree-eval] normalization failed (attempt ${attempt}):`, normalized.error, normalized.issues);
+      return { error: normalized.error, issues: normalized.issues };
+    }
+
+    console.log(`[degree-eval] Success (attempt ${attempt}): ${normalized.normalized.terms.length} terms, ${normalized.normalized.terms.reduce((s, t) => s + t.courses.length, 0)} courses`);
+    return { ok: true, data: normalized.normalized };
+  };
+
+  try {
+    let result = await callAi(1);
+    if (!("ok" in result) || !result.ok) {
+      console.log(`[degree-eval] Attempt 1 failed, retrying...`);
+      result = await callAi(2);
+    }
+
+    if ("ok" in result && result.ok) {
+      return res.json(result.data);
+    }
+
+    const errResult = result as Record<string, unknown>;
+    return res.status(typeof errResult.status === "number" ? errResult.status : 422).json({
+      error: errResult.error || "Unable to parse degree evaluation after retries",
+      ...(errResult.issues ? { issues: errResult.issues } : {}),
+      ...(errResult.rawSnippet ? { rawSnippet: errResult.rawSnippet } : {})
+    });
+  } catch (err) {
+    console.error(`[degree-eval] Unexpected error:`, err);
+    const message = err instanceof Error ? err.message : "Unable to parse degree evaluation";
+    return res.status(500).json({ error: message });
   }
 });
 
