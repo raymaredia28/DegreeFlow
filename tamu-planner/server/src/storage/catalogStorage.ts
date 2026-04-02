@@ -14,6 +14,22 @@ export interface CatalogStorageProvider {
 
 const COURSES_FILE = path.resolve("data", "courses.json");
 
+/** Strip undefined values from objects -- Firestore rejects them. */
+function sanitizeForFirestore(obj: any): any {
+  if (obj === null || obj === undefined) return null;
+  if (Array.isArray(obj)) return obj.map(sanitizeForFirestore);
+  if (typeof obj === "object") {
+    const clean: Record<string, any> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (value !== undefined) {
+        clean[key] = sanitizeForFirestore(value);
+      }
+    }
+    return clean;
+  }
+  return obj;
+}
+
 // ── Local JSON implementation ────────────────────────────────────────────────
 
 async function readCoursesFile(): Promise<any[]> {
@@ -85,39 +101,46 @@ let seeded = false;
 async function ensureSeeded(): Promise<void> {
   if (seeded) return;
 
-  const db = getDb();
-  const metaRef = db.collection(META_COLLECTION).doc("seed_status");
-  const metaSnap = await metaRef.get();
+  try {
+    const db = getDb();
+    const metaRef = db.collection(META_COLLECTION).doc("seed_status");
+    const metaSnap = await metaRef.get();
 
-  if (metaSnap.exists && metaSnap.data()?.seeded === true) {
-    seeded = true;
-    return;
-  }
-
-  const existing = await db.collection(COURSES_COLLECTION).limit(1).get();
-  if (!existing.empty) {
-    await metaRef.set({ seeded: true, seeded_at: new Date().toISOString() });
-    seeded = true;
-    return;
-  }
-
-  console.log("[catalogStorage] Seeding Firestore courses collection from courses.json...");
-  const courses = await readCoursesFile();
-
-  const BATCH_SIZE = 400;
-  for (let i = 0; i < courses.length; i += BATCH_SIZE) {
-    const batch = db.batch();
-    const slice = courses.slice(i, i + BATCH_SIZE);
-    for (const course of slice) {
-      const docRef = db.collection(COURSES_COLLECTION).doc(String(course.course_id));
-      batch.set(docRef, course);
+    if (metaSnap.exists && metaSnap.data()?.seeded === true) {
+      seeded = true;
+      return;
     }
-    await batch.commit();
-  }
 
-  await metaRef.set({ seeded: true, seeded_at: new Date().toISOString(), count: courses.length });
-  seeded = true;
-  console.log(`[catalogStorage] Seeded ${courses.length} courses into Firestore.`);
+    const existing = await db.collection(COURSES_COLLECTION).limit(1).get();
+    if (!existing.empty) {
+      await metaRef.set({ seeded: true, seeded_at: new Date().toISOString() });
+      seeded = true;
+      return;
+    }
+
+    console.log("[catalogStorage] Seeding Firestore courses collection from courses.json...");
+    const courses = await readCoursesFile();
+    console.log(`[catalogStorage] Loaded ${courses.length} courses from file, writing to Firestore...`);
+
+    const BATCH_SIZE = 400;
+    for (let i = 0; i < courses.length; i += BATCH_SIZE) {
+      const batch = db.batch();
+      const slice = courses.slice(i, i + BATCH_SIZE);
+      for (const course of slice) {
+        const docRef = db.collection(COURSES_COLLECTION).doc(String(course.course_id));
+        batch.set(docRef, sanitizeForFirestore(course));
+      }
+      await batch.commit();
+      console.log(`[catalogStorage] Seeded batch ${Math.floor(i / BATCH_SIZE) + 1} (${Math.min(i + BATCH_SIZE, courses.length)}/${courses.length})`);
+    }
+
+    await metaRef.set({ seeded: true, seeded_at: new Date().toISOString(), count: courses.length });
+    seeded = true;
+    console.log(`[catalogStorage] Seeded ${courses.length} courses into Firestore.`);
+  } catch (err) {
+    console.error("[catalogStorage] ensureSeeded FAILED:", err);
+    throw err;
+  }
 }
 
 const firestoreCatalogStorage: CatalogStorageProvider = {
