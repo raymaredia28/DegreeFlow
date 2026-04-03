@@ -4,8 +4,13 @@ import { env } from "../config/env.js";
 import { ensureFirebaseApp } from "../services/auth.js";
 import { getFirestore } from "firebase-admin/firestore";
 
+const ADMIN_SUBJECT = "CSCE";
+
 export interface CatalogStorageProvider {
+  /** All CSCE courses (admin-managed). Used by admin panel. */
   getAllCourses(): Promise<any[]>;
+  /** Full catalog: non-CSCE from static file + CSCE from admin store. Used by public API + evaluator. */
+  getFullCatalog(): Promise<any[]>;
   getCourseById(courseId: number): Promise<any | null>;
   addCourse(course: any): Promise<any>;
   updateCourse(courseId: number, updates: Record<string, unknown>): Promise<any | null>;
@@ -14,12 +19,13 @@ export interface CatalogStorageProvider {
 
 const COURSES_FILE = path.resolve("data", "courses.json");
 
+const isCsceCourse = (c: any) => c.primary_subject === ADMIN_SUBJECT;
+
 /**
  * Sanitize an object for Firestore:
  * - Strip undefined values (Firestore rejects them)
  * - Convert nested arrays to arrays of objects with a `group` wrapper,
  *   since Firestore does not support arrays within arrays.
- *   e.g. [[{code:"A"}]] becomes [{group:[{code:"A"}]}]
  */
 function sanitizeForFirestore(obj: any): any {
   if (obj === null || obj === undefined) return null;
@@ -67,7 +73,7 @@ function deserializeFromFirestore(obj: any): any {
   return obj;
 }
 
-// ── Local JSON implementation ────────────────────────────────────────────────
+// ── Shared helpers ───────────────────────────────────────────────────────────
 
 async function readCoursesFile(): Promise<any[]> {
   const raw = await fs.readFile(COURSES_FILE, "utf-8");
@@ -86,8 +92,15 @@ function nextCourseId(courses: any[]): number {
   return max + 1;
 }
 
+// ── Local JSON implementation ────────────────────────────────────────────────
+
 const localCatalogStorage: CatalogStorageProvider = {
   async getAllCourses() {
+    const courses = await readCoursesFile();
+    return courses.filter(isCsceCourse);
+  },
+
+  async getFullCatalog() {
     return readCoursesFile();
   },
 
@@ -123,7 +136,7 @@ const localCatalogStorage: CatalogStorageProvider = {
   },
 };
 
-// ── Firestore implementation ─────────────────────────────────────────────────
+// ── Firestore implementation (CSCE courses only) ─────────────────────────────
 
 const COURSES_COLLECTION = "courses";
 const META_COLLECTION = "catalog_meta";
@@ -155,37 +168,52 @@ async function ensureSeeded(): Promise<void> {
       return;
     }
 
-    console.log("[catalogStorage] Seeding Firestore courses collection from courses.json...");
-    const courses = await readCoursesFile();
-    console.log(`[catalogStorage] Loaded ${courses.length} courses from file, writing to Firestore...`);
+    console.log("[catalogStorage] Seeding Firestore with CSCE courses from courses.json...");
+    const allCourses = await readCoursesFile();
+    const csceCourses = allCourses.filter(isCsceCourse);
+    console.log(`[catalogStorage] Found ${csceCourses.length} CSCE courses (of ${allCourses.length} total), writing to Firestore...`);
 
     const BATCH_SIZE = 400;
-    for (let i = 0; i < courses.length; i += BATCH_SIZE) {
+    for (let i = 0; i < csceCourses.length; i += BATCH_SIZE) {
       const batch = db.batch();
-      const slice = courses.slice(i, i + BATCH_SIZE);
+      const slice = csceCourses.slice(i, i + BATCH_SIZE);
       for (const course of slice) {
         const docRef = db.collection(COURSES_COLLECTION).doc(String(course.course_id));
         batch.set(docRef, sanitizeForFirestore(course));
       }
       await batch.commit();
-      console.log(`[catalogStorage] Seeded batch ${Math.floor(i / BATCH_SIZE) + 1} (${Math.min(i + BATCH_SIZE, courses.length)}/${courses.length})`);
+      console.log(`[catalogStorage] Seeded batch ${Math.floor(i / BATCH_SIZE) + 1} (${Math.min(i + BATCH_SIZE, csceCourses.length)}/${csceCourses.length})`);
     }
 
-    await metaRef.set({ seeded: true, seeded_at: new Date().toISOString(), count: courses.length });
+    await metaRef.set({ seeded: true, seeded_at: new Date().toISOString(), count: csceCourses.length });
     seeded = true;
-    console.log(`[catalogStorage] Seeded ${courses.length} courses into Firestore.`);
+    console.log(`[catalogStorage] Seeded ${csceCourses.length} CSCE courses into Firestore.`);
   } catch (err) {
     console.error("[catalogStorage] ensureSeeded FAILED:", err);
     throw err;
   }
 }
 
+/** Read CSCE courses from Firestore. */
+async function getFirestoreCsceCourses(): Promise<any[]> {
+  await ensureSeeded();
+  const db = getDb();
+  const snapshot = await db.collection(COURSES_COLLECTION).get();
+  return snapshot.docs.map((doc) => deserializeFromFirestore(doc.data()));
+}
+
 const firestoreCatalogStorage: CatalogStorageProvider = {
   async getAllCourses() {
-    await ensureSeeded();
-    const db = getDb();
-    const snapshot = await db.collection(COURSES_COLLECTION).get();
-    return snapshot.docs.map((doc) => deserializeFromFirestore(doc.data()));
+    return getFirestoreCsceCourses();
+  },
+
+  async getFullCatalog() {
+    const allStatic = await readCoursesFile();
+    const csceCourses = await getFirestoreCsceCourses();
+
+    const csceById = new Map(csceCourses.map((c: any) => [c.course_id, c]));
+    const nonCsce = allStatic.filter((c: any) => !isCsceCourse(c));
+    return [...nonCsce, ...csceById.values()];
   },
 
   async getCourseById(courseId) {
@@ -204,8 +232,11 @@ const firestoreCatalogStorage: CatalogStorageProvider = {
       .orderBy("course_id", "desc")
       .limit(1)
       .get();
-    const maxId = snapshot.empty ? 0 : (snapshot.docs[0].data().course_id ?? 0);
-    const newId = maxId + 1;
+
+    const allStatic = await readCoursesFile();
+    const maxStaticId = nextCourseId(allStatic) - 1;
+    const maxFirestoreId = snapshot.empty ? 0 : (snapshot.docs[0].data().course_id ?? 0);
+    const newId = Math.max(maxStaticId, maxFirestoreId) + 1;
 
     const newCourse = { ...course, course_id: newId };
     await db.collection(COURSES_COLLECTION).doc(String(newId)).set(sanitizeForFirestore(newCourse));
@@ -241,7 +272,7 @@ const firestoreCatalogStorage: CatalogStorageProvider = {
 const useLocal = env.nodeEnv !== "production";
 
 console.log(
-  `[catalogStorage] Using ${useLocal ? "local JSON file" : "Firestore"} catalog storage (${env.nodeEnv})`
+  `[catalogStorage] Using ${useLocal ? "local JSON file" : "Firestore (CSCE only)"} catalog storage (${env.nodeEnv})`
 );
 
 export const catalogStorage: CatalogStorageProvider = useLocal

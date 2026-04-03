@@ -19,7 +19,7 @@ const loadJson = async (filename: string) => {
 
 catalogRouter.get("/api/courses", async (_req, res, next) => {
   try {
-    const courses = await catalogStorage.getAllCourses();
+    const courses = await catalogStorage.getFullCatalog();
     res.json({ courses });
   } catch (err) {
     next(err);
@@ -223,7 +223,7 @@ catalogRouter.post("/api/requirements/evaluate-local", async (req, res, next) =>
       return res.status(404).json({ error: "Requirement set not found" });
     }
 
-    const allCourses = await catalogStorage.getAllCourses();
+    const allCourses = await catalogStorage.getFullCatalog();
 
     // Build catalog index keyed by the primary course code (e.g. "ACCT 209").
     // courses.json stores the code in c.codes[0] or via primary_subject/primary_number.
