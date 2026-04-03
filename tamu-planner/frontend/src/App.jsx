@@ -20,7 +20,8 @@ import {
   PanelRightOpen,
   Loader2,
   RefreshCw,
-  Info
+  Info,
+  Settings
 } from 'lucide-react';
 
 import { computeEvaluationSignature } from './utils/evaluationFreshness.mjs';
@@ -1101,6 +1102,21 @@ function App() {
   const uploadInputRef = useRef(null);
   const chatUploadInputRef = useRef(null);
 
+  // ── Theme (dark / light) ────────────────────────────────────────────────
+  const [theme, setTheme] = useState(() => {
+    try { return localStorage.getItem('tamuPlannerTheme') || 'light'; } catch { return 'light'; }
+  });
+
+  // ── Profile dropdown ────────────────────────────────────────────────────
+  const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const profileDropdownRef = useRef(null);
+
+  // ── Course reassignment overrides for degree evaluation ─────────────────
+  // Maps courseCode -> group name (or '__wna__' to force Work Not Applied)
+  const [courseOverrides, setCourseOverrides] = useState({});
+  // Tracks which group cards have their per-course edit dropdowns open
+  const [editingGroupCards, setEditingGroupCards] = useState(new Set());
+
   const updateDisplayStudentName = useCallback((rawName) => {
     const normalized = normalizeDisplayStudentName(rawName);
     if (!normalized) return;
@@ -1459,6 +1475,26 @@ function App() {
     }
   }, [authToken, authUser, loadUserData]);
 
+  // Sync dark/light class to <html> and persist preference
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'dark') root.classList.add('dark');
+    else root.classList.remove('dark');
+    try { localStorage.setItem('tamuPlannerTheme', theme); } catch {}
+  }, [theme]);
+
+  // Close profile dropdown when clicking outside
+  useEffect(() => {
+    if (!profileDropdownOpen) return;
+    const handler = (e) => {
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(e.target)) {
+        setProfileDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [profileDropdownOpen]);
+
   const buildCourseIndex = (courses) => {
     const map = new Map();
     courses.forEach((c) => {
@@ -1570,12 +1606,24 @@ function App() {
         const meta = coursesIndex.get(code) || {};
         const userCategories = Array.isArray(course.categories) ? course.categories : [];
         const catalogCategories = Array.isArray(meta.categories) ? meta.categories : [];
+        const overrideGroup = courseOverrides[code];
+        let categories;
+        if (overrideGroup === '__wna__') {
+          // User explicitly moved this to Work Not Applied
+          categories = [];
+        } else if (overrideGroup) {
+          // User assigned to a specific group — treat as authoritative
+          categories = [overrideGroup];
+        } else {
+          // Default: merge catalog + any user-tagged categories
+          categories = Array.from(new Set([...catalogCategories, ...userCategories]));
+        }
         combined.set(code, {
           code,
           department: code.split(' ')[0],
           course_number: code.split(' ')[1],
           credits: Number(course.credits) || Number(meta.credits) || 0,
-          categories: Array.from(new Set([...catalogCategories, ...userCategories])),
+          categories,
           grade: course.grade || null,
           status: isCourseMarkedInProgress(course) ? 'in-progress' : 'completed'
         });
@@ -1588,12 +1636,21 @@ function App() {
           if (excludedFromEval.has(code)) return;
           if (combined.has(code)) return; // prefer transcript/in-progress copy
           const meta = coursesIndex.get(code) || {};
+          const planOverride = courseOverrides[code];
+          let planCategories;
+          if (planOverride === '__wna__') {
+            planCategories = [];
+          } else if (planOverride) {
+            planCategories = [planOverride];
+          } else {
+            planCategories = Array.isArray(meta.categories) ? [...meta.categories] : [];
+          }
           combined.set(code, {
             code,
             department: code.split(' ')[0],
             course_number: code.split(' ')[1],
             credits: Number(meta.credits) || 0,
-            categories: Array.isArray(meta.categories) ? meta.categories : [],
+            categories: planCategories,
             grade: null,
             status: 'planned'
           });
@@ -1994,6 +2051,19 @@ function App() {
       prevPlansRef.current = semesterPlans;
     }
   }, [semesterPlans]);
+
+  // Re-run degree evaluation whenever the user changes a course override,
+  // but only if an evaluation already exists (avoids running on first mount).
+  const courseOverridesInitialMount = useRef(true);
+  useEffect(() => {
+    if (courseOverridesInitialMount.current) {
+      courseOverridesInitialMount.current = false;
+      return;
+    }
+    if (!degreeResult) return;
+    evaluateRequirementsLocal();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseOverrides]);
 
   const handleSavePlan = async () => {
     await savePlanToStorage();
@@ -3392,20 +3462,60 @@ Now answer the student's question based on this context and any additional infor
                       Work Not Applied ({degreeResult.workNotApplied.length} course{degreeResult.workNotApplied.length !== 1 ? 's' : ''})
                     </summary>
                     <div className="space-y-2 mt-2">
-                      <p className="text-xs text-gray-500 ml-6">These courses are not currently being used to satisfy any degree requirement group.</p>
-                      {degreeResult.workNotApplied.map((entry) => (
-                        <div key={entry.code} className="rounded border border-blue-200 bg-blue-50/50 px-3 py-2 ml-6">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-gray-900">{entry.code}</span>
-                            <span className="text-xs text-gray-500">{entry.credits} credit{entry.credits !== 1 ? 's' : ''} · {entry.status}</span>
+                      <p className="text-xs text-gray-500 ml-6">
+                        These courses are not currently being used to satisfy any degree requirement group.
+                        Use the dropdown to manually assign a course — the evaluation will re-run automatically.
+                      </p>
+                      {degreeResult.workNotApplied.map((entry) => {
+                        const activeOverride = courseOverrides[entry.code] || '';
+                        const hasPotential = entry.potentialGroups?.length > 0;
+                        return (
+                          <div key={entry.code} className={`rounded border px-3 py-2.5 ml-6 ${activeOverride ? 'border-green-300 bg-green-50/40' : 'border-blue-200 bg-blue-50/50'}`}>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <span className="text-sm font-semibold text-gray-900">{entry.code}</span>
+                                {COURSES[entry.code]?.title && (
+                                  <span className="text-xs text-gray-500 ml-1.5">{COURSES[entry.code].title}</span>
+                                )}
+                              </div>
+                              <span className="text-xs text-gray-400 shrink-0 mt-0.5">
+                                {entry.credits} cr · {entry.status}
+                              </span>
+                            </div>
+                            {hasPotential ? (
+                              <div className="mt-2 flex items-center gap-2">
+                                <label htmlFor={`override-${entry.code}`} className="text-xs text-gray-500 shrink-0">
+                                  Assign to:
+                                </label>
+                                <select
+                                  id={`override-${entry.code}`}
+                                  value={activeOverride}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setCourseOverrides((prev) => {
+                                      const next = { ...prev };
+                                      if (val) next[entry.code] = val;
+                                      else delete next[entry.code];
+                                      return next;
+                                    });
+                                  }}
+                                  className="flex-1 min-w-0 text-xs rounded border border-blue-300 bg-white px-2 py-1 text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#500000]"
+                                >
+                                  <option value="">— not assigned —</option>
+                                  {entry.potentialGroups.map((group) => (
+                                    <option key={group} value={group}>{group}</option>
+                                  ))}
+                                </select>
+                                {activeOverride && (
+                                  <span className="text-xs font-medium text-green-600 shrink-0">✓ assigned</span>
+                                )}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-gray-400 mt-1 italic">No applicable requirement groups found.</p>
+                            )}
                           </div>
-                          {entry.potentialGroups?.length > 0 && (
-                            <p className="text-xs text-blue-700 mt-1">
-                              Could apply to: {entry.potentialGroups.join(', ')}
-                            </p>
-                          )}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </details>
                 )}
@@ -5481,6 +5591,51 @@ Now answer the student's question based on this context and any additional infor
     );
   };
 
+  const SettingsTab = () => {
+    return (
+      <div className="space-y-6 max-w-2xl">
+        <div className="bg-white rounded-xl shadow p-6">
+          <h2 className="text-xl font-bold text-gray-900 mb-1">Settings</h2>
+          <p className="text-sm text-gray-500 mb-6">Manage your preferences for TAMU Academic Planner.</p>
+
+          {/* Accessibility section */}
+          <section>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
+              Accessibility
+            </h3>
+            <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 overflow-hidden">
+              {/* Dark mode toggle */}
+              <div className="flex items-center justify-between px-4 py-3.5 bg-white">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Dark mode</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Switch between light and dark interface
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={theme === 'dark'}
+                  onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[#500000] focus:ring-offset-2 ${
+                    theme === 'dark' ? 'bg-[#500000]' : 'bg-gray-300'
+                  }`}
+                >
+                  <span className="sr-only">Toggle dark mode</span>
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ${
+                      theme === 'dark' ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    );
+  };
+
   const LoginPage = () => {
     return (
       <div className="min-h-[70vh] flex items-center justify-center">
@@ -5543,33 +5698,67 @@ Now answer the student's question based on this context and any additional infor
                 </button>
                 <div className="flex gap-2">
                   {authUser ? (
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-2 bg-white/10 border border-white/25 px-3 py-2 rounded-lg text-white">
+                    <div className="relative" ref={profileDropdownRef}>
+                      <button
+                        type="button"
+                        onClick={() => setProfileDropdownOpen((prev) => !prev)}
+                        className="flex items-center gap-2.5 bg-white/10 border border-white/25 pl-3 pr-2.5 py-2 rounded-lg text-white hover:bg-white/20 transition-colors"
+                        aria-haspopup="true"
+                        aria-expanded={profileDropdownOpen}
+                      >
                         {authUser.picture ? (
                           <img
                             src={authUser.picture}
                             alt="avatar"
-                            className="w-6 h-6 rounded-full bg-white"
+                            className="w-7 h-7 rounded-full ring-1 ring-white/30"
                           />
                         ) : (
-                          <div className="w-6 h-6 rounded-full bg-white/80" />
+                          <div className="w-7 h-7 rounded-full bg-white/40 flex items-center justify-center text-xs font-bold">
+                            {(authUser.name || 'S')[0].toUpperCase()}
+                          </div>
                         )}
-                        <div className="leading-tight">
+                        <div className="leading-tight text-left hidden sm:block">
                           <div className="text-sm font-semibold">{authUser.name || 'Student'}</div>
-                          <div className="text-[11px] text-white/80">{authUser.email}</div>
+                          <div className="text-[11px] text-white/70">{authUser.email}</div>
                         </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (window.confirm('Are you sure you want to log out?')) {
-                            logout();
-                          }
-                        }}
-                        className="flex items-center gap-2 border border-white/60 px-4 py-2 rounded-lg text-white hover:bg-white/10"
-                      >
-                        Logout
+                        <ChevronDown
+                          className={`w-4 h-4 text-white/60 transition-transform duration-150 ${profileDropdownOpen ? 'rotate-180' : ''}`}
+                        />
                       </button>
+
+                      {profileDropdownOpen && (
+                        <div className="absolute right-0 top-full mt-2 w-52 bg-white rounded-xl shadow-xl border border-gray-200 py-1.5 z-50 animate-fade-in">
+                          <div className="px-4 py-2.5 border-b border-gray-100">
+                            <p className="text-sm font-semibold text-gray-900 truncate">{authUser.name || 'Student'}</p>
+                            <p className="text-xs text-gray-500 truncate">{authUser.email}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setProfileDropdownOpen(false);
+                              setActiveTab('settings');
+                            }}
+                            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                          >
+                            <Settings className="w-4 h-4 text-gray-500" />
+                            Settings
+                          </button>
+                          <div className="my-1 border-t border-gray-100" />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setProfileDropdownOpen(false);
+                              if (window.confirm('Are you sure you want to log out?')) {
+                                logout();
+                              }
+                            }}
+                            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                          >
+                            <X className="w-4 h-4" />
+                            Logout
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <button
@@ -5633,6 +5822,7 @@ Now answer the student's question based on this context and any additional infor
               onFullscreenChange={setIsFlowFullscreen}
             />
           ) : <LoginPage />)}
+          {activeTab === 'settings' && (authUser ? <SettingsTab /> : <LoginPage />)}
           {activeTab === 'login' && <LoginPage />}
         </div>
       </main>

@@ -4,6 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TAMU Academic Planner</title>
+    <!-- Apply saved theme immediately to prevent flash of unstyled content -->
+    <script>
+      (function () {
+        try {
+          if (localStorage.getItem('tamuPlannerTheme') === 'dark') {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -46,3 +46,106 @@ details > summary .details-chevron {
 details[open] > summary .details-chevron {
   transform: rotate(180deg);
 }
+
+/* ─── Dark mode overrides ─────────────────────────────────────────────────── */
+.dark {
+  color-scheme: dark;
+}
+
+/* App background */
+.dark body,
+.dark .min-h-screen {
+  background-color: #0f172a !important;
+}
+
+/* Card / surface backgrounds */
+.dark .bg-white {
+  background-color: #1e293b !important;
+}
+.dark .bg-gray-50 {
+  background-color: #1e293b !important;
+}
+.dark .bg-gray-100 {
+  background-color: #0f172a !important;
+}
+.dark .bg-gray-200 {
+  background-color: #1e293b !important;
+}
+
+/* Text colors */
+.dark .text-gray-900 {
+  color: #f1f5f9 !important;
+}
+.dark .text-gray-800 {
+  color: #e2e8f0 !important;
+}
+.dark .text-gray-700 {
+  color: #cbd5e1 !important;
+}
+.dark .text-gray-600 {
+  color: #94a3b8 !important;
+}
+.dark .text-gray-500 {
+  color: #64748b !important;
+}
+.dark .text-gray-400 {
+  color: #475569 !important;
+}
+
+/* Borders */
+.dark .border-gray-100 {
+  border-color: #1e293b !important;
+}
+.dark .border-gray-200 {
+  border-color: #334155 !important;
+}
+.dark .border-gray-300 {
+  border-color: #475569 !important;
+}
+
+/* Form controls */
+.dark input:not([type='checkbox']):not([type='radio']):not([type='range']),
+.dark select,
+.dark textarea {
+  background-color: #334155 !important;
+  color: #f1f5f9 !important;
+  border-color: #475569 !important;
+}
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #64748b !important;
+}
+
+/* Hover states */
+.dark .hover\:bg-gray-50:hover {
+  background-color: #334155 !important;
+}
+.dark .hover\:bg-gray-100:hover {
+  background-color: #1e293b !important;
+}
+
+/* Shadows */
+.dark .shadow {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6) !important;
+}
+.dark .shadow-lg {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6) !important;
+}
+.dark .shadow-xl {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7) !important;
+}
+.dark .shadow-2xl {
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.8) !important;
+}
+
+/* Nav & misc structural */
+.dark nav.bg-white {
+  background-color: #1e293b !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5) !important;
+}
+.dark .border-b {
+  border-bottom-color: #334155 !important;
+}
+.dark .border-t {
+  border-top-color: #334155 !important;
+}
