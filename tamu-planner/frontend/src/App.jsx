@@ -1111,12 +1111,6 @@ function App() {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const profileDropdownRef = useRef(null);
 
-  // ── Course reassignment overrides for degree evaluation ─────────────────
-  // Maps courseCode -> group name (or '__wna__' to force Work Not Applied)
-  const [courseOverrides, setCourseOverrides] = useState({});
-  // Tracks which group cards have their per-course edit dropdowns open
-  const [editingGroupCards, setEditingGroupCards] = useState(new Set());
-
   const updateDisplayStudentName = useCallback((rawName) => {
     const normalized = normalizeDisplayStudentName(rawName);
     if (!normalized) return;
@@ -1606,24 +1600,12 @@ function App() {
         const meta = coursesIndex.get(code) || {};
         const userCategories = Array.isArray(course.categories) ? course.categories : [];
         const catalogCategories = Array.isArray(meta.categories) ? meta.categories : [];
-        const overrideGroup = courseOverrides[code];
-        let categories;
-        if (overrideGroup === '__wna__') {
-          // User explicitly moved this to Work Not Applied
-          categories = [];
-        } else if (overrideGroup) {
-          // User assigned to a specific group — treat as authoritative
-          categories = [overrideGroup];
-        } else {
-          // Default: merge catalog + any user-tagged categories
-          categories = Array.from(new Set([...catalogCategories, ...userCategories]));
-        }
         combined.set(code, {
           code,
           department: code.split(' ')[0],
           course_number: code.split(' ')[1],
           credits: Number(course.credits) || Number(meta.credits) || 0,
-          categories,
+          categories: Array.from(new Set([...catalogCategories, ...userCategories])),
           grade: course.grade || null,
           status: isCourseMarkedInProgress(course) ? 'in-progress' : 'completed'
         });
@@ -1636,21 +1618,12 @@ function App() {
           if (excludedFromEval.has(code)) return;
           if (combined.has(code)) return; // prefer transcript/in-progress copy
           const meta = coursesIndex.get(code) || {};
-          const planOverride = courseOverrides[code];
-          let planCategories;
-          if (planOverride === '__wna__') {
-            planCategories = [];
-          } else if (planOverride) {
-            planCategories = [planOverride];
-          } else {
-            planCategories = Array.isArray(meta.categories) ? [...meta.categories] : [];
-          }
           combined.set(code, {
             code,
             department: code.split(' ')[0],
             course_number: code.split(' ')[1],
             credits: Number(meta.credits) || 0,
-            categories: planCategories,
+            categories: Array.isArray(meta.categories) ? meta.categories : [],
             grade: null,
             status: 'planned'
           });
@@ -2052,19 +2025,6 @@ function App() {
     }
   }, [semesterPlans]);
 
-  // Re-run degree evaluation whenever the user changes a course override,
-  // but only if an evaluation already exists (avoids running on first mount).
-  const courseOverridesInitialMount = useRef(true);
-  useEffect(() => {
-    if (courseOverridesInitialMount.current) {
-      courseOverridesInitialMount.current = false;
-      return;
-    }
-    if (!degreeResult) return;
-    evaluateRequirementsLocal();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [courseOverrides]);
-
   const handleSavePlan = async () => {
     await savePlanToStorage();
     setPlannerDirty(false);
@@ -2088,8 +2048,8 @@ function App() {
     clearTermHighlight();
     const el = document.querySelector(`[data-term-label="${CSS.escape(termLabel)}"]`);
     if (el) {
-      el.style.borderColor = '#500000';
-      el.style.boxShadow = '0 0 0 2px rgba(80, 0, 0, 0.3)';
+      el.style.borderColor = theme === 'dark' ? '#f1a0a0' : '#500000';
+      el.style.boxShadow = theme === 'dark' ? '0 0 0 2px rgba(241, 160, 160, 0.3)' : '0 0 0 2px rgba(80, 0, 0, 0.3)';
     }
     dragOverTermLabelRef.current = termLabel;
   };
@@ -2992,7 +2952,7 @@ Now answer the student's question based on this context and any additional infor
     return (
       <div className="bg-white rounded-lg shadow p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold" style={{ color: '#500000' }}>
+          <h3 className="text-lg font-bold" style={{ color: theme === 'dark' ? '#f1a0a0' : '#500000' }}>
             Areas
           </h3>
 
@@ -3029,7 +2989,7 @@ Now answer the student's question based on this context and any additional infor
             const pct = (v) => (area.required > 0 ? `${(v / area.required) * 100}%` : '0%');
 
             return (
-              <div key={area.id} className="border rounded-lg" style={{ borderColor: '#2f9e44' }}>
+              <div key={area.id} className="border rounded-lg" style={{ borderColor: theme === 'dark' ? '#4ade80' : '#2f9e44' }}>
                 <button
                   type="button"
                   onClick={() => toggleArea(area.id)}
@@ -3356,11 +3316,11 @@ Now answer the student's question based on this context and any additional infor
                           aria-valuemax={100}
                           aria-label={ariaLabel}
                           title={ariaLabel}
-                          style={{ backgroundColor: group.satisfied ? '#bbf7d0' : '#fca5a5' }}
+                          style={{ backgroundColor: group.satisfied ? (theme === 'dark' ? 'rgba(74,222,128,0.2)' : '#bbf7d0') : (theme === 'dark' ? 'rgba(248,113,113,0.2)' : '#fca5a5') }}
                         >
                           <div
                             className="h-full rounded-full"
-                            style={{ width: group.satisfied ? '100%' : '0%', backgroundColor: '#16a34a' }}
+                            style={{ width: group.satisfied ? '100%' : '0%', backgroundColor: theme === 'dark' ? '#4ade80' : '#16a34a' }}
                           />
                         </div>
                       )}
@@ -3413,14 +3373,14 @@ Now answer the student's question based on this context and any additional infor
                     <span className="text-sm font-medium text-gray-700">
                       Degree Progress: {totalSatisfied}/{totalGroups} requirement groups satisfied
                     </span>
-                    <span className="text-sm font-bold" style={{ color: pctDone === 100 ? '#16a34a' : '#500000' }}>
+                    <span className="text-sm font-bold" style={{ color: pctDone === 100 ? (theme === 'dark' ? '#4ade80' : '#16a34a') : (theme === 'dark' ? '#f1a0a0' : '#500000') }}>
                       {pctDone}%
                     </span>
                   </div>
                   <div className="h-3 rounded-full bg-gray-200 overflow-hidden">
                     <div
                       className="h-full rounded-full transition-all"
-                      style={{ width: `${pctDone}%`, backgroundColor: pctDone === 100 ? '#16a34a' : '#500000' }}
+                      style={{ width: `${pctDone}%`, backgroundColor: pctDone === 100 ? '#16a34a' : (theme === 'dark' ? '#7f1d1d' : '#500000') }}
                     />
                   </div>
                 </div>
@@ -3462,60 +3422,20 @@ Now answer the student's question based on this context and any additional infor
                       Work Not Applied ({degreeResult.workNotApplied.length} course{degreeResult.workNotApplied.length !== 1 ? 's' : ''})
                     </summary>
                     <div className="space-y-2 mt-2">
-                      <p className="text-xs text-gray-500 ml-6">
-                        These courses are not currently being used to satisfy any degree requirement group.
-                        Use the dropdown to manually assign a course — the evaluation will re-run automatically.
-                      </p>
-                      {degreeResult.workNotApplied.map((entry) => {
-                        const activeOverride = courseOverrides[entry.code] || '';
-                        const hasPotential = entry.potentialGroups?.length > 0;
-                        return (
-                          <div key={entry.code} className={`rounded border px-3 py-2.5 ml-6 ${activeOverride ? 'border-green-300 bg-green-50/40' : 'border-blue-200 bg-blue-50/50'}`}>
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0">
-                                <span className="text-sm font-semibold text-gray-900">{entry.code}</span>
-                                {COURSES[entry.code]?.title && (
-                                  <span className="text-xs text-gray-500 ml-1.5">{COURSES[entry.code].title}</span>
-                                )}
-                              </div>
-                              <span className="text-xs text-gray-400 shrink-0 mt-0.5">
-                                {entry.credits} cr · {entry.status}
-                              </span>
-                            </div>
-                            {hasPotential ? (
-                              <div className="mt-2 flex items-center gap-2">
-                                <label htmlFor={`override-${entry.code}`} className="text-xs text-gray-500 shrink-0">
-                                  Assign to:
-                                </label>
-                                <select
-                                  id={`override-${entry.code}`}
-                                  value={activeOverride}
-                                  onChange={(e) => {
-                                    const val = e.target.value;
-                                    setCourseOverrides((prev) => {
-                                      const next = { ...prev };
-                                      if (val) next[entry.code] = val;
-                                      else delete next[entry.code];
-                                      return next;
-                                    });
-                                  }}
-                                  className="flex-1 min-w-0 text-xs rounded border border-blue-300 bg-white px-2 py-1 text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#500000]"
-                                >
-                                  <option value="">— not assigned —</option>
-                                  {entry.potentialGroups.map((group) => (
-                                    <option key={group} value={group}>{group}</option>
-                                  ))}
-                                </select>
-                                {activeOverride && (
-                                  <span className="text-xs font-medium text-green-600 shrink-0">✓ assigned</span>
-                                )}
-                              </div>
-                            ) : (
-                              <p className="text-xs text-gray-400 mt-1 italic">No applicable requirement groups found.</p>
-                            )}
+                      <p className="text-xs text-gray-500 ml-6">These courses are not currently being used to satisfy any degree requirement group.</p>
+                      {degreeResult.workNotApplied.map((entry) => (
+                        <div key={entry.code} className="rounded border border-blue-200 bg-blue-50/50 px-3 py-2 ml-6">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-gray-900">{entry.code}</span>
+                            <span className="text-xs text-gray-500">{entry.credits} credit{entry.credits !== 1 ? 's' : ''} · {entry.status}</span>
                           </div>
-                        );
-                      })}
+                          {entry.potentialGroups?.length > 0 && (
+                            <p className="text-xs text-blue-700 mt-1">
+                              Could apply to: {entry.potentialGroups.join(', ')}
+                            </p>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   </details>
                 )}
@@ -3593,11 +3513,11 @@ Now answer the student's question based on this context and any additional infor
                           aria-valuemax={100}
                           aria-label={ariaLabel}
                           title={ariaLabel}
-                          style={{ backgroundColor: group.satisfied ? '#bbf7d0' : '#fca5a5' }}
+                          style={{ backgroundColor: group.satisfied ? (theme === 'dark' ? 'rgba(74,222,128,0.2)' : '#bbf7d0') : (theme === 'dark' ? 'rgba(248,113,113,0.2)' : '#fca5a5') }}
                         >
                           <div
                             className="h-full rounded-full"
-                            style={{ width: group.satisfied ? '100%' : '0%', backgroundColor: '#16a34a' }}
+                            style={{ width: group.satisfied ? '100%' : '0%', backgroundColor: theme === 'dark' ? '#4ade80' : '#16a34a' }}
                           />
                         </div>
                       )}
@@ -3703,14 +3623,14 @@ Now answer the student's question based on this context and any additional infor
                     ? `Minor Credits: ${minorCreditProgress.earnedCredits}/${minorCreditProgress.requiredCredits} credits`
                     : `Minor Progress: ${minorSatisfied}/${minorTotal} requirement groups satisfied`}
                 </span>
-                <span className="text-sm font-bold" style={{ color: minorPct === 100 ? '#16a34a' : '#500000' }}>
+                <span className="text-sm font-bold" style={{ color: minorPct === 100 ? (theme === 'dark' ? '#4ade80' : '#16a34a') : (theme === 'dark' ? '#f1a0a0' : '#500000') }}>
                   {minorPct}%
                 </span>
               </div>
               <div className="h-3 rounded-full bg-gray-200 overflow-hidden">
                 <div
                   className="h-full rounded-full transition-all"
-                  style={{ width: `${minorPct}%`, backgroundColor: minorPct === 100 ? '#16a34a' : '#500000' }}
+                  style={{ width: `${minorPct}%`, backgroundColor: minorPct === 100 ? '#16a34a' : (theme === 'dark' ? '#7f1d1d' : '#500000') }}
                 />
               </div>
             </div>
@@ -4798,7 +4718,7 @@ Now answer the student's question based on this context and any additional infor
           return (
             <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setShowDifficultyInfo(null)}>
               <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                <div className="px-6 py-4 border-b border-gray-100" style={{ backgroundColor: cfg ? cfg.bg : '#f3f4f6' }}>
+                <div className="px-6 py-4 border-b border-gray-100" style={{ backgroundColor: cfg ? (theme === 'dark' ? `${cfg.color}22` : cfg.bg) : (theme === 'dark' ? '#334155' : '#f3f4f6') }}>
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="font-bold text-lg text-gray-900">{code}</h3>
@@ -4937,12 +4857,12 @@ Now answer the student's question based on this context and any additional infor
                         }`}
                         onMouseEnter={(e) => {
                           if (!isDisabled) {
-                            e.currentTarget.style.borderColor = '#500000';
+                            e.currentTarget.style.borderColor = theme === 'dark' ? '#f1a0a0' : '#500000';
                           }
                         }}
                         onMouseLeave={(e) => {
                           if (!isDisabled) {
-                            e.currentTarget.style.borderColor = '#e5e7eb';
+                            e.currentTarget.style.borderColor = theme === 'dark' ? '#334155' : '#e5e7eb';
                           }
                         }}
                         onClick={() => {
@@ -5799,7 +5719,7 @@ Now answer the student's question based on this context and any additional infor
                           : 'border-transparent text-gray-600 hover:text-gray-900'
                       }`}
                       style={
-                        activeTab === tab.id ? { borderColor: '#500000', color: '#500000' } : {}
+                        activeTab === tab.id ? { borderColor: theme === 'dark' ? '#f1a0a0' : '#500000', color: theme === 'dark' ? '#f1a0a0' : '#500000' } : {}
                       }
                     >
                       {tab.label}
