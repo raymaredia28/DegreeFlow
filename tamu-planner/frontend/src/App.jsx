@@ -2021,15 +2021,121 @@ function App() {
     COURSES[courseCode]?.status === 'in-progress';
   const isCoursePlanned = (courseCode) =>
     Object.values(semesterPlans).some((courses) => courses?.includes(courseCode));
+  const isCoursePlannedOnly = (courseCode) =>
+    Boolean(courseCode) &&
+    isCoursePlanned(courseCode) &&
+    !isCourseCompleted(courseCode) &&
+    !isCourseInProgress(courseCode);
+  const getCourseCreditsForRequirementBar = (rawCode) => {
+    const code = normalizeCode(rawCode);
+    if (!code) return 0;
 
-  // Checks if a prerequisite is satisfied for a given semester, considering:
-  // 1. Already completed (on transcript)
-  // 2. In progress (on transcript)
-  // 3. Planned in an earlier semester
-  const isPrereqSatisfiedForSemester = (prereqCode, semester) => {
-    if (isCourseCompleted(prereqCode) || isCourseInProgress(prereqCode)) return true;
-    return isCoursePlannedInEarlierSemester(prereqCode, semester);
+    const fromCatalogMap = Number(coursesIndex.get(code)?.credits);
+    if (Number.isFinite(fromCatalogMap) && fromCatalogMap > 0) return fromCatalogMap;
+
+    const fromCourses = Number(COURSES[code]?.credits);
+    if (Number.isFinite(fromCourses) && fromCourses > 0) return fromCourses;
+
+    const transcriptMatch = transcriptCourseList.find(
+      (course) => normalizeCode(course?.code) === code
+    );
+    const fromTranscript = Number(transcriptMatch?.credits);
+    if (Number.isFinite(fromTranscript) && fromTranscript > 0) return fromTranscript;
+
+    return 3;
   };
+  const getRequirementProgressBreakdown = (group) => {
+    const required = Number(group?.requiredCredits) || 0;
+    const earned = Number(group?.earnedCredits) || 0;
+
+    if (required <= 0) {
+      return {
+        greenCredits: earned,
+        plannedCredits: 0,
+        greenPct: group?.satisfied ? 100 : 0,
+        plannedPct: 0,
+        combinedPct: group?.satisfied ? 100 : 0,
+        plannedLabelCredits: 0
+      };
+    }
+
+    const usedCodes = Array.from(
+      new Set(
+        (Array.isArray(group?.usedCourses) ? group.usedCourses : [])
+          .map((code) => normalizeCode(code))
+          .filter(Boolean)
+      )
+    );
+
+    let usedPlannedCredits = 0;
+    usedCodes.forEach((code) => {
+      const credits = getCourseCreditsForRequirementBar(code);
+      if (credits <= 0) return;
+
+      const isPlannedByEquivalent = getEquivalents(code).some((eq) => isCoursePlannedOnly(eq));
+      const isPlannedOnlyCode = isCoursePlannedOnly(code) || isPlannedByEquivalent;
+
+      if (isPlannedOnlyCode) {
+        usedPlannedCredits += credits;
+      }
+    });
+
+    // Keep total fill as "earned / required" and recolor the tail segment for planned credits.
+    const combinedCredits = Math.min(Math.max(earned, 0), required);
+    const plannedCredits = Math.min(Math.max(usedPlannedCredits, 0), combinedCredits);
+    const greenCredits = Math.max(combinedCredits - plannedCredits, 0);
+
+    return {
+      greenCredits,
+      plannedCredits,
+      greenPct: Math.min((greenCredits / required) * 100, 100),
+      plannedPct: Math.min((plannedCredits / required) * 100, 100),
+      combinedPct: Math.min(Math.round((combinedCredits / required) * 100), 100),
+      plannedLabelCredits: plannedCredits
+    };
+  };
+
+  const getPrereqOptionSemesterState = (option, semester) => {
+    const normalizedOption = normalizePrereqOption(option);
+    if (!normalizedOption) {
+      return {
+        satisfied: false,
+        completedOrInProgress: false,
+        plannedEarlier: false,
+        plannedThisSemester: false,
+        plannedAnywhere: false
+      };
+    }
+
+    const equivalentCodes = [normalizedOption.code, ...getEquivalents(normalizedOption.code)];
+    const completedOrInProgress = equivalentCodes.some(
+      (eqCode) => isCourseCompleted(eqCode) || isCourseInProgress(eqCode)
+    );
+    const plannedEarlier = equivalentCodes.some((eqCode) =>
+      isCoursePlannedInEarlierSemester(eqCode, semester)
+    );
+    const plannedThisSemester = equivalentCodes.some((eqCode) =>
+      (semesterPlans[semester] || []).includes(eqCode)
+    );
+    const plannedAnywhere = equivalentCodes.some((eqCode) => isCoursePlanned(eqCode));
+
+    return {
+      satisfied:
+        completedOrInProgress ||
+        plannedEarlier ||
+        (normalizedOption.concurrentOk && plannedThisSemester),
+      completedOrInProgress,
+      plannedEarlier,
+      plannedThisSemester,
+      plannedAnywhere
+    };
+  };
+
+  const isPrereqOptionSatisfiedForSemester = (option, semester) =>
+    getPrereqOptionSemesterState(option, semester).satisfied;
+
+  const isPrereqSatisfiedForSemester = (prereqCode, semester) =>
+    isPrereqOptionSatisfiedForSemester({ code: prereqCode, concurrentOk: false }, semester);
 
   const deriveTermStatus = (courses = []) => {
     let status = 'Evaluated';
@@ -3568,13 +3674,45 @@ Now answer the student's question using only this context.`
         errors.push(`${code} has already been taken or planned in a prior semester`);
       }
 
-      (course.prereqs || []).forEach((prereq) => {
-        if (isPrereqSatisfiedForSemester(prereq, semester)) return;
-        if (isCoursePlanned(prereq)) {
-          warnings.push(`${code}: prerequisite ${prereq} is planned but not in an earlier semester`);
-        } else {
-          errors.push(`${code} requires ${prereq} (not completed or planned)`);
+      const prereqGroups = getCoursePrereqGroups(course);
+      prereqGroups.forEach((group) => {
+        const optionStates = group.map((option) => ({
+          option,
+          state: getPrereqOptionSemesterState(option, semester)
+        }));
+
+        if (optionStates.some(({ state }) => state.satisfied)) return;
+
+        const strictPlanned = optionStates.find(
+          ({ option, state }) => !option.concurrentOk && state.plannedAnywhere
+        );
+        if (strictPlanned) {
+          warnings.push(
+            `${code}: prerequisite ${strictPlanned.option.code} is planned but not in an earlier semester`
+          );
+          return;
         }
+
+        const coreqPlannedLater = optionStates.find(
+          ({ option, state }) =>
+            option.concurrentOk &&
+            state.plannedAnywhere &&
+            !state.plannedEarlier &&
+            !state.plannedThisSemester
+        );
+        if (coreqPlannedLater) {
+          warnings.push(
+            `${code}: co-requisite ${coreqPlannedLater.option.code} is planned in a later semester`
+          );
+          return;
+        }
+
+        const requiredLabel = group
+          .map((option) =>
+            option.concurrentOk ? `${option.code} (or concurrent enrollment)` : option.code
+          )
+          .join(' or ');
+        errors.push(`${code} requires ${requiredLabel} (not completed or planned)`);
       });
 
       // Warn about equivalent courses already completed/planned
@@ -4027,11 +4165,13 @@ Now answer the student's question using only this context.`
             const renderGroup = (group) => {
               const earned = group.earnedCredits || 0;
               const required = group.requiredCredits || 0;
-              const pct = required > 0 ? Math.min(Math.round((earned / required) * 100), 100) : (group.satisfied ? 100 : 0);
+              const progressBreakdown = getRequirementProgressBreakdown(group);
+              const pct = required > 0 ? progressBreakdown.combinedPct : (group.satisfied ? 100 : 0);
               const exceeded = required > 0 && earned > required;
               const extraCredits = exceeded ? earned - required : 0;
+              const plannedCredits = progressBreakdown.plannedLabelCredits || 0;
               const ariaLabel = required > 0
-                ? `${earned} of ${required} credits completed${exceeded ? `, ${extraCredits} extra` : ''}`
+                ? `${earned} of ${required} credits counted${plannedCredits > 0 ? `, ${plannedCredits} planned` : ''}${exceeded ? `, ${extraCredits} extra` : ''}`
                 : (group.satisfied ? 'Satisfied' : 'Not satisfied');
               const hasOverflow = group.overflowCourses?.length > 0;
               const hasDetails = (group.missing?.length > 0) || (group.usedCourses?.length > 0) || hasOverflow;
@@ -4063,6 +4203,11 @@ Now answer the student's question using only this context.`
                         {group.satisfied && !exceeded && required > 0 && (
                           <span className="text-xs font-medium text-green-600">Completed</span>
                         )}
+                        {plannedCredits > 0 && (
+                          <span className="text-xs font-medium text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
+                            +{plannedCredits} planned
+                          </span>
+                        )}
                       </div>
                       {required > 0 && (
                         <div
@@ -4074,10 +4219,20 @@ Now answer the student's question using only this context.`
                           aria-label={ariaLabel}
                           title={ariaLabel}
                         >
-                          <div
-                            className="h-full rounded-full transition-all"
-                            style={{ width: `${pct}%`, backgroundColor: '#16a34a' }}
-                          />
+                          <div className="h-full flex">
+                            {progressBreakdown.greenPct > 0 && (
+                              <div
+                                className={`h-full ${progressBreakdown.plannedPct > 0 ? 'rounded-l-full' : 'rounded-full'} transition-all`}
+                                style={{ width: `${progressBreakdown.greenPct}%`, backgroundColor: '#16a34a' }}
+                              />
+                            )}
+                            {progressBreakdown.plannedPct > 0 && (
+                              <div
+                                className={`h-full ${progressBreakdown.greenPct > 0 ? '' : 'rounded-l-full'} ${pct >= 100 ? 'rounded-r-full' : ''} transition-all`}
+                                style={{ width: `${progressBreakdown.plannedPct}%`, backgroundColor: '#2563eb' }}
+                              />
+                            )}
+                          </div>
                         </div>
                       )}
                       {!required && (
@@ -4224,11 +4379,13 @@ Now answer the student's question using only this context.`
             const renderGroup = (group) => {
               const earned = group.earnedCredits || 0;
               const required = group.requiredCredits || 0;
-              const pct = required > 0 ? Math.min(Math.round((earned / required) * 100), 100) : (group.satisfied ? 100 : 0);
+              const progressBreakdown = getRequirementProgressBreakdown(group);
+              const pct = required > 0 ? progressBreakdown.combinedPct : (group.satisfied ? 100 : 0);
               const exceeded = required > 0 && earned > required;
               const extraCredits = exceeded ? earned - required : 0;
+              const plannedCredits = progressBreakdown.plannedLabelCredits || 0;
               const ariaLabel = required > 0
-                ? `${earned} of ${required} credits completed${exceeded ? `, ${extraCredits} extra` : ''}`
+                ? `${earned} of ${required} credits counted${plannedCredits > 0 ? `, ${plannedCredits} planned` : ''}${exceeded ? `, ${extraCredits} extra` : ''}`
                 : (group.satisfied ? 'Satisfied' : 'Not satisfied');
               const hasOverflow = group.overflowCourses?.length > 0;
               const hasDetails = (group.missing?.length > 0) || (group.usedCourses?.length > 0) || hasOverflow;
@@ -4260,6 +4417,11 @@ Now answer the student's question using only this context.`
                         {group.satisfied && !exceeded && required > 0 && (
                           <span className="text-xs font-medium text-green-600">Completed</span>
                         )}
+                        {plannedCredits > 0 && (
+                          <span className="text-xs font-medium text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
+                            +{plannedCredits} planned
+                          </span>
+                        )}
                       </div>
                       {required > 0 && (
                         <div
@@ -4271,10 +4433,20 @@ Now answer the student's question using only this context.`
                           aria-label={ariaLabel}
                           title={ariaLabel}
                         >
-                          <div
-                            className="h-full rounded-full transition-all"
-                            style={{ width: `${pct}%`, backgroundColor: '#16a34a' }}
-                          />
+                          <div className="h-full flex">
+                            {progressBreakdown.greenPct > 0 && (
+                              <div
+                                className={`h-full ${progressBreakdown.plannedPct > 0 ? 'rounded-l-full' : 'rounded-full'} transition-all`}
+                                style={{ width: `${progressBreakdown.greenPct}%`, backgroundColor: '#16a34a' }}
+                              />
+                            )}
+                            {progressBreakdown.plannedPct > 0 && (
+                              <div
+                                className={`h-full ${progressBreakdown.greenPct > 0 ? '' : 'rounded-l-full'} ${pct >= 100 ? 'rounded-r-full' : ''} transition-all`}
+                                style={{ width: `${progressBreakdown.plannedPct}%`, backgroundColor: '#2563eb' }}
+                              />
+                            )}
+                          </div>
                         </div>
                       )}
                       {!required && (
@@ -4411,11 +4583,13 @@ Now answer the student's question using only this context.`
               {minorResult.groups?.map((group) => {
                 const earned = group.earnedCredits || 0;
                 const required = group.requiredCredits || 0;
-                const pct = required > 0 ? Math.min(Math.round((earned / required) * 100), 100) : (group.satisfied ? 100 : 0);
+                const progressBreakdown = getRequirementProgressBreakdown(group);
+                const pct = required > 0 ? progressBreakdown.combinedPct : (group.satisfied ? 100 : 0);
                 const exceeded = required > 0 && earned > required;
                 const extraCredits = exceeded ? earned - required : 0;
+                const plannedCredits = progressBreakdown.plannedLabelCredits || 0;
                 const ariaLabel = required > 0
-                  ? `${earned} of ${required} credits completed${exceeded ? `, ${extraCredits} extra` : ''}`
+                  ? `${earned} of ${required} credits counted${plannedCredits > 0 ? `, ${plannedCredits} planned` : ''}${exceeded ? `, ${extraCredits} extra` : ''}`
                   : (group.satisfied ? 'Satisfied' : 'Not satisfied');
                 const hasOverflow = group.overflowCourses?.length > 0;
                 const hasDetails = (group.missing?.length > 0) || (group.usedCourses?.length > 0) || hasOverflow;
@@ -4450,6 +4624,11 @@ Now answer the student's question using only this context.`
                           {group.satisfied && !exceeded && required > 0 && (
                             <span className="text-xs font-medium text-green-600">Completed</span>
                           )}
+                          {plannedCredits > 0 && (
+                            <span className="text-xs font-medium text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
+                              +{plannedCredits} planned
+                            </span>
+                          )}
                         </div>
                         {required > 0 && (
                           <div
@@ -4461,10 +4640,20 @@ Now answer the student's question using only this context.`
                             aria-label={ariaLabel}
                             title={ariaLabel}
                           >
-                            <div
-                              className="h-full rounded-full transition-all"
-                              style={{ width: `${pct}%`, backgroundColor: '#16a34a' }}
-                            />
+                            <div className="h-full flex">
+                              {progressBreakdown.greenPct > 0 && (
+                                <div
+                                  className={`h-full ${progressBreakdown.plannedPct > 0 ? 'rounded-l-full' : 'rounded-full'} transition-all`}
+                                  style={{ width: `${progressBreakdown.greenPct}%`, backgroundColor: '#16a34a' }}
+                                />
+                              )}
+                              {progressBreakdown.plannedPct > 0 && (
+                                <div
+                                  className={`h-full ${progressBreakdown.greenPct > 0 ? '' : 'rounded-l-full'} ${pct >= 100 ? 'rounded-r-full' : ''} transition-all`}
+                                  style={{ width: `${progressBreakdown.plannedPct}%`, backgroundColor: '#2563eb' }}
+                                />
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -5336,16 +5525,53 @@ Now answer the student's question using only this context.`
                     ) : (
                       displayCourses.map((course) => {
                         const courseMeta = COURSES[course.code];
-                        const missingPrereqs = course.type === 'planned'
-                          ? (courseMeta?.prereqs || []).filter((p) => !isPrereqSatisfiedForSemester(p, term))
-                          : [];
-                        const hasPrereqIssue = missingPrereqs.length > 0;
-                        const plannedLaterPrereqs = hasPrereqIssue
-                          ? missingPrereqs.filter((p) => isCoursePlanned(p))
-                          : [];
-                        const trulyMissing = hasPrereqIssue
-                          ? missingPrereqs.filter((p) => !isCoursePlanned(p))
-                          : [];
+                        const plannedLaterPrereqs = [];
+                        const trulyMissing = [];
+                        if (course.type === 'planned') {
+                          const prereqGroups = getCoursePrereqGroups(courseMeta);
+                          prereqGroups.forEach((group) => {
+                            const optionStates = group.map((option) => ({
+                              option,
+                              state: getPrereqOptionSemesterState(option, term)
+                            }));
+
+                            if (optionStates.some(({ state }) => state.satisfied)) return;
+
+                            const strictPlanned = optionStates.find(
+                              ({ option, state }) => !option.concurrentOk && state.plannedAnywhere
+                            );
+                            if (strictPlanned) {
+                              plannedLaterPrereqs.push(
+                                `Prerequisite ${strictPlanned.option.code} is planned but not in an earlier semester`
+                              );
+                              return;
+                            }
+
+                            const coreqPlannedLater = optionStates.find(
+                              ({ option, state }) =>
+                                option.concurrentOk &&
+                                state.plannedAnywhere &&
+                                !state.plannedEarlier &&
+                                !state.plannedThisSemester
+                            );
+                            if (coreqPlannedLater) {
+                              plannedLaterPrereqs.push(
+                                `Co-requisite ${coreqPlannedLater.option.code} is planned in a later semester`
+                              );
+                              return;
+                            }
+
+                            const groupLabel = optionStates
+                              .map(({ option }) =>
+                                option.concurrentOk
+                                  ? `${option.code} (or concurrent enrollment)`
+                                  : option.code
+                              )
+                              .join(' OR ');
+                            trulyMissing.push(groupLabel);
+                          });
+                        }
+                        const hasPrereqIssue = plannedLaterPrereqs.length > 0 || trulyMissing.length > 0;
 
                         return (
                           <div
@@ -5377,13 +5603,13 @@ Now answer the student's question using only this context.`
                                 {trulyMissing.length > 0 && (
                                   <p className="text-xs text-red-600 mt-2 flex items-center gap-1">
                                     <AlertTriangle className="w-3 h-3" />
-                                    Missing prerequisites: {trulyMissing.join(', ')}
+                                    Missing prerequisites: {trulyMissing.join('; ')}
                                   </p>
                                 )}
                                 {plannedLaterPrereqs.length > 0 && (
                                   <p className="text-xs text-yellow-700 mt-1 flex items-center gap-1">
                                     <AlertTriangle className="w-3 h-3" />
-                                    Prerequisite planned but not in earlier semester: {plannedLaterPrereqs.join(', ')}
+                                    {plannedLaterPrereqs.join('; ')}
                                   </p>
                                 )}
                                 <label
@@ -5632,9 +5858,13 @@ Now answer the student's question using only this context.`
       return option.concurrentOk && isCoursePlanned(option.code);
     };
 
+    const isCoursePlannedOnly = (code) =>
+      isCoursePlanned(code) && !isCourseCompleted(code) && !isCourseInProgress(code);
+
     const getFlowCourseStatus = (code) => {
       if (isCourseCompleted(code)) return 'completed';
       if (isCourseInProgress(code)) return 'in-progress';
+      if (isCoursePlannedOnly(code)) return 'planned';
       const course = flowchartCourses[code] || COURSES[code];
       if (!course) return 'locked';
       const prereqGroups = getCoursePrereqGroups(course);
@@ -5647,6 +5877,7 @@ Now answer the student's question using only this context.`
     const flowStatusClasses = {
       completed: 'bg-green-100 text-green-700 border-green-300',
       'in-progress': 'bg-blue-100 text-blue-700 border-blue-300',
+      planned: 'bg-blue-100 text-blue-700 border-blue-300',
       available: 'bg-yellow-100 text-yellow-800 border-yellow-300',
       locked: 'bg-white text-gray-600 border-gray-300'
     };
@@ -5850,6 +6081,9 @@ Now answer the student's question using only this context.`
       if (status === 'in-progress') {
         return { fill: '#dbeafe', stroke: '#111827', text: '#111827' };
       }
+      if (status === 'planned') {
+        return { fill: '#dbeafe', stroke: '#111827', text: '#111827' };
+      }
       if (status === 'available') {
         return { fill: '#fef9c3', stroke: '#111827', text: '#111827' };
       }
@@ -5909,6 +6143,10 @@ Now answer the student's question using only this context.`
               <span className="inline-flex items-center">
                 <span className="inline-block w-3 h-3 rounded-sm border border-yellow-300 bg-yellow-100 mr-1" />
                 Yellow - Available Courses
+              </span>
+              <span className="inline-flex items-center">
+                <span className="inline-block w-3 h-3 rounded-sm border border-blue-300 bg-blue-100 mr-1" />
+                Blue - Planned Courses
               </span>
               <span className="inline-flex items-center">
                 <span className="inline-block w-3 h-3 rounded-sm border border-gray-300 bg-white mr-1" />
@@ -6052,14 +6290,29 @@ Now answer the student's question using only this context.`
                           >
                             <path d="M0,0 L10,5 L0,10 Z" fill="#111827" />
                           </marker>
+                          <marker
+                            id="selected-flow-arrow-coreq-planned"
+                            markerWidth="10"
+                            markerHeight="10"
+                            viewBox="0 0 10 10"
+                            refX="8"
+                            refY="5"
+                            orient="auto"
+                            markerUnits="userSpaceOnUse"
+                          >
+                            <path d="M0,0 L10,5 L0,10 Z" fill="#2563eb" />
+                          </marker>
                         </defs>
 
                         {selectedCourseGraph.groupLabels.map((group) => {
                           const groupNodes = selectedCourseGraph.optionNodes.filter(
                             (node) => node.groupIndex === group.groupIndex
                           );
-                          const groupHasCompleted = groupNodes.some(
-                            (node) => getFlowCourseStatus(node.code) === 'completed'
+                          const groupSatisfied = groupNodes.some((node) =>
+                            isFlowPrereqOptionSatisfied({
+                              code: node.code,
+                              concurrentOk: node.concurrentOk
+                            })
                           );
                           const groupLabelBody = `Group ${group.groupIndex + 1}: ${group.groupTitle} (choose one)`;
                           const groupLabelWidth = Math.ceil(46 + groupLabelBody.length * 7);
@@ -6079,8 +6332,8 @@ Now answer the student's question using only this context.`
                                 fontSize="15"
                                 fontWeight="700"
                               >
-                                <tspan fill={groupHasCompleted ? '#16a34a' : '#dc2626'}>
-                                  {groupHasCompleted ? '✔' : '✖'}
+                                <tspan fill={groupSatisfied ? '#16a34a' : '#dc2626'}>
+                                  {groupSatisfied ? '✅' : '❌'}
                                 </tspan>
                                 <tspan dx="6" fill="#111827">
                                   {groupLabelBody}
@@ -6098,26 +6351,34 @@ Now answer the student's question using only this context.`
                           const nodeIsHovered = hoveredFlowNodeKey === node.key;
                           const statusBadge = {
                             completed: { fill: '#dcfce7', stroke: '#111827', text: '#111827' },
+                            planned: { fill: '#dbeafe', stroke: '#111827', text: '#111827' },
                             available: { fill: '#fef9c3', stroke: '#111827', text: '#111827' },
                             locked: { fill: '#ffffff', stroke: '#111827', text: '#111827' },
                             'in-progress': { fill: '#dbeafe', stroke: '#111827', text: '#111827' }
                           }[nodeStatus] || { fill: '#f3f4f6', stroke: '#111827', text: '#111827' };
                           const startX = selectedCourseGraph.optionX + selectedCourseGraph.optionWidth + 2;
                           const endX = selectedCourseGraph.targetX - 12;
+                          const shouldRenderEdge =
+                            nodeStatus === 'completed' ||
+                            (node.concurrentOk && nodeStatus === 'planned');
+                          const edgeStrokeColor =
+                            node.concurrentOk && nodeStatus === 'planned' ? '#2563eb' : '#111827';
                           return (
                             <g key={node.key}>
-                              {nodeStatus === 'completed' && (
+                              {shouldRenderEdge && (
                                 <line
                                   x1={startX}
                                   y1={node.centerY}
                                   x2={endX}
                                   y2={selectedCourseGraph.targetCenterY}
-                                  stroke="#111827"
+                                  stroke={edgeStrokeColor}
                                   strokeWidth="1.75"
                                   strokeOpacity="0.85"
                                   strokeDasharray={node.concurrentOk ? '6 4' : undefined}
                                   markerEnd={
-                                    node.concurrentOk
+                                    node.concurrentOk && nodeStatus === 'planned'
+                                      ? 'url(#selected-flow-arrow-coreq-planned)'
+                                      : node.concurrentOk
                                       ? 'url(#selected-flow-arrow-coreq)'
                                       : 'url(#selected-flow-arrow)'
                                   }
