@@ -18,6 +18,7 @@ export function errorHandler(
   _next: NextFunction
 ): void {
   const message = err instanceof Error ? err.message : "Unknown error";
+  console.error(`[error] ${_req.method} ${_req.path}:`, err);
   const isProduction = env.nodeEnv === "production";
   res.status(500).json({
     error: isProduction ? "Internal server error" : message

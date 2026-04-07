@@ -3,6 +3,7 @@ import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mj
 import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import tamuLogo from './assets/tamu-logo.svg';
 import { DegreeProgress } from './components/DegreeProgress';
+import { AdminPanel } from './components/AdminPanel';
 import { signInWithPopup, signOut } from 'firebase/auth';
 import { firebaseAuth, googleProvider } from './firebase';
 import {
@@ -216,6 +217,7 @@ const toTitleCase = (str) => {
 const TERM_REGEX = /\b(Fall|Spring|Summer|Winter)\s+(20\d{2})\b/;
 const COURSE_REGEX = /\b([A-Z]{2,4})\s+(\d{3})\b/;
 const GRADE_REGEX = /\b(A|A-|B\+|B|B-|C\+|C|C-|D\+|D|D-|F|S|U|P|W|Q|IP|TA|TB|TC|TD|TF|TCR|TIP)\b/;
+const normalizeCode = (code) => code?.replace(/\s+/g, ' ').trim().toUpperCase();
 
 // Transfer grades include TA/TB/TC/TD/TF, TCR (Transfer Credit), and TIP (Transfer In Progress)
 // Pass/fail grades: S (Satisfactory), U (Unsatisfactory), P (Pass)
@@ -836,36 +838,156 @@ const buildExportHtmlFromDegreeResult = (degreeResult, transcriptTerms = [], sou
 };
 
 const FLOWCHART_COURSES = {
-  'ENGR 102': { title: 'Engr Lab I Computation', prereqs: [] },
-  'CSCE 120': { title: 'Program Design & Concepts', prereqs: [] },
-  'CSCE 121': { title: 'Intro to Program Design', prereqs: [] },
-  'CSCE 181': { title: 'Intro to Computing', prereqs: [] },
-  'MATH 151': { title: 'Engineering Math I', prereqs: [] },
-  'MATH 152': { title: 'Calculus II', prereqs: [] },
-  'CSCE 222': { title: 'Discrete Structures', prereqs: [] },
-  'CSCE 221': { title: 'Data Structures & Algorithms', prereqs: ['CSCE 120'] },
-  'CSCE 312': { title: 'Computer Organization', prereqs: ['CSCE 221'] },
-  'CSCE 313': { title: 'Intro to Computer Systems', prereqs: ['CSCE 221', 'CSCE 312'] },
-  'CSCE 314': { title: 'Programming Languages', prereqs: ['CSCE 221'] },
-  'CSCE 331': { title: 'Foundations of Software Eng', prereqs: ['CSCE 221'] },
-  'CSCE 411': { title: 'Design/Analysis of Algorithms', prereqs: ['CSCE 221', 'CSCE 222'] },
-  'CSCE 420': { title: 'Artificial Intelligence', prereqs: ['CSCE 411'] },
-  'MATH 304': { title: 'Linear Algebra', prereqs: ['MATH 151'] },
-  'STAT 211': { title: 'Prin of Statistics I', prereqs: [] },
-  'STAT 212': { title: 'Prin of Statistics II', prereqs: [] },
-  'MATH 251': { title: 'Engineering Math III', prereqs: [] },
-  'MATH 308': { title: 'Differential Equations', prereqs: [] },
-  'CSCE 421': { title: 'Machine Learning', prereqs: ['MATH 304', 'STAT 211', 'CSCE 221', 'CSCE 120'] },
-  'CSCE 431': { title: 'Software Engineering', prereqs: ['CSCE 331'] },
-  'CSCE 434': { title: 'Compiler Design', prereqs: ['CSCE 331'] },
-  'CSCE 441': { title: 'Computer Graphics', prereqs: ['CSCE 221'] },
-  'CSCE 442': { title: 'Scientific Programming', prereqs: ['CSCE 221', 'MATH 304'] },
-  'CSCE 448': { title: 'Computational Photography', prereqs: ['CSCE 331', 'MATH 304'] },
-  'CSCE 451': { title: 'Software Reverse Engineering', prereqs: ['CSCE 313'] },
-  'CSCE 463': { title: 'Networks & Distributed Processing', prereqs: ['CSCE 313'] },
-  'CSCE 465': { title: 'Computer & Network Security', prereqs: ['CSCE 331', 'CSCE 313'] },
-  'CSCE 481': { title: 'Seminar', prereqs: [] },
-  'CSCE 482': { title: 'Senior Capstone Design', prereqs: ['CSCE 411', 'CSCE 331'] }
+  'ENGR 102': { title: 'Engr Lab I Computation', prereqGroups: [] },
+  'CSCE 120': {
+    title: 'Program Design & Concepts',
+    prereqGroups: [['ENGR 102', 'CSCE 110', 'CSCE 111', 'CSCE 206', 'PHYS 150']]
+  },
+  'CSCE 121': { title: 'Intro to Program Design', prereqGroups: [] },
+  'CSCE 181': { title: 'Intro to Computing', prereqGroups: [] },
+  'MATH 151': { title: 'Engineering Math I', prereqGroups: [] },
+  'MATH 152': { title: 'Calculus II', prereqGroups: [] },
+  'CSCE 222': {
+    title: 'Discrete Structures',
+    prereqGroups: [['MATH 142', 'MATH 147', 'MATH 151', 'MATH 171']]
+  },
+  'CSCE 221': {
+    title: 'Data Structures & Algorithms',
+    prereqGroups: [
+      ['CSCE 120', 'CSCE 121'],
+      [{ code: 'CSCE 222', concurrentOk: true }, { code: 'ECEN 222', concurrentOk: true }]
+    ]
+  },
+  'CSCE 310': { title: 'Database Systems', prereqGroups: [['CSCE 221']] },
+  'CSCE 312': {
+    title: 'Computer Organization',
+    prereqGroups: [[{ code: 'CSCE 221', concurrentOk: true }]]
+  },
+  'CSCE 313': {
+    title: 'Intro to Computer Systems',
+    prereqGroups: [
+      ['CSCE 221'],
+      ['CSCE 312', { code: 'CSCE 350', concurrentOk: true }, { code: 'ECEN 350', concurrentOk: true }]
+    ]
+  },
+  'CSCE 314': {
+    title: 'Programming Languages',
+    prereqGroups: [[{ code: 'CSCE 221', concurrentOk: true }]]
+  },
+  'CSCE 315': {
+    title: 'Programming Studio',
+    prereqGroups: [
+      ['CSCE 312'],
+      ['CSCE 314', 'CSCE 350', 'ECEN 350'],
+      [{ code: 'CSCE 313', concurrentOk: true }]
+    ]
+  },
+  'CSCE 331': {
+    title: 'Foundations of Software Eng',
+    prereqGroups: [
+      ['CSCE 314', 'CSCE 350', 'ECEN 350'],
+      [{ code: 'CSCE 313', concurrentOk: true }]
+    ]
+  },
+  'CSCE 411': {
+    title: 'Design/Analysis of Algorithms',
+    prereqGroups: [['CSCE 221'], ['CSCE 222', 'ECEN 222']]
+  },
+  'CSCE 420': { title: 'Artificial Intelligence', prereqGroups: [['CSCE 411']] },
+  'MATH 304': { title: 'Linear Algebra', prereqGroups: [] },
+  'STAT 211': { title: 'Prin of Statistics I', prereqGroups: [] },
+  'STAT 212': { title: 'Prin of Statistics II', prereqGroups: [] },
+  'MATH 251': { title: 'Engineering Math III', prereqGroups: [] },
+  'MATH 308': { title: 'Differential Equations', prereqGroups: [] },
+  'CSCE 421': {
+    title: 'Machine Learning',
+    prereqGroups: [
+      ['MATH 304', 'MATH 311', 'MATH 323'],
+      ['STAT 211'],
+      ['STAT 404', 'CSCE 221', 'ECEN 303'],
+      ['CSCE 121', 'CSCE 120']
+    ]
+  },
+  'CSCE 431': { title: 'Software Engineering', prereqGroups: [['CSCE 315', 'CSCE 331']] },
+  'CSCE 434': { title: 'Compiler Design', prereqGroups: [['CSCE 315', 'CSCE 331']] },
+  'CSCE 441': { title: 'Computer Graphics', prereqGroups: [['CSCE 221']] },
+  'CSCE 442': {
+    title: 'Scientific Programming',
+    prereqGroups: [
+      ['CSCE 221'],
+      [{ code: 'MATH 304', concurrentOk: true }, { code: 'MATH 308', concurrentOk: true }]
+    ]
+  },
+  'CSCE 448': {
+    title: 'Computational Photography',
+    prereqGroups: [['CSCE 315', 'CSCE 331'], ['MATH 304', 'MATH 311']]
+  },
+  'CSCE 451': { title: 'Software Reverse Engineering', prereqGroups: [['CSCE 313']] },
+  'CSCE 463': { title: 'Networks & Distributed Processing', prereqGroups: [['CSCE 313']] },
+  'CSCE 465': {
+    title: 'Computer & Network Security',
+    prereqGroups: [['CSCE 315', 'CSCE 331'], ['CSCE 313']]
+  },
+  'CSCE 481': { title: 'Seminar', prereqGroups: [] },
+  'CSCE 482': {
+    title: 'Senior Capstone Design',
+    prereqGroups: [['CSCE 411'], ['CSCE 315', 'CSCE 331']]
+  }
+};
+
+const normalizePrereqOption = (option) => {
+  if (typeof option === 'string') {
+    const code = normalizeCode(option);
+    return code ? { code, concurrentOk: false } : null;
+  }
+  if (!option || typeof option !== 'object') return null;
+  if (typeof option.code !== 'string') return null;
+  const code = normalizeCode(option.code);
+  if (!code) return null;
+  return {
+    code,
+    concurrentOk: Boolean(option.concurrentOk ?? option.concurrent_ok)
+  };
+};
+
+const getCoursePrereqGroups = (course) => {
+  if (!course) return [];
+  const grouped =
+    (Array.isArray(course.prereqGroups) && course.prereqGroups) ||
+    (Array.isArray(course.prereq_groups) && course.prereq_groups) ||
+    null;
+
+  if (grouped) {
+    return grouped
+      .map((group) => {
+        if (!Array.isArray(group)) return [];
+        return group.map(normalizePrereqOption).filter(Boolean);
+      })
+      .filter((group) => group.length > 0);
+  }
+
+  if (Array.isArray(course.prereqs)) {
+    return course.prereqs
+      .map((code) => normalizeCode(code))
+      .filter(Boolean)
+      .map((code) => [{ code, concurrentOk: false }]);
+  }
+
+  return [];
+};
+
+const formatPrereqGroupsForChat = (groups) => {
+  if (!Array.isArray(groups) || groups.length === 0) return 'None';
+  return groups
+    .map((group) =>
+      group
+        .map((option) =>
+          option.concurrentOk ? `${option.code} (or concurrent enrollment)` : option.code
+        )
+        .join(' OR ')
+    )
+    .map((segment) => `(${segment})`)
+    .join(' AND ');
 };
 
 const buildTranscriptIndex = (terms, excludedTransfers = new Set()) => {
@@ -1007,6 +1129,7 @@ function App() {
       return null;
     }
   });
+  const [isAdmin, setIsAdmin] = useState(false);
   const [authToken, setAuthToken] = useState(() => localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || '');
   const authHeaders = useCallback(
     (extras = {}) => ({
@@ -1126,6 +1249,63 @@ function App() {
     });
     return out;
   }, [coursesIndex]);
+  const FLOWCHART_REFERENCE = useMemo(() => {
+    const merged = {};
+
+    const upsertCourse = (rawCode, sourceCourse, forceGroups = false) => {
+      const code = normalizeCode(rawCode);
+      if (!code) return;
+      const existing = merged[code] || {};
+      const existingGroups = Array.isArray(existing.prereqGroups) ? existing.prereqGroups : [];
+      const incomingGroups = getCoursePrereqGroups(sourceCourse);
+      const useIncomingGroups = forceGroups ? incomingGroups.length > 0 : existingGroups.length === 0;
+
+      merged[code] = {
+        ...existing,
+        title:
+          sourceCourse?.title ||
+          sourceCourse?.name ||
+          existing.title ||
+          COURSES[code]?.title ||
+          code,
+        prereqGroups: useIncomingGroups ? incomingGroups : existingGroups
+      };
+    };
+
+    // 1) Catalog-backed CSCE set (complete coverage).
+    Object.entries(COURSES).forEach(([code, course]) => {
+      if (!/^CSCE\s+\d{3}$/.test(code)) return;
+      upsertCourse(code, course, false);
+    });
+
+    // 2) Manual overrides for known prerequisite/co-requisite corrections.
+    Object.entries(FLOWCHART_COURSES).forEach(([code, course]) => {
+      upsertCourse(code, course, true);
+    });
+
+    // 3) Pull in prerequisite option nodes referenced by CSCE courses so edges can render.
+    const csceCodes = Object.keys(merged).filter((code) => /^CSCE\s+\d{3}$/.test(code));
+    csceCodes.forEach((code) => {
+      const groups = getCoursePrereqGroups(merged[code]);
+      groups.forEach((group) => {
+        group.forEach((option) => {
+          const optionCode = normalizeCode(option?.code || '');
+          if (!optionCode || merged[optionCode]) return;
+          const catalogMeta = COURSES[optionCode];
+          if (catalogMeta) {
+            upsertCourse(optionCode, catalogMeta, false);
+          } else {
+            merged[optionCode] = {
+              title: optionCode,
+              prereqGroups: []
+            };
+          }
+        });
+      });
+    });
+
+    return merged;
+  }, [COURSES]);
   const transcriptYears = useMemo(() => normalizeTranscript(transcriptTerms), [transcriptTerms]);
   const transcriptIndex = useMemo(() => buildTranscriptIndex(transcriptTerms), [transcriptTerms]);
 
@@ -1324,6 +1504,8 @@ function App() {
         setStudentId(String(data.studentId));
       }
 
+      setIsAdmin(data.isAdmin === true);
+
       if (data.transcript?.terms?.length > 0) {
         const sanitizedTerms = sanitizeTranscriptTermsForDisplay(data.transcript.terms);
         setTranscriptTerms(sanitizedTerms);
@@ -1404,6 +1586,7 @@ function App() {
     localStorage.removeItem('studentId');
     setAuthUser(null);
     setAuthToken('');
+    setIsAdmin(false);
     setDisplayStudentName('');
     setStudentId('');
     setTranscriptTerms([]);
@@ -1527,6 +1710,10 @@ function App() {
           prereqs: Array.isArray(c.prereq_courses || c.prereqs)
             ? c.prereq_courses || c.prereqs
             : [],
+          prereqGroups: Array.isArray(c.prereq_groups || c.prereqGroups)
+            ? c.prereq_groups || c.prereqGroups
+            : [],
+          prereqRaw: c.prereq_raw || c.prereqRaw || '',
           status: 'available',
           difficulty: c.difficulty || 0
         });
@@ -2254,7 +2441,6 @@ function App() {
     [showToast]
   );
 
-  const normalizeCode = (code) => code?.replace(/\s+/g, ' ').trim().toUpperCase();
   const formatPlannerActionLabel = (action) =>
     `${action.type === 'add' ? 'Add' : 'Remove'} ${action.courseCode} ${
       action.type === 'add' ? 'to' : 'from'
@@ -2352,6 +2538,552 @@ function App() {
     setIsChatLoading(true);
 
     try {
+      const mentionedCourseCodes = Array.from(
+        new Set(
+          [...userMessage.toUpperCase().matchAll(/\b([A-Z]{2,4})\s+(\d{3})\b/g)]
+            .map((match) => normalizeCode(`${match[1]} ${match[2]}`))
+            .filter(Boolean)
+        )
+      );
+      const looksLikePrereqQuestion = /\b(prereq|pre-req|prerequisite|co-req|coreq|co-?enroll|concurrent|before)\b/i.test(
+        userMessage
+      );
+      const looksLikePlannerEdit = /\b(add|remove|delete|drop|insert|schedule)\b/i.test(
+        userMessage
+      );
+      if (looksLikePrereqQuestion && !looksLikePlannerEdit && mentionedCourseCodes.length > 0) {
+        const askedCode = mentionedCourseCodes[0];
+        const courseMeta = FLOWCHART_REFERENCE[askedCode] || COURSES[askedCode];
+        const prereqGroups = getCoursePrereqGroups(courseMeta);
+        if (courseMeta) {
+          const lines = [];
+          lines.push(
+            `For **${askedCode}**${courseMeta.title ? ` (${courseMeta.title})` : ''}, here are the prerequisites from DegreeFlow's catalog data:`
+          );
+          if (prereqGroups.length === 0) {
+            lines.push('');
+            lines.push('• No prerequisite courses are listed.');
+          } else {
+            lines.push('');
+            lines.push('All groups below are required (AND between groups):');
+            prereqGroups.forEach((group, idx) => {
+              const choices = group
+                .map((option) =>
+                  option.concurrentOk ? `${option.code} (or concurrent enrollment)` : option.code
+                )
+                .join(' OR ');
+              lines.push(
+                `${idx + 1}. Complete one of: ${choices}`
+              );
+            });
+            lines.push('');
+            lines.push('Your current status:');
+            prereqGroups.forEach((group, idx) => {
+              const optionStates = group.map((option) => {
+                const completed = isCourseCompleted(option.code);
+                const inProgress = isCourseInProgress(option.code);
+                const planned = isCoursePlanned(option.code);
+                const satisfied = completed || inProgress || (option.concurrentOk && planned);
+                let status = 'not satisfied';
+                if (completed) status = 'completed';
+                else if (inProgress) status = 'in progress';
+                else if (planned && option.concurrentOk) status = 'planned (co-req allowed)';
+                else if (planned) status = 'planned';
+                return `${option.code}: ${status}${satisfied ? ' ✓' : ''}`;
+              });
+              const groupSatisfied = group.some((option) => {
+                if (isCourseCompleted(option.code) || isCourseInProgress(option.code)) return true;
+                return option.concurrentOk && isCoursePlanned(option.code);
+              });
+              lines.push(`• Group ${idx + 1}: ${groupSatisfied ? 'satisfied' : 'not satisfied'} — ${optionStates.join('; ')}`);
+            });
+          }
+          const assistantMsg = {
+            id: `assistant-${Date.now()}`,
+            role: 'assistant',
+            text: lines.join('\n')
+          };
+          setChatMessages((prev) => [...prev, assistantMsg]);
+          return;
+        }
+        const assistantMsg = {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          text: `I couldn't find **${askedCode}** in DegreeFlow's local catalog data, so I can't reliably answer prerequisites for it right now.`
+        };
+        setChatMessages((prev) => [...prev, assistantMsg]);
+        return;
+      }
+
+      const extractCourseCodesFromText = (value) => {
+        if (!value || typeof value !== 'string') return [];
+        const matches = [...value.toUpperCase().matchAll(/\b([A-Z]{2,4})\s+(\d{3})\b/g)];
+        return matches
+          .map((match) => normalizeCode(`${match[1]} ${match[2]}`))
+          .filter(Boolean);
+      };
+
+      const isCourseSatisfiedForGuidance = (code) => {
+        if (!code) return false;
+        if (isCourseCompleted(code) || isCourseInProgress(code) || isCoursePlanned(code)) return true;
+        return getEquivalents(code).some(
+          (eq) => isCourseCompleted(eq) || isCourseInProgress(eq) || isCoursePlanned(eq)
+        );
+      };
+
+      const getCourseCreditsForGuidance = (code) => {
+        const normalized = normalizeCode(code);
+        if (!normalized) return 0;
+        const catalogCredits = Number(COURSES[normalized]?.credits);
+        if (Number.isFinite(catalogCredits) && catalogCredits > 0) return catalogCredits;
+        const transcriptCourse = transcriptCourseList.find(
+          (course) => normalizeCode(course?.code) === normalized
+        );
+        const transcriptCredits = Number(transcriptCourse?.credits);
+        if (Number.isFinite(transcriptCredits) && transcriptCredits > 0) return transcriptCredits;
+        return 3;
+      };
+
+      const collectGuidanceTargetsFromEvaluation = (...results) => {
+        const out = new Set();
+        const unmetGroups = [];
+
+        const addCode = (rawCode) => {
+          const code = normalizeCode(rawCode);
+          if (!code) return;
+          if (isCourseSatisfiedForGuidance(code)) return;
+          out.add(code);
+        };
+
+        results.forEach((result) => {
+          const groups = Array.isArray(result?.groups) ? result.groups : [];
+          groups.forEach((group) => {
+            if (group?.satisfied) return;
+
+            const missingItems = Array.isArray(group?.missing) ? group.missing : [];
+            const missingCodes = new Set();
+            missingItems.forEach((item) => {
+              extractCourseCodesFromText(String(item || '')).forEach((code) => {
+                addCode(code);
+                if (!isCourseSatisfiedForGuidance(code)) missingCodes.add(code);
+              });
+            });
+
+            const requiredCreditsRaw = Number(group?.requiredCredits);
+            const earnedCredits = Number(group?.earnedCredits) || 0;
+            const remainingCredits =
+              Number.isFinite(requiredCreditsRaw) && requiredCreditsRaw > 0
+                ? Math.max(requiredCreditsRaw - earnedCredits, 0)
+                : null;
+
+            const recommendationBuckets = Array.isArray(group?.recommendationBuckets)
+              ? group.recommendationBuckets
+              : [];
+            const optionCodes = new Set();
+            const recommendedCodes = [];
+            const selectedInGroup = new Set();
+
+            const chooseFromOrSet = (codes, targetCredits) => {
+              let creditBudget = Math.max(Number(targetCredits) || 0, 0);
+              const sorted = [...codes].sort((a, b) => a.localeCompare(b));
+              for (const code of sorted) {
+                if (selectedInGroup.has(code)) continue;
+                selectedInGroup.add(code);
+                recommendedCodes.push(code);
+                addCode(code);
+                if (creditBudget > 0) {
+                  creditBudget = Math.max(creditBudget - getCourseCreditsForGuidance(code), 0);
+                }
+                if (creditBudget <= 0) break;
+              }
+            };
+
+            recommendationBuckets.forEach((bucket) => {
+              const type = String(bucket?.type || '').toLowerCase();
+              const bucketCodes = Array.from(
+                new Set(
+                  (Array.isArray(bucket?.codes) ? bucket.codes : [])
+                    .map((code) => normalizeCode(code))
+                    .filter(Boolean)
+                )
+              ).filter((code) => !isCourseSatisfiedForGuidance(code));
+
+              bucketCodes.forEach((code) => optionCodes.add(code));
+
+              if (type === 'required' || type === 'allof') {
+                bucketCodes.forEach((code) => {
+                  if (selectedInGroup.has(code)) return;
+                  selectedInGroup.add(code);
+                  recommendedCodes.push(code);
+                  addCode(code);
+                });
+                return;
+              }
+
+              if (type === 'anyof' || type === 'pool') {
+                const bucketCreditsRaw = Number(bucket?.minCredits);
+                const bucketTargetCredits =
+                  Number.isFinite(bucketCreditsRaw) && bucketCreditsRaw > 0
+                    ? bucketCreditsRaw
+                    : remainingCredits && remainingCredits > 0
+                    ? Math.min(remainingCredits, 3)
+                    : 3;
+                chooseFromOrSet(bucketCodes, bucketTargetCredits);
+              }
+            });
+
+            unmetGroups.push({
+              name: group?.name || 'Requirement',
+              remainingCredits,
+              missingItems: missingItems.map((item) => String(item)),
+              optionCodes: Array.from(optionCodes),
+              recommendedCodes: Array.from(new Set(recommendedCodes)),
+              missingCodes: Array.from(missingCodes)
+            });
+          });
+        });
+
+        return {
+          codes: Array.from(out),
+          unmetGroups
+        };
+      };
+
+      const buildSequencingPlan = (rawCodes) => {
+        const source = Array.from(new Set((rawCodes || []).map((code) => normalizeCode(code)).filter(Boolean)));
+        const remaining = source.filter((code) => !isCourseSatisfiedForGuidance(code));
+        const candidateSet = new Set(remaining);
+
+        const strictNextByPrereq = new Map();
+        const strictPrereqsByCourse = new Map();
+        const coreqByCourse = new Map();
+        const externalBlockersByCourse = new Map();
+        const indegree = new Map();
+
+        remaining.forEach((code) => {
+          strictNextByPrereq.set(code, new Set());
+          strictPrereqsByCourse.set(code, new Set());
+          coreqByCourse.set(code, new Set());
+          externalBlockersByCourse.set(code, new Set());
+          indegree.set(code, 0);
+        });
+
+        remaining.forEach((code) => {
+          const courseMeta = FLOWCHART_REFERENCE[code] || COURSES[code];
+          const groups = getCoursePrereqGroups(courseMeta);
+          groups.forEach((group) => {
+            if (group.some((option) => isCourseSatisfiedForGuidance(option.code))) return;
+
+            const strictMissing = group
+              .filter((option) => !option.concurrentOk && candidateSet.has(option.code))
+              .map((option) => option.code);
+
+            if (strictMissing.length > 0) {
+              strictMissing.forEach((pre) => {
+                if (!pre || pre === code) return;
+                if (!strictNextByPrereq.has(pre)) return;
+                const nextSet = strictNextByPrereq.get(pre);
+                const prereqSet = strictPrereqsByCourse.get(code);
+                if (nextSet.has(code)) return;
+                nextSet.add(code);
+                prereqSet.add(pre);
+                indegree.set(code, (indegree.get(code) || 0) + 1);
+              });
+              return;
+            }
+
+            const coreqCandidates = group
+              .filter((option) => option.concurrentOk && candidateSet.has(option.code))
+              .map((option) => option.code);
+            if (coreqCandidates.length > 0) {
+              const coreqSet = coreqByCourse.get(code);
+              coreqCandidates.forEach((c) => coreqSet.add(c));
+              return;
+            }
+
+            const externalStrict = group
+              .filter((option) => !option.concurrentOk && !isCourseSatisfiedForGuidance(option.code))
+              .map((option) => option.code);
+            if (externalStrict.length > 0) {
+              const blockerSet = externalBlockersByCourse.get(code);
+              externalStrict.forEach((c) => blockerSet.add(c));
+            }
+          });
+        });
+
+        const queue = remaining
+          .filter((code) => (indegree.get(code) || 0) === 0)
+          .sort((a, b) => {
+            const outA = strictNextByPrereq.get(a)?.size || 0;
+            const outB = strictNextByPrereq.get(b)?.size || 0;
+            if (outB !== outA) return outB - outA;
+            return a.localeCompare(b);
+          });
+
+        const ordered = [];
+        while (queue.length > 0) {
+          const current = queue.shift();
+          ordered.push(current);
+          const neighbors = Array.from(strictNextByPrereq.get(current) || []);
+          neighbors.forEach((neighbor) => {
+            const nextValue = (indegree.get(neighbor) || 0) - 1;
+            indegree.set(neighbor, nextValue);
+            if (nextValue === 0) {
+              queue.push(neighbor);
+            }
+          });
+          queue.sort((a, b) => {
+            const outA = strictNextByPrereq.get(a)?.size || 0;
+            const outB = strictNextByPrereq.get(b)?.size || 0;
+            if (outB !== outA) return outB - outA;
+            return a.localeCompare(b);
+          });
+        }
+
+        const unresolvedCycle = remaining
+          .filter((code) => !ordered.includes(code))
+          .sort((a, b) => a.localeCompare(b));
+        const finalOrder = [...ordered, ...unresolvedCycle];
+
+        return {
+          source,
+          remaining,
+          finalOrder,
+          strictNextByPrereq,
+          strictPrereqsByCourse,
+          coreqByCourse,
+          externalBlockersByCourse
+        };
+      };
+
+      const parseTermLabel = (termLabel) => {
+        const match = String(termLabel || '').trim().match(/^(Fall|Winter|Spring|Summer)\s+(20\d{2})$/);
+        if (!match) return null;
+        return { season: match[1], year: Number(match[2]) };
+      };
+
+      const deriveCurrentTermForGuidance = () => {
+        const transcriptCurrentTerms = (Array.isArray(transcriptTerms) ? transcriptTerms : [])
+          .filter((term) => {
+            const normalizedStatus = String(term?.status || '').trim().toLowerCase();
+            if (normalizedStatus === 'in progress') return true;
+            return (Array.isArray(term?.courses) ? term.courses : []).some((course) =>
+              isCourseMarkedInProgress({ ...course, termStatus: term?.status })
+            );
+          })
+          .map((term) => String(term?.label || '').trim())
+          .filter((label) => semesterIndex.has(label));
+        if (transcriptCurrentTerms.length > 0) {
+          transcriptCurrentTerms.sort((a, b) => (semesterIndex.get(a) ?? 0) - (semesterIndex.get(b) ?? 0));
+          return transcriptCurrentTerms[transcriptCurrentTerms.length - 1];
+        }
+
+        // Do not use selected planner tab as "current semester" for guidance.
+        // Guidance should be anchored to the real current term when transcript
+        // in-progress terms are unavailable.
+        const now = new Date();
+        const month = now.getMonth();
+        const year = now.getFullYear();
+        return month <= 4 ? `Spring ${year}` : `Fall ${year}`;
+      };
+
+      const getNextPrimaryTermLabel = (termLabel) => {
+        const parsed = parseTermLabel(termLabel);
+        if (!parsed) return null;
+        // Required rule:
+        // Spring Y -> Fall Y
+        // Fall Y -> Spring Y+1
+        // Summer Y -> Fall Y
+        // Winter Y -> Spring Y+1
+        if (parsed.season === 'Spring') return `Fall ${parsed.year}`;
+        if (parsed.season === 'Fall') return `Spring ${parsed.year + 1}`;
+        if (parsed.season === 'Summer') return `Fall ${parsed.year}`;
+        return `Spring ${parsed.year + 1}`;
+      };
+
+      const advancePrimaryTermLabel = (termLabel) => {
+        const parsed = parseTermLabel(termLabel);
+        if (!parsed) return null;
+        if (parsed.season === 'Fall') return `Spring ${parsed.year + 1}`;
+        return `Fall ${parsed.year}`;
+      };
+
+      const buildSemesterizedPlan = (sequencing, startTermLabel) => {
+        if (!startTermLabel || sequencing.finalOrder.length === 0) {
+          return { terms: [], assignments: new Map() };
+        }
+
+        const MAX_COURSES_PER_TERM = 4;
+        const termLabels = [startTermLabel];
+        const termToCourses = new Map([[startTermLabel, []]]);
+        const courseToTermIndex = new Map();
+
+        const ensureTermLabel = (targetIndex) => {
+          let guard = 0;
+          while (termLabels.length <= targetIndex && guard < 200) {
+            const last = termLabels[termLabels.length - 1];
+            const next = advancePrimaryTermLabel(last);
+            if (!next) break;
+            termLabels.push(next);
+            if (!termToCourses.has(next)) termToCourses.set(next, []);
+            guard += 1;
+          }
+          return termLabels[targetIndex] || termLabels[termLabels.length - 1];
+        };
+
+        sequencing.finalOrder.forEach((code) => {
+          let earliestIndex = 0;
+          const strictDeps = Array.from(sequencing.strictPrereqsByCourse.get(code) || []);
+          strictDeps.forEach((dep) => {
+            const depIndex = courseToTermIndex.get(dep);
+            if (depIndex !== undefined) earliestIndex = Math.max(earliestIndex, depIndex + 1);
+          });
+
+          let termIndex = earliestIndex;
+          let guard = 0;
+          while (guard < 200) {
+            const label = ensureTermLabel(termIndex);
+            const bucket = termToCourses.get(label) || [];
+            if (bucket.length < MAX_COURSES_PER_TERM) {
+              bucket.push(code);
+              termToCourses.set(label, bucket);
+              courseToTermIndex.set(code, termIndex);
+              break;
+            }
+            termIndex += 1;
+            guard += 1;
+          }
+        });
+
+        const terms = termLabels
+          .map((label) => ({ term: label, courses: termToCourses.get(label) || [] }))
+          .filter((item) => item.courses.length > 0);
+
+        return { terms, assignments: courseToTermIndex };
+      };
+
+      const buildPriorityCourseRecommendations = (sequencing, unmetGroups) => {
+        const ordered = Array.isArray(sequencing?.finalOrder) ? sequencing.finalOrder : [];
+        const strictNextByPrereq = sequencing?.strictNextByPrereq || new Map();
+        const strictPrereqsByCourse = sequencing?.strictPrereqsByCourse || new Map();
+
+        const unmetGroupsByCode = new Map();
+        (Array.isArray(unmetGroups) ? unmetGroups : []).forEach((group) => {
+          const groupName = String(group?.name || 'Requirement').trim();
+          const candidateCodes = new Set(
+            [
+              ...(Array.isArray(group?.recommendedCodes) ? group.recommendedCodes : []),
+              ...(Array.isArray(group?.missingCodes) ? group.missingCodes : []),
+              ...(Array.isArray(group?.optionCodes) ? group.optionCodes : [])
+            ]
+              .map((code) => normalizeCode(code))
+              .filter(Boolean)
+          );
+          candidateCodes.forEach((code) => {
+            if (isCourseSatisfiedForGuidance(code)) return;
+            if (!unmetGroupsByCode.has(code)) unmetGroupsByCode.set(code, new Set());
+            unmetGroupsByCode.get(code).add(groupName);
+          });
+        });
+
+        const targetCount =
+          ordered.length >= 6 ? 6 : ordered.length >= 5 ? 5 : ordered.length;
+        const selected = [];
+        const seen = new Set();
+
+        ordered.forEach((code) => {
+          if (selected.length >= targetCount) return;
+          if (!code || seen.has(code) || isCourseSatisfiedForGuidance(code)) return;
+          selected.push(code);
+          seen.add(code);
+        });
+
+        if (selected.length < targetCount) {
+          const supplemental = Array.from(unmetGroupsByCode.keys()).sort((a, b) => {
+            const unlockA = (strictNextByPrereq.get(a) || new Set()).size;
+            const unlockB = (strictNextByPrereq.get(b) || new Set()).size;
+            if (unlockB !== unlockA) return unlockB - unlockA;
+            return a.localeCompare(b);
+          });
+          supplemental.forEach((code) => {
+            if (selected.length >= targetCount) return;
+            if (seen.has(code) || isCourseSatisfiedForGuidance(code)) return;
+            selected.push(code);
+            seen.add(code);
+          });
+        }
+
+        return selected.map((code) => {
+          const title = FLOWCHART_REFERENCE[code]?.title || COURSES[code]?.title || '';
+          const unlocks = Array.from(strictNextByPrereq.get(code) || []);
+          const strictDeps = Array.from(strictPrereqsByCourse.get(code) || []);
+          const groups = Array.from(unmetGroupsByCode.get(code) || []);
+
+          let reason = 'next best remaining course';
+          if (unlocks.length > 0) {
+            reason = `unlocks ${unlocks.slice(0, 2).join(', ')}${
+              unlocks.length > 2 ? ', ...' : ''
+            }`;
+          } else if (groups.length > 0) {
+            reason = `addresses ${groups[0]}`;
+          } else if (strictDeps.length === 0) {
+            reason = 'ready with no unmet strict prerequisites';
+          } else {
+            reason = `after ${strictDeps.join(', ')}`;
+          }
+
+          return { code, title, reason };
+        });
+      };
+
+      const guidanceTargets = collectGuidanceTargetsFromEvaluation(
+        degreeResult,
+        requirementsResult,
+        minorResult
+      );
+      const missingFromEvaluation = guidanceTargets.codes;
+      const unmetGroupsForGuidance = guidanceTargets.unmetGroups;
+      const sequencingPlan = buildSequencingPlan(missingFromEvaluation);
+      const currentGuidanceTerm = deriveCurrentTermForGuidance();
+      const nextGuidanceTerm = getNextPrimaryTermLabel(currentGuidanceTerm);
+      const semesterizedPlan = buildSemesterizedPlan(sequencingPlan, nextGuidanceTerm);
+      const prioritizedGuidanceCourses = buildPriorityCourseRecommendations(
+        sequencingPlan,
+        unmetGroupsForGuidance
+      );
+      const looksLikeGuidanceQuestion = /\b(what\s+should\s+i\s+take|what\s+courses?\s+should\s+i\s+plan|what\s+do\s+i\s+need|which\s+courses?\s+(should|do)|which\s+course.*first|what.*missing|next\s+courses?|future\s+semesters?|course\s+order|course\s+sequence|course\s+plan|plan\s+my|remaining\s+requirements?|requirements?\s+check|what\s+do\s+you\s+recommend|recommend(?:ed|ation)?(?:\s+for\s+me)?|recommend.*courses?)\b/i.test(
+        userMessage
+      );
+      if (!looksLikePlannerEdit && looksLikeGuidanceQuestion && (sequencingPlan.finalOrder.length > 0 || unmetGroupsForGuidance.length > 0)) {
+        const lines = [];
+        lines.push('Here is your prioritized next-course list (highest priority first):');
+        if (nextGuidanceTerm) {
+          lines.push(`Start planning from **${nextGuidanceTerm}**.`);
+        }
+        lines.push('');
+        if (prioritizedGuidanceCourses.length === 0) {
+          lines.push('No remaining schedulable courses were detected from your current evaluation.');
+        } else {
+          prioritizedGuidanceCourses.forEach((course, idx) => {
+            lines.push(
+              `${idx + 1}. **${course.code}**${course.title ? ` (${course.title})` : ''} — ${course.reason}`
+            );
+          });
+          lines.push('');
+          lines.push(
+            'Only remaining courses are included (completed, in-progress, and already planned courses are excluded).'
+          );
+        }
+
+        const assistantMsg = {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          text: lines.join('\n')
+        };
+        setChatMessages((prev) => [...prev, assistantMsg]);
+        return;
+      }
+
       const contextParts = [];
       
       contextParts.push('STUDENT PROFILE:');
@@ -2360,6 +3092,74 @@ function App() {
       contextParts.push(`- Selected Emphasis: ${selectedEmphasis || 'Undecided'}`);
       contextParts.push(`- Selected Minor: ${selectedMinor || 'None'}`);
       contextParts.push(`- Planner terms available for edits: ${semesterOrder.join(', ')}`);
+      contextParts.push(`- Current term for guidance: ${currentGuidanceTerm}`);
+      contextParts.push(`- Next recommendation term (must start here or later): ${nextGuidanceTerm || 'Unknown'}`);
+
+      contextParts.push('\nAUTHORITATIVE PREREQUISITE REFERENCE (USE THIS AS SOURCE OF TRUTH):');
+      Object.entries(FLOWCHART_REFERENCE).forEach(([code, course]) => {
+        const groups = getCoursePrereqGroups(course);
+        contextParts.push(`- ${code}: ${formatPrereqGroupsForChat(groups)}`);
+      });
+      mentionedCourseCodes.forEach((code) => {
+        if (FLOWCHART_REFERENCE[code]) return;
+        const course = COURSES[code];
+        if (!course) return;
+        const groups = getCoursePrereqGroups(course);
+        contextParts.push(`- ${code}: ${formatPrereqGroupsForChat(groups)}`);
+      });
+
+      contextParts.push('\nPREREQUISITE-ORDERED COURSE GUIDANCE (DERIVED FROM MISSING REQUIREMENTS):');
+      if (sequencingPlan.finalOrder.length === 0) {
+        contextParts.push('- No unscheduled missing courses were detected from current evaluation results.');
+      } else {
+        contextParts.push(`- Missing course candidates: ${sequencingPlan.source.join(', ') || 'None'}`);
+        contextParts.push(`- Remaining unscheduled candidates after completion/in-progress/planned filter: ${sequencingPlan.remaining.join(', ') || 'None'}`);
+        sequencingPlan.finalOrder.forEach((code, idx) => {
+          const title = FLOWCHART_REFERENCE[code]?.title || COURSES[code]?.title || 'Title unavailable';
+          const strictDeps = Array.from(sequencingPlan.strictPrereqsByCourse.get(code) || []);
+          const unlocks = Array.from(sequencingPlan.strictNextByPrereq.get(code) || []);
+          const coreqs = Array.from(sequencingPlan.coreqByCourse.get(code) || []);
+          const external = Array.from(sequencingPlan.externalBlockersByCourse.get(code) || []);
+          contextParts.push(`${idx + 1}. ${code}: ${title}`);
+          if (strictDeps.length > 0) {
+            contextParts.push(`   strict prerequisites still in missing list: ${strictDeps.join(', ')}`);
+          }
+          if (unlocks.length > 0) {
+            contextParts.push(`   unlocks: ${unlocks.join(', ')}`);
+          }
+          if (coreqs.length > 0) {
+            contextParts.push(`   co-req options (can be same term): ${coreqs.join(', ')}`);
+          }
+          if (external.length > 0) {
+            contextParts.push(`   additional unmet prerequisites outside missing list: ${external.join(', ')}`);
+          }
+        });
+        if (semesterizedPlan.terms.length > 0) {
+          contextParts.push('- Semesterized sequence (start from next recommendation term):');
+          semesterizedPlan.terms.forEach(({ term, courses }) => {
+            contextParts.push(`  - ${term}: ${courses.join(', ')}`);
+          });
+        }
+      }
+      if (unmetGroupsForGuidance.length > 0) {
+        contextParts.push('- Unmet requirement groups and candidate options:');
+        unmetGroupsForGuidance.forEach((group) => {
+          const suffix =
+            typeof group.remainingCredits === 'number'
+              ? ` (remaining ${group.remainingCredits} credits)`
+              : '';
+          contextParts.push(`  - ${group.name}${suffix}`);
+          if (group.optionCodes.length > 0) {
+            contextParts.push(`    options (OR): ${group.optionCodes.join(' OR ')}`);
+          }
+          if (group.recommendedCodes.length > 0) {
+            contextParts.push(`    selected for sequencing: ${group.recommendedCodes.join(', ')}`);
+          }
+          if (group.missingItems.length > 0) {
+            contextParts.push(`    missing text: ${group.missingItems.join('; ')}`);
+          }
+        });
+      }
       
       const transcriptCoursesForChat = transcriptTerms.flatMap((term) =>
         (term.courses || [])
@@ -2524,33 +3324,39 @@ function App() {
       
       const systemMessage = {
         role: 'system',
-        content: `You are DegreeFlow Assistant, an AI advisor for Texas A&M University Computer Science students. 
+        content: `You are DegreeFlow Assistant, an AI advisor for Texas A&M University students. 
 
 IMPORTANT INSTRUCTIONS:
-1. You have access to the internet and can search for current Texas A&M course catalog information, prerequisites, and degree requirements.
-2. When asked about specific courses, look up the official TAMU course catalog for accurate information.
-3. Use the student's current transcript and planner data (provided below) to give personalized advice.
+1. Use the student's current transcript/planner/evaluation context below to give personalized advice.
+2. The "AUTHORITATIVE PREREQUISITE REFERENCE" in the context is the source of truth for prerequisite and co-requisite answers.
+3. Do not invent or override prerequisites from memory, and do not claim requirements not present in the provided reference.
 4. Help with course planning, prerequisite checking, graduation requirements, and academic guidance.
 4.1. Prioritize the "DEGREE EVALUATION SNAPSHOT" to identify missing requirement groups and recommend next courses.
 4.2. Do not suggest courses already completed or currently in progress unless explicitly asked for alternatives/retakes.
 4.3. For credit-based requirement groups, compute missing credits as (required - earned). Never interpret earned credits as remaining credits.
-4.4. If the user explicitly asks to add/remove planned courses, append a machine-readable action block at the end using this exact format:
+4.4. For prerequisite questions, explicitly describe AND/OR logic and whether concurrent enrollment is allowed.
+4.5. When giving course sequence guidance, follow "PREREQUISITE-ORDERED COURSE GUIDANCE" so prerequisites come before dependent courses.
+4.6. If Course A is a prerequisite of Course B and both are missing, recommend A before B and explain the dependency.
+4.7. If the user explicitly asks to add/remove planned courses, append a machine-readable action block at the end using this exact format:
 [DEGREEFLOW_ACTIONS]
 {"actions":[{"type":"add|remove","courseCode":"SUBJ 123","term":"Fall 2026","reason":"optional short reason"}]}
 [/DEGREEFLOW_ACTIONS]
-4.5. Only include actions the user asked for, and only use term labels from "Planner terms available for edits".
-4.6. For direct commands like "add/remove COURSE_CODE to/from TERM", always include the action block; do not refuse for ambiguity.
+4.8. Only include actions the user asked for, and only use term labels from "Planner terms available for edits".
+4.9. For direct commands like "add/remove COURSE_CODE to/from TERM", always include the action block; do not refuse for ambiguity.
+4.10. For semester-by-semester recommendations, start at "Next recommendation term" and never suggest earlier terms.
+4.11. For pool/choice requirements (e.g., Creative Arts), present options as OR choices; do not treat every option as required.
+4.12. For future-planning/recommendation questions, prefer a concise ranked list of 5-6 remaining courses ordered highest-to-lowest by prerequisite dependency priority.
 5. Format your responses with clear structure:
    - Use **bold** for emphasis (e.g., **Important:** or **Course Name**)
    - Use bullet points (•) or numbered lists for multiple items
    - Use line breaks to separate sections
    - Keep paragraphs short and scannable
-6. If you're unsure about something specific to TAMU CS, search for it online before responding.
+6. If prerequisite data for a requested course is missing from context, say that clearly and ask the user to verify with catalog staff.
 
 STUDENT CONTEXT:
 ${contextParts.join('\n')}
 
-Now answer the student's question based on this context and any additional information you can find online about TAMU CS courses and requirements.`
+Now answer the student's question using only this context.`
       };
 
       const conversationMessages = chatMessages
@@ -3749,8 +4555,8 @@ Now answer the student's question based on this context and any additional infor
 
     const updateCourseCredits = (termLabel, courseCode, newCredits) => {
       const credits = parseFloat(newCredits);
-      if (isNaN(credits) || credits <= 0) {
-        alert('Please enter a valid credit value (e.g., 3, 4)');
+      if (isNaN(credits) || credits < 0) {
+        alert('Please enter a valid credit value (e.g., 0, 3, 4)');
         return;
       }
 
@@ -4933,349 +5739,452 @@ Now answer the student's question based on this context and any additional infor
     );
   };
 
-  const PrerequisiteTab = ({ isFullscreen, onFullscreenChange }) => {
-    const careerPaths = [
-      {
-        id: 'All',
-        title: 'All'
-      },
-      {
-        id: 'SWE',
-        title: 'SWE',
-        courses: EMPHASIS_TRACKS['Software Engineering']
-      },
-      {
-        id: 'ML',
-        title: 'ML',
-        courses: EMPHASIS_TRACKS['AI/ML']
-      },
-      {
-        id: 'Cyber',
-        title: 'Cyber',
-        courses: EMPHASIS_TRACKS.Cybersecurity
-      }
-    ];
-    const [selectedPath, setSelectedPath] = useState('All');
-    const [zoomLevel, setZoomLevel] = useState(1);
-    const [hoveredCourse, setHoveredCourse] = useState(null);
-    useEffect(() => {
-      if (!isFullscreen) return undefined;
-      const { overflow } = document.body.style;
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = overflow || '';
+  const PrerequisiteTab = () => {
+    const flowchartCourses = FLOWCHART_REFERENCE;
+    const levelOptions = [100, 200, 300, 400];
+    const [selectedLevel, setSelectedLevel] = useState(100);
+    const [selectedFlowCourseCode, setSelectedFlowCourseCode] = useState('');
+
+    const parseCodeParts = (rawCode) => {
+      const match = normalizeCode(rawCode)?.match(/^([A-Z]{2,4})\s+(\d{3})$/);
+      if (!match) return null;
+      return {
+        dept: match[1],
+        number: Number(match[2])
       };
-    }, [isFullscreen]);
-    const toggleFullscreen = () => {
-      onFullscreenChange?.(!isFullscreen);
     };
-    const flowNodes = [
-      { id: 'MATH 151', x: 40, y: 20 },
-      { id: 'ENGR 102', x: 40, y: 110 },
-      { id: 'MATH 152', x: 40, y: 200 },
-      { id: 'CSCE 181', x: 40, y: 290 },
-      { id: 'CSCE 120', x: 340, y: 20 },
-      { id: 'CSCE 222', x: 340, y: 110 },
-      { id: 'MATH 304', x: 340, y: 200 },
-      { id: 'STAT 211', x: 340, y: 290 },
-      { id: 'CSCE 221', x: 640, y: 20 },
-      { id: 'CSCE 312', x: 640, y: 110 },
-      { id: 'CSCE 314', x: 640, y: 200 },
-      { id: 'STAT 212', x: 640, y: 290 },
-      { id: 'MATH 251', x: 640, y: 380 },
-      { id: 'MATH 308', x: 640, y: 470 },
-      { id: 'CSCE 313', x: 940, y: 20 },
-      { id: 'CSCE 331', x: 940, y: 110 },
-      { id: 'CSCE 411', x: 940, y: 200 },
-      { id: 'CSCE 121', x: 1240, y: 20 },
-      { id: 'CSCE 310', x: 1240, y: 90 },
-      { id: 'CSCE 420', x: 1240, y: 160 },
-      { id: 'CSCE 421', x: 1240, y: 230 },
-      { id: 'CSCE 431', x: 1240, y: 300 },
-      { id: 'CSCE 434', x: 1240, y: 370 },
-      { id: 'CSCE 441', x: 1240, y: 440 },
-      { id: 'CSCE 442', x: 1240, y: 510 },
-      { id: 'CSCE 448', x: 1240, y: 580 },
-      { id: 'CSCE 451', x: 1240, y: 650 },
-      { id: 'CSCE 463', x: 1240, y: 720 },
-      { id: 'CSCE 465', x: 1240, y: 790 },
-      { id: 'CSCE 481', x: 1240, y: 860 },
-      { id: 'CSCE 482', x: 1240, y: 930 }
-    ];
-    const flowEdges = Object.entries(FLOWCHART_COURSES).flatMap(([code, course]) =>
-      course.prereqs.map((prereq) => ({ from: prereq, to: code }))
-    );
-    const nodeWidth = 180;
-    const nodeHeight = 56;
-    const nodeMap = useMemo(() => {
-      const map = new Map();
-      flowNodes.forEach((node) => map.set(node.id, node));
-      return map;
-    }, [flowNodes]);
-    const statusStyles = {
-      completed: 'fill-[#dcfce7] stroke-[#16a34a]',
-      'in-progress': 'fill-[#dbeafe] stroke-[#2563eb]',
-      available: 'fill-[#fef9c3] stroke-[#ca8a04]',
-      locked: 'fill-[#f3f4f6] stroke-[#9ca3af]'
+
+    const compareCourseCodes = (a, b) => {
+      const pa = parseCodeParts(a);
+      const pb = parseCodeParts(b);
+      if (!pa || !pb) return String(a).localeCompare(String(b));
+      if (pa.dept !== pb.dept) return pa.dept.localeCompare(pb.dept);
+      if (pa.number !== pb.number) return pa.number - pb.number;
+      return String(a).localeCompare(String(b));
     };
-    const getStatus = (code) => {
+
+    const isFlowPrereqOptionSatisfied = (option) => {
+      if (!option?.code) return false;
+      if (isCourseCompleted(option.code) || isCourseInProgress(option.code)) return true;
+      return option.concurrentOk && isCoursePlanned(option.code);
+    };
+
+    const getFlowCourseStatus = (code) => {
       if (isCourseCompleted(code)) return 'completed';
       if (isCourseInProgress(code)) return 'in-progress';
-      const course = FLOWCHART_COURSES[code] || COURSES[code];
+      const course = flowchartCourses[code] || COURSES[code];
       if (!course) return 'locked';
+      const prereqGroups = getCoursePrereqGroups(course);
       const prereqsMet =
-        course.prereqs.length === 0 ||
-        course.prereqs.every((p) => isCourseCompleted(p) || isCourseInProgress(p) || isCoursePlanned(p));
+        prereqGroups.length === 0 ||
+        prereqGroups.every((group) => group.some((option) => isFlowPrereqOptionSatisfied(option)));
       return prereqsMet ? 'available' : 'locked';
     };
-    const collectPrereqs = (code, collected = new Set()) => {
-      if (!code || collected.has(code)) return collected;
-      collected.add(code);
-      const course = FLOWCHART_COURSES[code] || COURSES[code];
-      if (!course?.prereqs?.length) return collected;
-      course.prereqs.forEach((prereq) => collectPrereqs(prereq, collected));
-      return collected;
-    };
-    const collectMissingPrereqs = (code, collected = new Set()) => {
-      const course = FLOWCHART_COURSES[code] || COURSES[code];
-      if (!course?.prereqs?.length) return collected;
-      course.prereqs.forEach((prereq) => {
-        if (isCourseCompleted(prereq) || isCourseInProgress(prereq) || isCoursePlanned(prereq)) return;
-        if (collected.has(prereq)) return;
-        collected.add(prereq);
-        collectMissingPrereqs(prereq, collected);
-      });
-      return collected;
-    };
-    const highlightedCourses = useMemo(() => {
-      if (selectedPath === 'All') return new Set();
-      const path = careerPaths.find((item) => item.id === selectedPath);
-      const highlight = new Set();
-      (path?.courses || []).forEach((course) => collectPrereqs(course, highlight));
-      return highlight;
-    }, [careerPaths, selectedPath]);
-    const hoveredPrereqs = useMemo(() => {
-      if (!hoveredCourse) return new Set();
-      const missing = collectMissingPrereqs(hoveredCourse, new Set());
-      missing.add(hoveredCourse);
-      return missing;
-    }, [hoveredCourse]);
-    const handleZoom = (delta) => {
-      setZoomLevel((prev) => {
-        const next = Math.round((prev + delta) * 10) / 10;
-        return Math.min(2, Math.max(0.6, next));
-      });
-    };
-    const flowchartControls = (
-      <div className="flex flex-wrap items-center justify-between gap-3 border border-gray-200 rounded-lg bg-white px-4 py-3">
-        <div className="flex flex-wrap items-center gap-2">
-          {careerPaths.map((path) => (
-            <button
-              key={path.id}
-              onClick={() => setSelectedPath(path.id)}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
-                selectedPath === path.id
-                  ? 'text-white'
-                  : 'text-gray-700 border-gray-200 hover:bg-gray-100'
-              }`}
-              style={selectedPath === path.id ? { backgroundColor: '#500000' } : {}}
-            >
-              {path.title}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => handleZoom(-0.1)}
-            className="px-3 py-1.5 rounded-full text-xs font-semibold border border-gray-200 text-gray-700 hover:bg-gray-100"
-          >
-            −
-          </button>
-          <span className="text-xs font-semibold text-gray-600">
-            {Math.round(zoomLevel * 100)}%
-          </span>
-          <button
-            type="button"
-            onClick={() => handleZoom(0.1)}
-            className="px-3 py-1.5 rounded-full text-xs font-semibold border border-gray-200 text-gray-700 hover:bg-gray-100"
-          >
-            +
-          </button>
-          <button
-            type="button"
-            onClick={() => setZoomLevel(1)}
-            className="px-3 py-1.5 rounded-full text-xs font-semibold border border-gray-200 text-gray-700 hover:bg-gray-100"
-          >
-            Reset
-          </button>
-          <button
-            type="button"
-            onClick={toggleFullscreen}
-            className="px-3 py-1.5 rounded-full text-xs font-semibold border border-gray-200 text-gray-700 hover:bg-gray-100"
-          >
-            {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-          </button>
-        </div>
-      </div>
-    );
-    const flowchartCanvas = (
-      <div
-        className={`border border-gray-200 rounded-lg bg-white p-4 ${
-          isFullscreen ? 'h-full' : 'h-[420px]'
-        } overflow-auto`}
-      >
-        <div
-          className={`flex items-center justify-center ${
-            isFullscreen ? 'min-w-[2600px] min-h-[1200px]' : 'min-w-[2000px] min-h-[900px]'
-          }`}
-        >
-          <svg
-            viewBox="0 0 1800 1050"
-            className={isFullscreen ? 'w-[2400px] h-auto' : 'w-[1800px] h-auto'}
-            role="img"
-            aria-label="Course prerequisite flowchart"
-            style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'center' }}
-          >
-            <defs>
-              <marker
-                id="arrow"
-                markerWidth="6"
-                markerHeight="6"
-                refX="6"
-                refY="3"
-                orient="auto"
-              >
-                <path d="M0,0 L6,3 L0,6 Z" fill="#9ca3af" />
-              </marker>
-            </defs>
 
-            {flowEdges.map((edge) => {
-              const from = nodeMap.get(edge.from);
-              const to = nodeMap.get(edge.to);
-              if (!from || !to) return null;
-              const startX = from.x + nodeWidth;
-              const startY = from.y + nodeHeight / 2;
-              const endX = to.x;
-              const endY = to.y + nodeHeight / 2;
-              const isHoveredEdge =
-                hoveredPrereqs.size > 0 &&
-                hoveredPrereqs.has(edge.from) &&
-                hoveredPrereqs.has(edge.to);
-              return (
-                <line
-                  key={`${edge.from}-${edge.to}`}
-                  x1={startX}
-                  y1={startY}
-                  x2={endX}
-                  y2={endY}
-                  stroke={isHoveredEdge ? '#f97316' : '#94a3b8'}
-                  strokeWidth={isHoveredEdge ? '2' : '1'}
-                  strokeOpacity={isHoveredEdge ? '0.85' : '0.35'}
-                  markerEnd="url(#arrow)"
-                />
-              );
-            })}
+    const flowStatusClasses = {
+      completed: 'bg-green-100 text-green-700 border-green-300',
+      'in-progress': 'bg-blue-100 text-blue-700 border-blue-300',
+      available: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+      locked: 'bg-gray-100 text-gray-600 border-gray-300'
+    };
 
-            {flowNodes.map((node) => {
-              const course = FLOWCHART_COURSES[node.id] || COURSES[node.id];
-              if (!course) return null;
-              const status = getStatus(node.id);
-              const isPathHighlighted =
-                selectedPath === 'All' ? false : highlightedCourses.has(node.id);
-              const isHoveredHighlight =
-                hoveredPrereqs.size > 0 && hoveredPrereqs.has(node.id);
-              const dimmed =
-                (selectedPath !== 'All' && !isPathHighlighted && hoveredPrereqs.size === 0) ||
-                (hoveredPrereqs.size > 0 && !isHoveredHighlight);
-              return (
-                <g
-                  key={node.id}
-                  onMouseEnter={() => {
-                    if (status === 'locked') setHoveredCourse(node.id);
-                  }}
-                  onMouseLeave={() => setHoveredCourse(null)}
-                >
-                  <rect
-                    x={node.x}
-                    y={node.y}
-                    width={nodeWidth}
-                    height={nodeHeight}
-                    rx="8"
-                    className={`${statusStyles[status]} stroke-2`}
-                    opacity={dimmed ? 0.35 : 1}
-                    stroke={
-                      isHoveredHighlight ? '#f97316' : isPathHighlighted ? '#500000' : undefined
-                    }
-                    strokeWidth={isHoveredHighlight ? 3 : isPathHighlighted ? 3 : undefined}
-                  />
-                  <text x={node.x + 12} y={node.y + 20} fontSize="12" fill="#111827">
-                    <tspan fontWeight="600">{node.id}</tspan>
-                  </text>
-                  <text x={node.x + 12} y={node.y + 38} fontSize="10" fill="#4b5563">
-                    <tspan>{course.title}</tspan>
-                  </text>
-                </g>
-              );
-            })}
-          </svg>
-        </div>
-      </div>
+    const csceCourseCodes = useMemo(
+      () =>
+        Object.keys(flowchartCourses)
+          .filter((code) => /^CSCE\s+\d{3}$/.test(code))
+          .sort(compareCourseCodes),
+      [flowchartCourses]
     );
+
+    const coursesByLevel = useMemo(() => {
+      const buckets = new Map(levelOptions.map((level) => [level, []]));
+      csceCourseCodes.forEach((code) => {
+        const parsed = parseCodeParts(code);
+        if (!parsed) return;
+        const level = Math.floor(parsed.number / 100) * 100;
+        if (!buckets.has(level)) return;
+        buckets.get(level).push(code);
+      });
+      return buckets;
+    }, [csceCourseCodes]);
+
+    const levelCourses = coursesByLevel.get(selectedLevel) || [];
+
+    useEffect(() => {
+      if (!selectedFlowCourseCode) return;
+      if (!levelCourses.includes(selectedFlowCourseCode)) {
+        setSelectedFlowCourseCode('');
+      }
+    }, [selectedFlowCourseCode, levelCourses]);
+
+    const selectedCourse = selectedFlowCourseCode
+      ? flowchartCourses[selectedFlowCourseCode] || COURSES[selectedFlowCourseCode]
+      : null;
+    const selectedCourseGroups = useMemo(
+      () => getCoursePrereqGroups(selectedCourse),
+      [selectedCourse]
+    );
+
+    const selectedCourseGraph = useMemo(() => {
+      if (!selectedFlowCourseCode || !selectedCourse || selectedCourseGroups.length === 0) return null;
+
+      const optionWidth = 220;
+      const optionHeight = 52;
+      const targetWidth = 250;
+      const targetHeight = 62;
+      const optionX = 54;
+      const targetX = 560;
+      const optionSpacing = 72;
+      const groupTopPadding = 40;
+      const labelToNodeGap = 26;
+      const groupGap = 34;
+
+      const optionNodes = [];
+      const groupLabels = [];
+      let currentGroupTop = groupTopPadding;
+
+      selectedCourseGroups.forEach((group, groupIndex) => {
+        if (!Array.isArray(group) || group.length === 0) return;
+        const labelY = currentGroupTop + 12;
+        const firstNodeCenterY = currentGroupTop + labelToNodeGap + optionHeight / 2;
+
+        groupLabels.push({
+          groupIndex,
+          labelY
+        });
+
+        group.forEach((option, optionIndex) => {
+          optionNodes.push({
+            key: `${groupIndex}-${optionIndex}-${option.code}`,
+            code: normalizeCode(option.code),
+            concurrentOk: Boolean(option.concurrentOk),
+            groupIndex,
+            centerY: firstNodeCenterY + optionIndex * optionSpacing
+          });
+        });
+
+        const groupBottom =
+          firstNodeCenterY + (group.length - 1) * optionSpacing + optionHeight / 2;
+        currentGroupTop = groupBottom + groupGap;
+      });
+
+      const centerValues = optionNodes.map((node) => node.centerY);
+      const optionTopValues = optionNodes.map((node) => node.centerY - optionHeight / 2);
+      const optionBottomValues = optionNodes.map((node) => node.centerY + optionHeight / 2);
+      const labelTopValues = groupLabels.map((group) => group.labelY - 14);
+      const labelBottomValues = groupLabels.map((group) => group.labelY + 4);
+      const targetCenterY =
+        centerValues.length > 0
+          ? centerValues.reduce((sum, value) => sum + value, 0) / centerValues.length
+          : 220;
+
+      const minRawY = Math.min(
+        ...optionTopValues,
+        ...labelTopValues,
+        targetCenterY - targetHeight / 2
+      );
+      const maxRawY = Math.max(
+        ...optionBottomValues,
+        ...labelBottomValues,
+        targetCenterY + targetHeight / 2
+      );
+      const rawHeight = Math.max(340, Math.ceil(maxRawY - minRawY + 90));
+      const minCanvasY = minRawY - 20;
+      const yShift = minCanvasY < 20 ? 20 - minCanvasY : 0;
+
+      return {
+        width: 840,
+        height: rawHeight,
+        optionX,
+        optionWidth,
+        optionHeight,
+        targetX,
+        targetY: targetCenterY - targetHeight / 2 + yShift,
+        targetCenterY: targetCenterY + yShift,
+        targetWidth,
+        targetHeight,
+        optionNodes: optionNodes.map((node) => ({
+          ...node,
+          centerY: node.centerY + yShift
+        })),
+        groupLabels: groupLabels.map((group) => ({
+          ...group,
+          labelY: group.labelY + yShift
+        }))
+      };
+    }, [selectedFlowCourseCode, selectedCourse, selectedCourseGroups]);
+
+    const getNodePalette = (code, statusOverride = '') => {
+      const status = statusOverride || getFlowCourseStatus(code);
+      if (status === 'completed') {
+        return { fill: '#dcfce7', stroke: '#16a34a', text: '#065f46' };
+      }
+      if (status === 'in-progress') {
+        return { fill: '#dbeafe', stroke: '#2563eb', text: '#1e3a8a' };
+      }
+      if (status === 'available') {
+        return { fill: '#fef9c3', stroke: '#ca8a04', text: '#92400e' };
+      }
+      return { fill: '#f8fafc', stroke: '#94a3b8', text: '#1f2937' };
+    };
 
     return (
       <div className="space-y-4">
         <div className="bg-white rounded-lg shadow p-6">
           <h3 className="text-lg font-bold mb-2">Course Prerequisite Flowchart</h3>
           <p className="text-sm text-gray-600 mb-6">
-            Flowchart-style prerequisites for the CS core. Boxes show status based on transcript.
+            Solid (full) lines indicate prerequisites; dashed blue lines indicate co-requisites.
           </p>
 
-          <div className="space-y-3">
-            {flowchartControls}
-            {flowchartCanvas}
+          <div className="flex flex-wrap gap-2 mb-4">
+            {levelOptions.map((level) => (
+              <button
+                key={level}
+                type="button"
+                onClick={() => setSelectedLevel(level)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
+                  selectedLevel === level
+                    ? 'text-white border-transparent'
+                    : 'text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+                style={selectedLevel === level ? { backgroundColor: '#500000' } : {}}
+              >
+                {level}-Level
+              </button>
+            ))}
           </div>
-        </div>
 
-        {isFullscreen && (
-          <div className="fixed inset-0 z-50 bg-white">
-            <div className="flex h-full w-full flex-col">
-              <div className="border-b border-gray-200 px-6 py-4 bg-white">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-bold text-gray-900">Prerequisite Flowchart</h3>
-                  <button
-                    type="button"
-                    onClick={() => onFullscreenChange?.(false)}
-                    className="px-3 py-1.5 rounded-full text-xs font-semibold border border-gray-200 text-gray-700 hover:bg-gray-100"
-                  >
-                    Exit Fullscreen
-                  </button>
-                </div>
-                <div className="mt-3">{flowchartControls}</div>
+          <div className="grid grid-cols-1 xl:grid-cols-[340px_minmax(0,1fr)] gap-4">
+            <div className="border border-gray-200 rounded-lg bg-white">
+              <div className="px-4 py-3 border-b border-gray-200">
+                <p className="font-semibold text-gray-900">{selectedLevel}-Level CSCE Courses</p>
+                <p className="text-xs text-gray-500 mt-1">{levelCourses.length} courses</p>
               </div>
-              <div className="flex-1 overflow-auto p-6">{flowchartCanvas}</div>
+              <div className="max-h-[620px] overflow-auto p-2 space-y-2">
+                {levelCourses.length === 0 ? (
+                  <p className="text-sm text-gray-500 px-3 py-2">No courses found for this level.</p>
+                ) : (
+                  levelCourses.map((code) => {
+                    const course = flowchartCourses[code] || COURSES[code];
+                    const status = getFlowCourseStatus(code);
+                    const selected = code === selectedFlowCourseCode;
+                    return (
+                      <button
+                        key={code}
+                        type="button"
+                        onClick={() => setSelectedFlowCourseCode(code)}
+                        className={`w-full text-left p-3 rounded-lg border transition ${
+                          selected
+                            ? 'border-[#500000] bg-[#500000]/5'
+                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-semibold text-gray-900">{code}</p>
+                            <p className="text-xs text-gray-600 truncate">{course?.title || code}</p>
+                          </div>
+                          <span
+                            className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] border ${flowStatusClasses[status]}`}
+                          >
+                            {status === 'in-progress'
+                              ? 'In Progress'
+                              : status.charAt(0).toUpperCase() + status.slice(1)}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
             </div>
-          </div>
-        )}
 
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-bold mb-4">Legend</h3>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-green-100 border-2 border-green-300 rounded"></div>
-              <span className="text-sm">Completed</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-blue-100 border-2 border-blue-300 rounded"></div>
-              <span className="text-sm">In Progress</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-yellow-100 border-2 border-yellow-300 rounded"></div>
-              <span className="text-sm">Available</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-gray-100 border-2 border-gray-300 rounded"></div>
-              <span className="text-sm">Locked</span>
+            <div className="border border-gray-200 rounded-lg bg-white min-h-[420px]">
+              {!selectedFlowCourseCode || !selectedCourse ? (
+                <div className="h-full min-h-[420px] flex items-center justify-center p-8 text-center">
+                  <div>
+                    <p className="text-sm text-gray-500">
+                      Select a course from the {selectedLevel}-level list to view its prerequisite and co-requisite relationships.
+                    </p>
+                    <p className="text-xs text-gray-400 mt-2">
+                      Details stay hidden until a course is selected.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-lg font-bold text-gray-900">{selectedFlowCourseCode}</p>
+                      <p className="text-sm text-gray-600">{selectedCourse.title || selectedFlowCourseCode}</p>
+                    </div>
+                    <span
+                      className={`px-2.5 py-1 rounded-full text-xs border ${flowStatusClasses[getFlowCourseStatus(selectedFlowCourseCode)]}`}
+                    >
+                      {getFlowCourseStatus(selectedFlowCourseCode) === 'in-progress'
+                        ? 'In Progress'
+                        : getFlowCourseStatus(selectedFlowCourseCode).charAt(0).toUpperCase() +
+                          getFlowCourseStatus(selectedFlowCourseCode).slice(1)}
+                    </span>
+                  </div>
+
+                  {selectedCourseGraph ? (
+                    <div className="border border-gray-200 rounded-lg bg-gray-50 p-3 overflow-auto">
+                      <svg
+                        viewBox={`0 0 ${selectedCourseGraph.width} ${selectedCourseGraph.height}`}
+                        className="w-full h-auto"
+                        role="img"
+                        aria-label={`Prerequisites for ${selectedFlowCourseCode}`}
+                      >
+                        <defs>
+                          <marker
+                            id="selected-flow-arrow"
+                            markerWidth="10"
+                            markerHeight="10"
+                            viewBox="0 0 10 10"
+                            refX="8"
+                            refY="5"
+                            orient="auto"
+                            markerUnits="userSpaceOnUse"
+                          >
+                            <path d="M0,0 L10,5 L0,10 Z" fill="#94a3b8" />
+                          </marker>
+                          <marker
+                            id="selected-flow-arrow-coreq"
+                            markerWidth="10"
+                            markerHeight="10"
+                            viewBox="0 0 10 10"
+                            refX="8"
+                            refY="5"
+                            orient="auto"
+                            markerUnits="userSpaceOnUse"
+                          >
+                            <path d="M0,0 L10,5 L0,10 Z" fill="#3b82f6" />
+                          </marker>
+                        </defs>
+
+                        {selectedCourseGraph.optionNodes.map((node) => {
+                          const palette = getNodePalette(node.code);
+                          const startX = selectedCourseGraph.optionX + selectedCourseGraph.optionWidth + 2;
+                          const endX = selectedCourseGraph.targetX - 12;
+                          return (
+                            <g key={node.key}>
+                              <line
+                                x1={startX}
+                                y1={node.centerY}
+                                x2={endX}
+                                y2={selectedCourseGraph.targetCenterY}
+                                stroke={node.concurrentOk ? '#3b82f6' : '#94a3b8'}
+                                strokeWidth="1.75"
+                                strokeOpacity="0.85"
+                                strokeDasharray={node.concurrentOk ? '6 4' : undefined}
+                                markerEnd={
+                                  node.concurrentOk
+                                    ? 'url(#selected-flow-arrow-coreq)'
+                                    : 'url(#selected-flow-arrow)'
+                                }
+                                strokeLinecap="round"
+                              />
+                              <rect
+                                x={selectedCourseGraph.optionX}
+                                y={node.centerY - selectedCourseGraph.optionHeight / 2}
+                                width={selectedCourseGraph.optionWidth}
+                                height={selectedCourseGraph.optionHeight}
+                                rx="8"
+                                fill={palette.fill}
+                                stroke={palette.stroke}
+                                strokeWidth="1.5"
+                              />
+                              <text
+                                x={selectedCourseGraph.optionX + 10}
+                                y={node.centerY - 5}
+                                fill={palette.text}
+                                fontSize="13"
+                                fontWeight="600"
+                              >
+                                {node.code}
+                              </text>
+                              <text
+                                x={selectedCourseGraph.optionX + 10}
+                                y={node.centerY + 13}
+                                fill="#6b7280"
+                                fontSize="11"
+                              >
+                                {node.concurrentOk ? 'Co-requisite option' : 'Prerequisite option'}
+                              </text>
+                            </g>
+                          );
+                        })}
+
+                        {selectedCourseGraph.groupLabels.map((group) => (
+                          <g key={`group-label-${group.groupIndex}`}>
+                            <rect
+                              x="14"
+                              y={group.labelY - 13}
+                              width="176"
+                              height="20"
+                              rx="5"
+                              fill="#f8fafc"
+                            />
+                            <text
+                              x="20"
+                              y={group.labelY}
+                              fill="#6b7280"
+                              fontSize="12"
+                            >
+                              Group {group.groupIndex + 1}: choose one
+                            </text>
+                          </g>
+                        ))}
+
+                        {(() => {
+                          const targetPalette = getNodePalette(
+                            selectedFlowCourseCode,
+                            getFlowCourseStatus(selectedFlowCourseCode)
+                          );
+                          return (
+                            <g>
+                              <rect
+                                x={selectedCourseGraph.targetX}
+                                y={selectedCourseGraph.targetY}
+                                width={selectedCourseGraph.targetWidth}
+                                height={selectedCourseGraph.targetHeight}
+                                rx="9"
+                                fill={targetPalette.fill}
+                                stroke={targetPalette.stroke}
+                                strokeWidth="2"
+                              />
+                              <text
+                                x={selectedCourseGraph.targetX + 12}
+                                y={selectedCourseGraph.targetY + 24}
+                                fill={targetPalette.text}
+                                fontSize="14"
+                                fontWeight="700"
+                              >
+                                {selectedFlowCourseCode}
+                              </text>
+                              <text
+                                x={selectedCourseGraph.targetX + 12}
+                                y={selectedCourseGraph.targetY + 42}
+                                fill="#374151"
+                                fontSize="11"
+                              >
+                                Target course
+                              </text>
+                            </g>
+                          );
+                        })()}
+                      </svg>
+                    </div>
+                  ) : (
+                    <div className="border border-gray-200 rounded-lg bg-gray-50 p-4">
+                      <p className="text-sm text-gray-600">
+                        No prerequisite or co-requisite courses are listed for this course.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -5701,7 +6610,8 @@ Now answer the student's question based on this context and any additional infor
                   {[
                     { id: 'dashboard', label: 'Dashboard' },
                     { id: 'planner', label: 'Planner' },
-                    { id: 'prerequisites', label: 'Prerequisites' }
+                    { id: 'prerequisites', label: 'Prerequisites' },
+                    ...(isAdmin ? [{ id: 'admin', label: 'Admin' }] : []),
                   ].map((tab) => (
                     <button
                       key={tab.id}
@@ -5742,7 +6652,6 @@ Now answer the student's question based on this context and any additional infor
               onFullscreenChange={setIsFlowFullscreen}
             />
           ) : <LoginPage />)}
-          {activeTab === 'settings' && (authUser ? <SettingsTab /> : <LoginPage />)}
           {activeTab === 'login' && <LoginPage />}
         </div>
       </main>

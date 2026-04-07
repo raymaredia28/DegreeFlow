@@ -20,7 +20,7 @@ import {
   savePlannerState,
   saveTranscriptTerms
 } from "../storage/index.js";
-import { verifyBearerToken } from "../services/auth.js";
+import { authenticate } from "../middleware/auth.js";
 
 export const storageRouter = Router();
 const execFileAsync = promisify(execFile);
@@ -58,15 +58,6 @@ const detectDocumentPayloadSchema = z.object({
 const parseDegreeEvalPayloadSchema = z.object({
   lines: z.array(z.string()).min(1)
 });
-
-const getAuthUser = async (req: Request, res: Response) => {
-  try {
-    return await verifyBearerToken(req.headers.authorization);
-  } catch {
-    res.status(401).json({ error: "Unauthorized" });
-    return null;
-  }
-};
 
 const rejectMismatchedStudentId = (authUid: string, requestedStudentId?: string) => {
   if (!requestedStudentId) return false;
@@ -203,9 +194,8 @@ storageRouter.post("/storage/parse-degree-evaluation", async (req, res) => {
   }
 });
 
-storageRouter.post("/storage/transcript", async (req, res) => {
-  const authUser = await getAuthUser(req, res);
-  if (!authUser) return;
+storageRouter.post("/storage/transcript", authenticate, async (req, res) => {
+  const authUser = req.user!;
 
   const parsed = transcriptSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -223,9 +213,8 @@ storageRouter.post("/storage/transcript", async (req, res) => {
   return res.json({ studentId: student.user_id });
 });
 
-storageRouter.get("/storage/transcript/:studentId", async (req, res) => {
-  const authUser = await getAuthUser(req, res);
-  if (!authUser) return;
+storageRouter.get("/storage/transcript/:studentId", authenticate, async (req, res) => {
+  const authUser = req.user!;
 
   if (rejectMismatchedStudentId(authUser.uid, req.params.studentId)) {
     return res.status(403).json({ error: "Forbidden" });
@@ -239,9 +228,8 @@ storageRouter.get("/storage/transcript/:studentId", async (req, res) => {
   return res.json({ studentId, terms: transcript });
 });
 
-storageRouter.post("/storage/planner/:studentId", async (req, res) => {
-  const authUser = await getAuthUser(req, res);
-  if (!authUser) return;
+storageRouter.post("/storage/planner/:studentId", authenticate, async (req, res) => {
+  const authUser = req.user!;
 
   if (rejectMismatchedStudentId(authUser.uid, req.params.studentId)) {
     return res.status(403).json({ error: "Forbidden" });
@@ -252,9 +240,8 @@ storageRouter.post("/storage/planner/:studentId", async (req, res) => {
   return res.json(state);
 });
 
-storageRouter.get("/storage/planner/:studentId", async (req, res) => {
-  const authUser = await getAuthUser(req, res);
-  if (!authUser) return;
+storageRouter.get("/storage/planner/:studentId", authenticate, async (req, res) => {
+  const authUser = req.user!;
 
   if (rejectMismatchedStudentId(authUser.uid, req.params.studentId)) {
     return res.status(403).json({ error: "Forbidden" });
@@ -274,9 +261,8 @@ const loginSchema = z.object({
   name: z.string().optional(),
 });
 
-storageRouter.post("/storage/login", async (req, res) => {
-  const authUser = await getAuthUser(req, res);
-  if (!authUser) return;
+storageRouter.post("/storage/login", authenticate, async (req, res) => {
+  const authUser = req.user!;
 
   const parsed = loginSchema.safeParse(req.body ?? {});
   if (!parsed.success && req.body) {
@@ -289,7 +275,6 @@ storageRouter.post("/storage/login", async (req, res) => {
     name: authUser.name || parsed.data?.name
   });
 
-  // Load existing transcript and planner data
   const transcript = await getTranscriptForStudent(student.user_id);
   const planner = await getPlannerState(student.user_id);
 
@@ -302,5 +287,6 @@ storageRouter.post("/storage/login", async (req, res) => {
     },
     transcript: transcript.length > 0 ? { terms: transcript } : null,
     planner: planner?.payload ?? null,
+    isAdmin: authUser.isAdmin,
   });
 });
