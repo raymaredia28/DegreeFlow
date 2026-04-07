@@ -149,19 +149,64 @@ def is_excluded_grade(grade: str) -> bool:
 
 def clean_department_code(dept: str) -> str:
     """Fix garbled department codes from PDF extraction."""
+    dept = str(dept or "").strip().upper()
+
     # Common OCR/extraction errors in TAMU transcripts
     corrections = {
         "ANTOH": "ANTH",
         "NCSCE": "CSCE",
         "UCSCE": "CSCE",
         "UHIST": "HIST",
+        "UENDS": "ENDS",
         "NMKTG": "MKTG",
         "NFINC": "FINC",
         "NMATH": "MATH",
         "NPHYS": "PHYS",
         "NENGL": "ENGL",
     }
-    return corrections.get(dept, dept)
+    if dept in corrections:
+        return corrections[dept]
+
+    # Some unofficial transcript PDFs prepend a spurious leading character
+    # (often U/N) to the department token. Normalize those when the remainder
+    # is a known TAMU department code used in evaluation rules.
+    known_codes = {
+        "AFST",
+        "ANTH",
+        "ARCH",
+        "ARTS",
+        "COMM",
+        "CSCE",
+        "DCED",
+        "ENDS",
+        "ENGL",
+        "FILM",
+        "FINC",
+        "FREN",
+        "GEOL",
+        "GLST",
+        "HISP",
+        "HIST",
+        "HORT",
+        "INTA",
+        "KINE",
+        "MATH",
+        "MKTG",
+        "MSTC",
+        "MUSC",
+        "PERF",
+        "PHIL",
+        "PHYS",
+        "POLS",
+        "RELS",
+        "THEA",
+    }
+    if len(dept) >= 4 and dept[0] in {"U", "N"}:
+        candidate = dept[1:]
+        if candidate in known_codes:
+            return candidate
+
+    return dept
 
 
 def normalize_student_name(raw: str) -> str:
@@ -921,7 +966,34 @@ def parse_pdf(path: str):
             merged[label]["status"] = "Transfer"
 
     terms = sorted((t for t in merged.values() if t.get("courses")), key=lambda t: term_sort_key(t["label"]))
-    
+
+    # Final normalization pass:
+    # If the latest term has only blank grades, treat it as "In Progress" and
+    # assign IP to blank-grade courses. This aligns unofficial transcript rows
+    # that omit explicit grades for current-term coursework.
+    if terms:
+        latest_label = max((term.get("label", "") for term in terms), key=term_sort_key)
+        for term in terms:
+            courses = term.get("courses", [])
+            if not courses:
+                continue
+
+            has_blank = any(not normalize_grade_token(c.get("grade", "")) for c in courses)
+            has_nonblank = any(normalize_grade_token(c.get("grade", "")) for c in courses)
+            has_in_progress = any(
+                is_in_progress_grade(c.get("grade", "")) for c in courses
+            )
+
+            should_mark_in_progress = has_in_progress or (
+                term.get("label") == latest_label and has_blank and not has_nonblank
+            )
+
+            if should_mark_in_progress:
+                term["status"] = "In Progress"
+                for course in courses:
+                    if not normalize_grade_token(course.get("grade", "")):
+                        course["grade"] = "IP"
+
     result = {"terms": terms}
     if totals:
         result["totals"] = totals
