@@ -1061,6 +1061,7 @@ function App() {
     }
   });
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(false);
   const [authToken, setAuthToken] = useState(() => localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || '');
   const authHeaders = useCallback(
     (extras = {}) => ({
@@ -1405,14 +1406,17 @@ function App() {
     showToast
   ]);
 
-  const loadUserData = useCallback(async (email, name) => {
+  const loadUserData = useCallback(async (email, name, tokenOverride) => {
     try {
       if (name) {
         updateDisplayStudentName(name);
       }
+      const headers = tokenOverride
+        ? { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenOverride}` }
+        : authHeaders({ 'Content-Type': 'application/json' });
       const resp = await fetch(`${API_BASE}/storage/login`, {
         method: 'POST',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        headers,
         body: JSON.stringify({ email, name })
       });
       if (!resp.ok) return false;
@@ -1526,6 +1530,8 @@ function App() {
 
   const googleLogin = async () => {
     try {
+      dataLoadedRef.current = true; // guard: prevent the useEffect from also calling loadUserData
+      setIsLoadingData(true);
       const credential = await signInWithPopup(firebaseAuth, googleProvider);
       const user = {
         provider: 'google',
@@ -1542,11 +1548,14 @@ function App() {
       setAuthUser(user);
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
 
-      const loaded = await loadUserData(user.email, user.name);
-      if (loaded) dataLoadedRef.current = true;
+      const loaded = await loadUserData(user.email, user.name, token);
+      if (!loaded) dataLoadedRef.current = false;
       setActiveTab('dashboard');
     } catch {
+      dataLoadedRef.current = false;
       alert('Google sign-in failed. Please try again.');
+    } finally {
+      setIsLoadingData(false);
     }
   };
 
@@ -1564,9 +1573,10 @@ function App() {
   const dataLoadedRef = useRef(false);
   useEffect(() => {
     if (authUser?.email && authToken && !dataLoadedRef.current) {
+      setIsLoadingData(true);
       loadUserData(authUser.email, authUser.name).then((ok) => {
         if (ok) dataLoadedRef.current = true;
-      });
+      }).finally(() => setIsLoadingData(false));
     }
     if (!authUser) {
       dataLoadedRef.current = false;
@@ -1623,40 +1633,59 @@ function App() {
     return map;
   };
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const [coursesRes, emphasesRes, minorsRes] = await Promise.all([
-          fetch(`${API_BASE}/api/courses`),
-          fetch(`${API_BASE}/api/emphases`),
-          fetch(`${API_BASE}/api/minors`)
-        ]);
-        if (coursesRes.ok) {
-          const { courses } = await coursesRes.json();
-          setCoursesIndex(buildCourseIndex(courses || []));
-        }
-        if (emphasesRes.ok) {
-          const { emphases } = await emphasesRes.json();
-          setEmphases(emphases || []);
-          const names = (emphases || [])
-            .map((e) => e.emphasis_name || e.name)
-            .filter(Boolean);
-          setEmphasisOptions(['Undecided', ...names]);
-        }
-        if (minorsRes.ok) {
-          const { minors } = await minorsRes.json();
-          setMinors(minors || []);
-          const names = (minors || [])
-            .map((m) => m.minor_name || m.name)
-            .filter(Boolean);
-          setMinorOptions(['None', ...names]);
-        }
-      } catch (err) {
-        console.warn('Failed to load catalog data', err);
-      }
-    };
-    load();
+  const CATALOG_CACHE_KEY = 'catalogCache';
+
+  const applyCatalog = useCallback((data) => {
+    if (data.courses) setCoursesIndex(buildCourseIndex(data.courses));
+    if (data.emphases) {
+      setEmphases(data.emphases);
+      const names = data.emphases.map((e) => e.emphasis_name || e.name).filter(Boolean);
+      setEmphasisOptions(['Undecided', ...names]);
+    }
+    if (data.minors) {
+      setMinors(data.minors);
+      const names = data.minors.map((m) => m.minor_name || m.name).filter(Boolean);
+      setMinorOptions(['None', ...names]);
+    }
   }, []);
+
+  const refreshCatalog = useCallback(async () => {
+    try {
+      const [coursesRes, emphasesRes, minorsRes] = await Promise.all([
+        fetch(`${API_BASE}/api/courses`),
+        fetch(`${API_BASE}/api/emphases`),
+        fetch(`${API_BASE}/api/minors`)
+      ]);
+      const freshData = {};
+      if (coursesRes.ok) {
+        const { courses } = await coursesRes.json();
+        freshData.courses = courses || [];
+      }
+      if (emphasesRes.ok) {
+        const { emphases } = await emphasesRes.json();
+        freshData.emphases = emphases || [];
+      }
+      if (minorsRes.ok) {
+        const { minors } = await minorsRes.json();
+        freshData.minors = minors || [];
+      }
+      applyCatalog(freshData);
+      try {
+        localStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify(freshData));
+      } catch { /* localStorage full — non-critical */ }
+    } catch (err) {
+      console.warn('Failed to load catalog data', err);
+    }
+  }, [applyCatalog]);
+
+  useEffect(() => {
+    // Stale-while-revalidate: instantly load from localStorage, then refresh from server
+    try {
+      const cached = localStorage.getItem(CATALOG_CACHE_KEY);
+      if (cached) applyCatalog(JSON.parse(cached));
+    } catch { /* ignore corrupt cache */ }
+    refreshCatalog();
+  }, [applyCatalog, refreshCatalog]);
 
   const evaluateRequirementsLocal = async () => {
     setReqLoading(true);
@@ -6359,18 +6388,27 @@ Now answer the student's question using only this context.`
 
       <main className={isFlowFullscreen ? 'p-0' : 'max-w-7xl mx-auto px-4 py-8'}>
         <div key={activeTab} className="animate-fade-in">
-          {activeTab === 'dashboard' && (authUser ? <DashboardTab /> : <LoginPage />)}
-          {activeTab === 'planner' && (authUser ? <PlannerTab /> : <LoginPage />)}
-          {activeTab === 'prerequisites' && (authUser ? (
-            <PrerequisiteTab
-              isFullscreen={isFlowFullscreen}
-              onFullscreenChange={setIsFlowFullscreen}
-            />
-          ) : <LoginPage />)}
-          {activeTab === 'admin' && authUser && isAdmin && (
-            <AdminPanel apiBase={API_BASE} authHeaders={authHeaders} />
+          {isLoadingData && activeTab !== 'login' ? (
+            <div className="flex flex-col items-center justify-center py-32 gap-4">
+              <div className="w-10 h-10 border-4 border-maroon/30 border-t-maroon rounded-full animate-spin" />
+              <p className="text-gray-500 text-sm">Loading your data&hellip;</p>
+            </div>
+          ) : (
+            <>
+              {activeTab === 'dashboard' && (authUser ? <DashboardTab /> : <LoginPage />)}
+              {activeTab === 'planner' && (authUser ? <PlannerTab /> : <LoginPage />)}
+              {activeTab === 'prerequisites' && (authUser ? (
+                <PrerequisiteTab
+                  isFullscreen={isFlowFullscreen}
+                  onFullscreenChange={setIsFlowFullscreen}
+                />
+              ) : <LoginPage />)}
+              {activeTab === 'admin' && authUser && isAdmin && (
+                <AdminPanel apiBase={API_BASE} authHeaders={authHeaders} onCatalogChange={refreshCatalog} />
+              )}
+              {activeTab === 'login' && <LoginPage />}
+            </>
           )}
-          {activeTab === 'login' && <LoginPage />}
         </div>
       </main>
 

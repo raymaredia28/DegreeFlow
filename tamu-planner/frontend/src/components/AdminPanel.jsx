@@ -139,7 +139,7 @@ function DeleteConfirmModal({ course, onConfirm, onClose, deleting }) {
   );
 }
 
-export function AdminPanel({ apiBase, authHeaders }) {
+export function AdminPanel({ apiBase, authHeaders, onCatalogChange }) {
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -190,6 +190,7 @@ export function AdminPanel({ apiBase, authHeaders }) {
       }
       setShowAddModal(false);
       fetchCourses();
+      onCatalogChange?.();
     } catch (err) {
       alert(`Failed to add course: ${err.message}`);
     } finally {
@@ -212,6 +213,7 @@ export function AdminPanel({ apiBase, authHeaders }) {
       }
       setEditCourse(null);
       fetchCourses();
+      onCatalogChange?.();
     } catch (err) {
       alert(`Failed to update course: ${err.message}`);
     } finally {
@@ -233,6 +235,7 @@ export function AdminPanel({ apiBase, authHeaders }) {
       }
       setDeleteCourse(null);
       fetchCourses();
+      onCatalogChange?.();
     } catch (err) {
       alert(`Failed to delete course: ${err.message}`);
     } finally {
