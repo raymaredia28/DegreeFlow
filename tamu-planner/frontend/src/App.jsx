@@ -27,6 +27,7 @@ import {
 
 import { computeEvaluationSignature } from './utils/evaluationFreshness.mjs';
 import { computeCreditProgressFromEvalResult } from './utils/evalCreditProgress.mjs';
+import { reconcileWorkNotApplied } from './utils/workNotApplied.mjs';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4000';
 
@@ -62,6 +63,24 @@ const normalizeDisplayStudentName = (rawName) => {
     }
   }
   return name;
+};
+
+const normalizeTrackLabel = (rawLabel, type) => {
+  const value = String(rawLabel || '').trim();
+  if (!value) return '';
+  if (type === 'minor') {
+    return value
+      .replace(/^Minor\s*-\s*/i, '')
+      .replace(/\s+Minor$/i, '')
+      .trim();
+  }
+  if (type === 'emphasis') {
+    return value
+      .replace(/^CSCE\s+Emphasis\s*-\s*/i, '')
+      .replace(/^Emphasis\s*-\s*/i, '')
+      .trim();
+  }
+  return value;
 };
 
 // Requirement areas used for the evaluation bars on the Dashboard.
@@ -1535,10 +1554,10 @@ function App() {
           setTranscriptTotals(data.planner.transcriptTotals);
         }
         if (data.planner.selectedEmphasis) {
-          setSelectedEmphasis(data.planner.selectedEmphasis);
+          setSelectedEmphasis(normalizeTrackLabel(data.planner.selectedEmphasis, 'emphasis'));
         }
         if (data.planner.selectedMinor) {
-          setSelectedMinor(data.planner.selectedMinor);
+          setSelectedMinor(normalizeTrackLabel(data.planner.selectedMinor, 'minor'));
         }
         if (data.planner.hasHsLanguage != null) {
           setHasHsLanguage(data.planner.hasHsLanguage);
@@ -1817,14 +1836,20 @@ function App() {
         });
       });
 
+      const normalizedSelectedEmphasis = normalizeTrackLabel(selectedEmphasis, 'emphasis');
+      const normalizedSelectedMinor = normalizeTrackLabel(selectedMinor, 'minor');
+
       const selectedEmphasisId =
-        selectedEmphasis && selectedEmphasis !== 'Undecided'
-          ? emphases.find((e) => (e.emphasis_name || e.name) === selectedEmphasis)?.emphasis_id ||
-            null
+        normalizedSelectedEmphasis && normalizedSelectedEmphasis !== 'Undecided'
+          ? emphases.find(
+            (e) => normalizeTrackLabel((e.emphasis_name || e.name), 'emphasis') === normalizedSelectedEmphasis
+          )?.emphasis_id || null
           : null;
       const selectedMinorId =
-        selectedMinor && selectedMinor !== 'None'
-          ? minors.find((m) => (m.minor_name || m.name) === selectedMinor)?.minor_id || null
+        normalizedSelectedMinor && normalizedSelectedMinor !== 'None'
+          ? minors.find(
+            (m) => normalizeTrackLabel((m.minor_name || m.name), 'minor') === normalizedSelectedMinor
+          )?.minor_id || null
           : null;
 
       // Degree-level evaluation — pass degreeEmphasisId so the backend can
@@ -1834,6 +1859,7 @@ function App() {
         catalogYear: null,
         emphasisId: null,
         degreeEmphasisId: selectedEmphasisId ?? null,
+        degreeMinorId: selectedMinorId ?? null,
         minorId: null,
         courses: Array.from(combined.values()),
         hasHsLanguage,
@@ -1911,8 +1937,15 @@ function App() {
       }
       if (data.warnings?.length) setReqWarning(data.warnings.join(' | '));
 
+      const reconciledDegreeData = reconcileWorkNotApplied(
+        degreeData,
+        data,
+        computedMinorData
+      );
+      setDegreeResult(reconciledDegreeData);
+
       return {
-        degreeResult: degreeData,
+        degreeResult: reconciledDegreeData,
         requirementsResult: data,
         minorResult: computedMinorData
       };
@@ -6652,6 +6685,8 @@ Now answer the student's question using only this context.`
               onFullscreenChange={setIsFlowFullscreen}
             />
           ) : <LoginPage />)}
+            {activeTab === 'settings' && (authUser ? <SettingsTab /> : <LoginPage />)}
+          {activeTab === 'admin' && (authUser && isAdmin ? <AdminPanel apiBase={API_BASE} authHeaders={authHeaders} /> : <LoginPage />)}
           {activeTab === 'login' && <LoginPage />}
         </div>
       </main>
