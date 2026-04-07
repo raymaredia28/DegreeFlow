@@ -227378,5 +227378,24 @@
     "aliases": [
       "ENSS 431"
     ]
+  },
+  {
+    "department": {
+      "code": "CSCE",
+      "name": "CSCE"
+    },
+    "primary_subject": "CSCE",
+    "primary_number": "107",
+    "title": "Course Test",
+    "credits": 3,
+    "description_raw": "This is a Test Course",
+    "prereq_raw": "None",
+    "codes": [
+      "CSCE 107"
+    ],
+    "aliases": [
+      "CSCE 107"
+    ],
+    "course_id": 5139
   }
 ]
