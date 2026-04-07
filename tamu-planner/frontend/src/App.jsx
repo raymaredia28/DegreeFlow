@@ -1567,7 +1567,14 @@ function App() {
         }
         if (data.planner.savedEvaluation) {
           const ev = data.planner.savedEvaluation;
-          if (ev.degreeResult) setDegreeResult(ev.degreeResult);
+          if (ev.degreeResult) {
+            const reconciled = reconcileWorkNotApplied(
+              ev.degreeResult,
+              ev.requirementsResult ?? null,
+              ev.minorResult ?? null
+            );
+            setDegreeResult(reconciled);
+          }
           if (ev.requirementsResult) setRequirementsResult(ev.requirementsResult);
           if (ev.minorResult) setMinorResult(ev.minorResult);
           if (ev.reqWarning) setReqWarning(ev.reqWarning);
