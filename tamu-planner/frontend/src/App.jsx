@@ -1590,6 +1590,7 @@ function App() {
           };
         }
       }
+      setPlannerDirty(false);
       return true;
     } catch (err) {
       console.error('Failed to load user data:', err);

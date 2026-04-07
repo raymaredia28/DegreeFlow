@@ -275,8 +275,10 @@ storageRouter.post("/storage/login", authenticate, async (req, res) => {
     name: authUser.name || parsed.data?.name
   });
 
-  const transcript = await getTranscriptForStudent(student.user_id);
-  const planner = await getPlannerState(student.user_id);
+  const [transcript, planner] = await Promise.all([
+    getTranscriptForStudent(student.user_id),
+    getPlannerState(student.user_id),
+  ]);
 
   return res.json({
     studentId: student.user_id,
