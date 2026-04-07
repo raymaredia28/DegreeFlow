@@ -4150,16 +4150,26 @@ Now answer the student's question using only this context.`
                 )}
 
                 {/* Work Not Applied section */}
-                {degreeResult.workNotApplied?.length > 0 && (
+                {(() => {
+                  const minorUsed = new Set();
+                  if (minorResult) {
+                    (minorResult.groups || []).forEach((g) =>
+                      (g.usedCourses || []).forEach((c) => minorUsed.add(c))
+                    );
+                  }
+                  const filtered = (degreeResult.workNotApplied || []).filter(
+                    (entry) => !minorUsed.has(entry.code)
+                  );
+                  return filtered.length > 0 ? (
                   <details>
                     <summary className="cursor-pointer select-none flex items-center gap-2 text-sm font-semibold text-blue-700 py-2 px-2 rounded hover:bg-blue-50 transition-colors">
                       <ChevronDown className="w-4 h-4 details-chevron flex-shrink-0" />
                       <Info className="w-4 h-4 flex-shrink-0" />
-                      Work Not Applied ({degreeResult.workNotApplied.length} course{degreeResult.workNotApplied.length !== 1 ? 's' : ''})
+                      Work Not Applied ({filtered.length} course{filtered.length !== 1 ? 's' : ''})
                     </summary>
                     <div className="space-y-2 mt-2">
-                      <p className="text-xs text-gray-500 ml-6">These courses are not currently being used to satisfy any degree requirement group.</p>
-                      {degreeResult.workNotApplied.map((entry) => (
+                      <p className="text-xs text-gray-500 ml-6">These courses are not currently being used to satisfy any degree or minor requirement group.</p>
+                      {filtered.map((entry) => (
                         <div key={entry.code} className="rounded border border-blue-200 bg-blue-50/50 px-3 py-2 ml-6">
                           <div className="flex items-center justify-between">
                             <span className="text-sm font-medium text-gray-900">{entry.code}</span>
@@ -4174,7 +4184,8 @@ Now answer the student's question using only this context.`
                       ))}
                     </div>
                   </details>
-                )}
+                  ) : null;
+                })()}
               </div>
             );
           })() : null}

@@ -9,7 +9,7 @@
     "start": "node dist/index.js",
     "validate:data": "node scripts/validate-data.js",
     "test:unit": "node tests/evaluator.test.js && node --loader ts-node/esm tests/documentParsing.test.ts",
-    "test": "npm run build && PORT=4000 CLIENT_ORIGIN=http://localhost:5173 NODE_ENV=development LOCAL_DB_PATH=/tmp/degreeflow-test-db.json TAMU_AI_CHAT_API_KEY=test-key node --test tests/*.test.js"
+    "test": "npm run build && PORT=4000 CLIENT_ORIGIN=http://localhost:5173 NODE_ENV=development LOCAL_DB_PATH=/tmp/degreeflow-test-db.json TAMU_AI_CHAT_API_KEY=test-key FIREBASE_PROJECT_ID= FIREBASE_CLIENT_EMAIL= FIREBASE_PRIVATE_KEY= node --test tests/*.test.js"
   },
   "dependencies": {
     "compression": "^1.8.1",
