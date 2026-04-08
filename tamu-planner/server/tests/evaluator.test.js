@@ -691,6 +691,59 @@ const run = async () => {
     }
   });
 
+  // Degree evaluation should exclude courses applied by an external minor context
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [
+      makeCourse('MGMT 209', 3),
+      makeCourse('ENGL 221', 3)
+    ];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set(),
+      externallyAppliedCodes: ['MGMT 209']
+    });
+    const unappliedCodes = (result.workNotApplied || []).map((e) => e.code);
+    assert.ok(!unappliedCodes.includes('MGMT 209'), 'MGMT 209 should be excluded when externally applied');
+  });
+
+  // Any minor-applied course should be excluded from degree Work Not Applied
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [
+      makeCourse('MATH 308', 3),
+      makeCourse('ART 999', 3)
+    ];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set(),
+      externallyAppliedCodes: ['MATH 308']
+    });
+    const unappliedCodes = (result.workNotApplied || []).map((e) => e.code);
+    assert.ok(!unappliedCodes.includes('MATH 308'), 'Minor-applied course should not be in workNotApplied');
+    assert.ok(unappliedCodes.includes('ART 999'), 'Truly unused course should remain in workNotApplied');
+  });
+
+  // Any emphasis-applied course should be excluded from degree Work Not Applied
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [
+      makeCourse('CYBR 484', 3),
+      makeCourse('MUSC 123', 3)
+    ];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set(),
+      externallyAppliedCodes: ['CYBR 484']
+    });
+    const unappliedCodes = (result.workNotApplied || []).map((e) => e.code);
+    assert.ok(!unappliedCodes.includes('CYBR 484'), 'Emphasis-applied course should not be in workNotApplied');
+    assert.ok(unappliedCodes.includes('MUSC 123'), 'Unused course should still be in workNotApplied');
+  });
+
   // overflowCourses on a pool group that exceeds minCredits
   tests.push(async () => {
     const req = await loadReqSet('CSCE Emphasis - Cybersecurity');

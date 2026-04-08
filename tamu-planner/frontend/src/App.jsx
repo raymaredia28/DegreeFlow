@@ -21,11 +21,13 @@ import {
   PanelRightOpen,
   Loader2,
   RefreshCw,
-  Info
+  Info,
+  Settings
 } from 'lucide-react';
 
 import { computeEvaluationSignature } from './utils/evaluationFreshness.mjs';
 import { computeCreditProgressFromEvalResult } from './utils/evalCreditProgress.mjs';
+import { reconcileWorkNotApplied } from './utils/workNotApplied.mjs';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4000';
 
@@ -61,6 +63,24 @@ const normalizeDisplayStudentName = (rawName) => {
     }
   }
   return name;
+};
+
+const normalizeTrackLabel = (rawLabel, type) => {
+  const value = String(rawLabel || '').trim();
+  if (!value) return '';
+  if (type === 'minor') {
+    return value
+      .replace(/^Minor\s*-\s*/i, '')
+      .replace(/\s+Minor$/i, '')
+      .trim();
+  }
+  if (type === 'emphasis') {
+    return value
+      .replace(/^CSCE\s+Emphasis\s*-\s*/i, '')
+      .replace(/^Emphasis\s*-\s*/i, '')
+      .trim();
+  }
+  return value;
 };
 
 // Requirement areas used for the evaluation bars on the Dashboard.
@@ -109,6 +129,52 @@ const RISKY_COMBOS = [
     severity: 'medium'
   }
 ];
+
+const COURSE_DIFFICULTY = {
+  'CSCE 110': 'easy', 'CSCE 111': 'easy', 'CSCE 120': 'easy', 'CSCE 121': 'medium',
+  'CSCE 181': 'easy', 'CSCE 206': 'easy',
+  'CSCE 221': 'hard', 'CSCE 222': 'medium',
+  'CSCE 312': 'hard', 'CSCE 313': 'hard', 'CSCE 314': 'medium', 'CSCE 315': 'medium',
+  'CSCE 310': 'hard', 'CSCE 331': 'hard',
+  'CSCE 410': 'hard', 'CSCE 411': 'hard', 'CSCE 412': 'medium',
+  'CSCE 420': 'hard', 'CSCE 421': 'hard', 'CSCE 430': 'medium', 'CSCE 431': 'medium',
+  'CSCE 433': 'medium', 'CSCE 435': 'hard', 'CSCE 436': 'medium',
+  'CSCE 440': 'hard', 'CSCE 441': 'medium', 'CSCE 442': 'medium', 'CSCE 443': 'medium',
+  'CSCE 444': 'medium', 'CSCE 445': 'medium', 'CSCE 446': 'medium',
+  'CSCE 451': 'hard', 'CSCE 452': 'hard', 'CSCE 461': 'medium', 'CSCE 462': 'medium',
+  'CSCE 463': 'hard', 'CSCE 464': 'medium', 'CSCE 465': 'hard',
+  'CSCE 470': 'medium', 'CSCE 477': 'medium', 'CSCE 481': 'medium', 'CSCE 482': 'medium',
+  'CSCE 483': 'medium', 'CSCE 489': 'medium',
+  'MATH 131': 'easy', 'MATH 141': 'easy', 'MATH 142': 'medium',
+  'MATH 147': 'medium', 'MATH 148': 'medium',
+  'MATH 151': 'medium', 'MATH 152': 'hard', 'MATH 171': 'medium', 'MATH 172': 'hard',
+  'MATH 251': 'medium', 'MATH 302': 'medium', 'MATH 304': 'medium',
+  'MATH 308': 'medium', 'MATH 311': 'hard',
+  'STAT 211': 'easy', 'STAT 212': 'easy', 'STAT 302': 'medium',
+  'PHYS 206': 'medium', 'PHYS 207': 'medium', 'PHYS 208': 'hard', 'PHYS 209': 'hard',
+  'PHYS 218': 'hard', 'PHYS 219': 'hard',
+  'ENGR 102': 'easy', 'ENGR 216': 'medium', 'ENGR 217': 'medium',
+  'ECEN 214': 'medium', 'ECEN 248': 'medium', 'ECEN 314': 'hard', 'ECEN 350': 'hard',
+  'ENGL 104': 'easy', 'ENGL 210': 'easy', 'COMM 203': 'easy', 'COMM 205': 'easy',
+  'CHEM 101': 'easy', 'CHEM 102': 'easy', 'CHEM 107': 'medium', 'CHEM 117': 'medium',
+};
+
+const getCourseDifficulty = (code) => {
+  if (!code) return null;
+  const upper = code.toUpperCase().replace(/\s+/g, ' ').trim();
+  if (COURSE_DIFFICULTY[upper]) return COURSE_DIFFICULTY[upper];
+  const num = parseInt(upper.replace(/[^0-9]/g, ''), 10);
+  if (!Number.isFinite(num)) return null;
+  if (num >= 400) return 'hard';
+  if (num >= 200) return 'medium';
+  return 'easy';
+};
+
+const DIFFICULTY_CONFIG = {
+  easy:   { label: 'Easy',   color: '#16a34a', bg: '#dcfce7', text: '#166534' },
+  medium: { label: 'Medium', color: '#ca8a04', bg: '#fef9c3', text: '#854d0e' },
+  hard:   { label: 'Hard',   color: '#dc2626', bg: '#fee2e2', text: '#991b1b' },
+};
 
 const normalizeTranscript = (terms) => {
   const termOrder = { Fall: 0, Winter: 1, Spring: 2, Summer: 3 };
@@ -721,6 +787,28 @@ const buildExportHtmlFromDegreeResult = (degreeResult, transcriptTerms = [], sou
   }).join('')}</tbody></table>
   ${areasSections}
   ${(() => {
+    const wna = Array.isArray(degreeResult?.workNotApplied) ? degreeResult.workNotApplied : [];
+    if (wna.length === 0) return '';
+    const wnaRows = wna.map((entry) => {
+      const c = courseIndex.get(entry.code) || {};
+      const credits = entry.credits != null ? Number(entry.credits).toFixed(2) : (c.credits != null ? Number(c.credits).toFixed(2) : '');
+      const grade = esc(c.grade || '');
+      const title = esc(c.title || '');
+      const term = esc(c.termLabel || '');
+      const transfer = c.transfer ? 'T' : 'H';
+      const potential = (entry.potentialGroups || []).length > 0
+        ? entry.potentialGroups.map(esc).join(', ')
+        : '';
+      return `<tr><td>${esc(entry.code)}</td><td>${title}</td><td>${credits}</td><td>${grade}</td><td>${term}</td><td>${transfer}</td><td>${potential}</td></tr>`;
+    }).join('');
+    const totalCredits = wna.reduce((sum, e) => sum + (Number(e.credits) || 0), 0);
+    return `<h2 style="color:#500000;font-size:14px;margin:24px 0 8px 0;">Work Not Applied</h2>
+    <p class="area-summary">${wna.length} course${wna.length !== 1 ? 's' : ''} (${totalCredits} credits) completed but not matched to any requirement group</p>
+    <table class="rows"><thead><tr>
+      <th>Course</th><th>Title</th><th>Credits</th><th>Grade</th><th>Term</th><th>Source</th><th>Could Apply To</th>
+    </tr></thead><tbody>${wnaRows}</tbody></table>`;
+  })()}
+  ${(() => {
     const mr = meta?.minorResult;
     if (!mr || !Array.isArray(mr.groups) || mr.groups.length === 0) return '';
     const minorName = esc(mr.requirementSet?.name || 'Minor');
@@ -1061,6 +1149,7 @@ function App() {
     }
   });
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(false);
   const [authToken, setAuthToken] = useState(() => localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || '');
   const authHeaders = useCallback(
     (extras = {}) => ({
@@ -1101,6 +1190,7 @@ function App() {
   const [semesterPlans, setSemesterPlans] = useState(() => initSemesterPlans({}));
   const [searchQuery, setSearchQuery] = useState('');
   const [showCourseModal, setShowCourseModal] = useState(false);
+  const [showDifficultyInfo, setShowDifficultyInfo] = useState(null);
   const [planError, setPlanError] = useState('');
   const [toast, setToast] = useState(null); // { message, type: 'success' | 'error' | 'info' }
   const toastTimerRef = useRef(null);
@@ -1154,6 +1244,15 @@ function App() {
   const [consentPendingFile, setConsentPendingFile] = useState(null);
   const uploadInputRef = useRef(null);
   const chatUploadInputRef = useRef(null);
+
+  // ── Theme (dark / light) ────────────────────────────────────────────────
+  const [theme, setTheme] = useState(() => {
+    try { return localStorage.getItem('tamuPlannerTheme') || 'light'; } catch { return 'light'; }
+  });
+
+  // ── Profile dropdown ────────────────────────────────────────────────────
+  const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const profileDropdownRef = useRef(null);
 
   const updateDisplayStudentName = useCallback((rawName) => {
     const normalized = normalizeDisplayStudentName(rawName);
@@ -1405,14 +1504,17 @@ function App() {
     showToast
   ]);
 
-  const loadUserData = useCallback(async (email, name) => {
+  const loadUserData = useCallback(async (email, name, tokenOverride) => {
     try {
       if (name) {
         updateDisplayStudentName(name);
       }
+      const headers = tokenOverride
+        ? { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenOverride}` }
+        : authHeaders({ 'Content-Type': 'application/json' });
       const resp = await fetch(`${API_BASE}/storage/login`, {
         method: 'POST',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        headers,
         body: JSON.stringify({ email, name })
       });
       if (!resp.ok) return false;
@@ -1456,10 +1558,10 @@ function App() {
           setTranscriptTotals(data.planner.transcriptTotals);
         }
         if (data.planner.selectedEmphasis) {
-          setSelectedEmphasis(data.planner.selectedEmphasis);
+          setSelectedEmphasis(normalizeTrackLabel(data.planner.selectedEmphasis, 'emphasis'));
         }
         if (data.planner.selectedMinor) {
-          setSelectedMinor(data.planner.selectedMinor);
+          setSelectedMinor(normalizeTrackLabel(data.planner.selectedMinor, 'minor'));
         }
         if (data.planner.hasHsLanguage != null) {
           setHasHsLanguage(data.planner.hasHsLanguage);
@@ -1469,7 +1571,14 @@ function App() {
         }
         if (data.planner.savedEvaluation) {
           const ev = data.planner.savedEvaluation;
-          if (ev.degreeResult) setDegreeResult(ev.degreeResult);
+          if (ev.degreeResult) {
+            const reconciled = reconcileWorkNotApplied(
+              ev.degreeResult,
+              ev.requirementsResult ?? null,
+              ev.minorResult ?? null
+            );
+            setDegreeResult(reconciled);
+          }
           if (ev.requirementsResult) setRequirementsResult(ev.requirementsResult);
           if (ev.minorResult) setMinorResult(ev.minorResult);
           if (ev.reqWarning) setReqWarning(ev.reqWarning);
@@ -1492,6 +1601,7 @@ function App() {
           };
         }
       }
+      setPlannerDirty(false);
       return true;
     } catch (err) {
       console.error('Failed to load user data:', err);
@@ -1526,6 +1636,8 @@ function App() {
 
   const googleLogin = async () => {
     try {
+      dataLoadedRef.current = true; // guard: prevent the useEffect from also calling loadUserData
+      setIsLoadingData(true);
       const credential = await signInWithPopup(firebaseAuth, googleProvider);
       const user = {
         provider: 'google',
@@ -1542,11 +1654,14 @@ function App() {
       setAuthUser(user);
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
 
-      const loaded = await loadUserData(user.email, user.name);
-      if (loaded) dataLoadedRef.current = true;
+      const loaded = await loadUserData(user.email, user.name, token);
+      if (!loaded) dataLoadedRef.current = false;
       setActiveTab('dashboard');
     } catch {
+      dataLoadedRef.current = false;
       alert('Google sign-in failed. Please try again.');
+    } finally {
+      setIsLoadingData(false);
     }
   };
 
@@ -1564,14 +1679,35 @@ function App() {
   const dataLoadedRef = useRef(false);
   useEffect(() => {
     if (authUser?.email && authToken && !dataLoadedRef.current) {
+      setIsLoadingData(true);
       loadUserData(authUser.email, authUser.name).then((ok) => {
         if (ok) dataLoadedRef.current = true;
-      });
+      }).finally(() => setIsLoadingData(false));
     }
     if (!authUser) {
       dataLoadedRef.current = false;
     }
   }, [authToken, authUser, loadUserData]);
+
+  // Sync dark/light class to <html> and persist preference
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'dark') root.classList.add('dark');
+    else root.classList.remove('dark');
+    try { localStorage.setItem('tamuPlannerTheme', theme); } catch {}
+  }, [theme]);
+
+  // Close profile dropdown when clicking outside
+  useEffect(() => {
+    if (!profileDropdownOpen) return;
+    const handler = (e) => {
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(e.target)) {
+        setProfileDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [profileDropdownOpen]);
 
   const buildCourseIndex = (courses) => {
     const map = new Map();
@@ -1623,40 +1759,59 @@ function App() {
     return map;
   };
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const [coursesRes, emphasesRes, minorsRes] = await Promise.all([
-          fetch(`${API_BASE}/api/courses`),
-          fetch(`${API_BASE}/api/emphases`),
-          fetch(`${API_BASE}/api/minors`)
-        ]);
-        if (coursesRes.ok) {
-          const { courses } = await coursesRes.json();
-          setCoursesIndex(buildCourseIndex(courses || []));
-        }
-        if (emphasesRes.ok) {
-          const { emphases } = await emphasesRes.json();
-          setEmphases(emphases || []);
-          const names = (emphases || [])
-            .map((e) => e.emphasis_name || e.name)
-            .filter(Boolean);
-          setEmphasisOptions(['Undecided', ...names]);
-        }
-        if (minorsRes.ok) {
-          const { minors } = await minorsRes.json();
-          setMinors(minors || []);
-          const names = (minors || [])
-            .map((m) => m.minor_name || m.name)
-            .filter(Boolean);
-          setMinorOptions(['None', ...names]);
-        }
-      } catch (err) {
-        console.warn('Failed to load catalog data', err);
-      }
-    };
-    load();
+  const CATALOG_CACHE_KEY = 'catalogCache';
+
+  const applyCatalog = useCallback((data) => {
+    if (data.courses) setCoursesIndex(buildCourseIndex(data.courses));
+    if (data.emphases) {
+      setEmphases(data.emphases);
+      const names = data.emphases.map((e) => e.emphasis_name || e.name).filter(Boolean);
+      setEmphasisOptions(['Undecided', ...names]);
+    }
+    if (data.minors) {
+      setMinors(data.minors);
+      const names = data.minors.map((m) => m.minor_name || m.name).filter(Boolean);
+      setMinorOptions(['None', ...names]);
+    }
   }, []);
+
+  const refreshCatalog = useCallback(async () => {
+    try {
+      const [coursesRes, emphasesRes, minorsRes] = await Promise.all([
+        fetch(`${API_BASE}/api/courses`),
+        fetch(`${API_BASE}/api/emphases`),
+        fetch(`${API_BASE}/api/minors`)
+      ]);
+      const freshData = {};
+      if (coursesRes.ok) {
+        const { courses } = await coursesRes.json();
+        freshData.courses = courses || [];
+      }
+      if (emphasesRes.ok) {
+        const { emphases } = await emphasesRes.json();
+        freshData.emphases = emphases || [];
+      }
+      if (minorsRes.ok) {
+        const { minors } = await minorsRes.json();
+        freshData.minors = minors || [];
+      }
+      applyCatalog(freshData);
+      try {
+        localStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify(freshData));
+      } catch { /* localStorage full — non-critical */ }
+    } catch (err) {
+      console.warn('Failed to load catalog data', err);
+    }
+  }, [applyCatalog]);
+
+  useEffect(() => {
+    // Stale-while-revalidate: instantly load from localStorage, then refresh from server
+    try {
+      const cached = localStorage.getItem(CATALOG_CACHE_KEY);
+      if (cached) applyCatalog(JSON.parse(cached));
+    } catch { /* ignore corrupt cache */ }
+    refreshCatalog();
+  }, [applyCatalog, refreshCatalog]);
 
   const evaluateRequirementsLocal = async () => {
     setReqLoading(true);
@@ -1718,14 +1873,20 @@ function App() {
         });
       });
 
+      const normalizedSelectedEmphasis = normalizeTrackLabel(selectedEmphasis, 'emphasis');
+      const normalizedSelectedMinor = normalizeTrackLabel(selectedMinor, 'minor');
+
       const selectedEmphasisId =
-        selectedEmphasis && selectedEmphasis !== 'Undecided'
-          ? emphases.find((e) => (e.emphasis_name || e.name) === selectedEmphasis)?.emphasis_id ||
-            null
+        normalizedSelectedEmphasis && normalizedSelectedEmphasis !== 'Undecided'
+          ? emphases.find(
+            (e) => normalizeTrackLabel((e.emphasis_name || e.name), 'emphasis') === normalizedSelectedEmphasis
+          )?.emphasis_id || null
           : null;
       const selectedMinorId =
-        selectedMinor && selectedMinor !== 'None'
-          ? minors.find((m) => (m.minor_name || m.name) === selectedMinor)?.minor_id || null
+        normalizedSelectedMinor && normalizedSelectedMinor !== 'None'
+          ? minors.find(
+            (m) => normalizeTrackLabel((m.minor_name || m.name), 'minor') === normalizedSelectedMinor
+          )?.minor_id || null
           : null;
 
       // Degree-level evaluation — pass degreeEmphasisId so the backend can
@@ -1735,6 +1896,7 @@ function App() {
         catalogYear: null,
         emphasisId: null,
         degreeEmphasisId: selectedEmphasisId ?? null,
+        degreeMinorId: selectedMinorId ?? null,
         minorId: null,
         courses: Array.from(combined.values()),
         hasHsLanguage,
@@ -1812,8 +1974,15 @@ function App() {
       }
       if (data.warnings?.length) setReqWarning(data.warnings.join(' | '));
 
+      const reconciledDegreeData = reconcileWorkNotApplied(
+        degreeData,
+        data,
+        computedMinorData
+      );
+      setDegreeResult(reconciledDegreeData);
+
       return {
-        degreeResult: degreeData,
+        degreeResult: reconciledDegreeData,
         requirementsResult: data,
         minorResult: computedMinorData
       };
@@ -2242,8 +2411,8 @@ function App() {
     clearTermHighlight();
     const el = document.querySelector(`[data-term-label="${CSS.escape(termLabel)}"]`);
     if (el) {
-      el.style.borderColor = '#500000';
-      el.style.boxShadow = '0 0 0 2px rgba(80, 0, 0, 0.3)';
+      el.style.borderColor = theme === 'dark' ? '#f1a0a0' : '#500000';
+      el.style.boxShadow = theme === 'dark' ? '0 0 0 2px rgba(241, 160, 160, 0.3)' : '0 0 0 2px rgba(80, 0, 0, 0.3)';
     }
     dragOverTermLabelRef.current = termLabel;
   };
@@ -3863,7 +4032,7 @@ Now answer the student's question using only this context.`
     return (
       <div className="bg-white rounded-lg shadow p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold" style={{ color: '#500000' }}>
+          <h3 className="text-lg font-bold" style={{ color: theme === 'dark' ? '#f1a0a0' : '#500000' }}>
             Areas
           </h3>
 
@@ -3900,7 +4069,7 @@ Now answer the student's question using only this context.`
             const pct = (v) => (area.required > 0 ? `${(v / area.required) * 100}%` : '0%');
 
             return (
-              <div key={area.id} className="border rounded-lg" style={{ borderColor: '#2f9e44' }}>
+              <div key={area.id} className="border rounded-lg" style={{ borderColor: theme === 'dark' ? '#4ade80' : '#2f9e44' }}>
                 <button
                   type="button"
                   onClick={() => toggleArea(area.id)}
@@ -4244,11 +4413,11 @@ Now answer the student's question using only this context.`
                           aria-valuemax={100}
                           aria-label={ariaLabel}
                           title={ariaLabel}
-                          style={{ backgroundColor: group.satisfied ? '#bbf7d0' : '#fca5a5' }}
+                          style={{ backgroundColor: group.satisfied ? (theme === 'dark' ? 'rgba(74,222,128,0.2)' : '#bbf7d0') : (theme === 'dark' ? 'rgba(248,113,113,0.2)' : '#fca5a5') }}
                         >
                           <div
                             className="h-full rounded-full"
-                            style={{ width: group.satisfied ? '100%' : '0%', backgroundColor: '#16a34a' }}
+                            style={{ width: group.satisfied ? '100%' : '0%', backgroundColor: theme === 'dark' ? '#4ade80' : '#16a34a' }}
                           />
                         </div>
                       )}
@@ -4301,14 +4470,14 @@ Now answer the student's question using only this context.`
                     <span className="text-sm font-medium text-gray-700">
                       Degree Progress: {totalSatisfied}/{totalGroups} requirement groups satisfied
                     </span>
-                    <span className="text-sm font-bold" style={{ color: pctDone === 100 ? '#16a34a' : '#500000' }}>
+                    <span className="text-sm font-bold" style={{ color: pctDone === 100 ? (theme === 'dark' ? '#4ade80' : '#16a34a') : (theme === 'dark' ? '#f1a0a0' : '#500000') }}>
                       {pctDone}%
                     </span>
                   </div>
                   <div className="h-3 rounded-full bg-gray-200 overflow-hidden">
                     <div
                       className="h-full rounded-full transition-all"
-                      style={{ width: `${pctDone}%`, backgroundColor: pctDone === 100 ? '#16a34a' : '#500000' }}
+                      style={{ width: `${pctDone}%`, backgroundColor: pctDone === 100 ? '#16a34a' : (theme === 'dark' ? '#7f1d1d' : '#500000') }}
                     />
                   </div>
                 </div>
@@ -4342,16 +4511,26 @@ Now answer the student's question using only this context.`
                 )}
 
                 {/* Work Not Applied section */}
-                {degreeResult.workNotApplied?.length > 0 && (
+                {(() => {
+                  const minorUsed = new Set();
+                  if (minorResult) {
+                    (minorResult.groups || []).forEach((g) =>
+                      (g.usedCourses || []).forEach((c) => minorUsed.add(c))
+                    );
+                  }
+                  const filtered = (degreeResult.workNotApplied || []).filter(
+                    (entry) => !minorUsed.has(entry.code)
+                  );
+                  return filtered.length > 0 ? (
                   <details>
                     <summary className="cursor-pointer select-none flex items-center gap-2 text-sm font-semibold text-blue-700 py-2 px-2 rounded hover:bg-blue-50 transition-colors">
                       <ChevronDown className="w-4 h-4 details-chevron flex-shrink-0" />
                       <Info className="w-4 h-4 flex-shrink-0" />
-                      Work Not Applied ({degreeResult.workNotApplied.length} course{degreeResult.workNotApplied.length !== 1 ? 's' : ''})
+                      Work Not Applied ({filtered.length} course{filtered.length !== 1 ? 's' : ''})
                     </summary>
                     <div className="space-y-2 mt-2">
-                      <p className="text-xs text-gray-500 ml-6">These courses are not currently being used to satisfy any degree requirement group.</p>
-                      {degreeResult.workNotApplied.map((entry) => (
+                      <p className="text-xs text-gray-500 ml-6">These courses are not currently being used to satisfy any degree or minor requirement group.</p>
+                      {filtered.map((entry) => (
                         <div key={entry.code} className="rounded border border-blue-200 bg-blue-50/50 px-3 py-2 ml-6">
                           <div className="flex items-center justify-between">
                             <span className="text-sm font-medium text-gray-900">{entry.code}</span>
@@ -4366,7 +4545,8 @@ Now answer the student's question using only this context.`
                       ))}
                     </div>
                   </details>
-                )}
+                  ) : null;
+                })()}
               </div>
             );
           })() : null}
@@ -4458,11 +4638,11 @@ Now answer the student's question using only this context.`
                           aria-valuemax={100}
                           aria-label={ariaLabel}
                           title={ariaLabel}
-                          style={{ backgroundColor: group.satisfied ? '#bbf7d0' : '#fca5a5' }}
+                          style={{ backgroundColor: group.satisfied ? (theme === 'dark' ? 'rgba(74,222,128,0.2)' : '#bbf7d0') : (theme === 'dark' ? 'rgba(248,113,113,0.2)' : '#fca5a5') }}
                         >
                           <div
                             className="h-full rounded-full"
-                            style={{ width: group.satisfied ? '100%' : '0%', backgroundColor: '#16a34a' }}
+                            style={{ width: group.satisfied ? '100%' : '0%', backgroundColor: theme === 'dark' ? '#4ade80' : '#16a34a' }}
                           />
                         </div>
                       )}
@@ -4568,14 +4748,14 @@ Now answer the student's question using only this context.`
                     ? `Minor Credits: ${minorCreditProgress.earnedCredits}/${minorCreditProgress.requiredCredits} credits`
                     : `Minor Progress: ${minorSatisfied}/${minorTotal} requirement groups satisfied`}
                 </span>
-                <span className="text-sm font-bold" style={{ color: minorPct === 100 ? '#16a34a' : '#500000' }}>
+                <span className="text-sm font-bold" style={{ color: minorPct === 100 ? (theme === 'dark' ? '#4ade80' : '#16a34a') : (theme === 'dark' ? '#f1a0a0' : '#500000') }}>
                   {minorPct}%
                 </span>
               </div>
               <div className="h-3 rounded-full bg-gray-200 overflow-hidden">
                 <div
                   className="h-full rounded-full transition-all"
-                  style={{ width: `${minorPct}%`, backgroundColor: minorPct === 100 ? '#16a34a' : '#500000' }}
+                  style={{ width: `${minorPct}%`, backgroundColor: minorPct === 100 ? '#16a34a' : (theme === 'dark' ? '#7f1d1d' : '#500000') }}
                 />
               </div>
             </div>
@@ -5469,57 +5649,82 @@ Now answer the student's question using only this context.`
               const isEditable = true;
               const isViewOnly = termState === 'current';
               return (
-                <div key={term} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <h4 className="font-semibold text-gray-900">{term}</h4>
-                      <p className="text-xs text-gray-600">
-                        {termValidation.totalCredits} credits • Difficulty:{' '}
-                        {termValidation.totalDifficulty}/25
-                      </p>
-                      {isViewOnly && (
-                        <p className="text-xs text-blue-600 mt-1">Current term</p>
-                      )}
-                      {termState === 'past' && (
-                        <p className="text-xs text-gray-500 mt-1">Past term</p>
-                      )}
+                <div key={term} className="border border-gray-200 rounded-lg bg-gray-50 overflow-hidden">
+                  {/* ── Term Header ── */}
+                  <div className="px-4 pt-4 pb-3 border-b border-gray-200 bg-white">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <h4 className="font-bold text-gray-900 text-base truncate">{term}</h4>
+                        {isViewOnly && (
+                          <span className="shrink-0 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">Current</span>
+                        )}
+                        {termState === 'past' && (
+                          <span className="shrink-0 text-xs bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full font-medium">Past</span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!isEditable) return;
+                          setSelectedSemester(term);
+                          setShowCourseModal(true);
+                          setSearchQuery('');
+                          setPlanError('');
+                        }}
+                        className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium ${
+                          isEditable
+                            ? 'text-white'
+                            : 'text-gray-400 bg-gray-200 cursor-not-allowed'
+                        }`}
+                        style={isEditable ? { backgroundColor: '#500000' } : {}}
+                        onMouseEnter={(e) => { if (isEditable) e.currentTarget.style.backgroundColor = '#3d0000'; }}
+                        onMouseLeave={(e) => { if (isEditable) e.currentTarget.style.backgroundColor = '#500000'; }}
+                        disabled={!isEditable}
+                      >
+                        <Plus className="w-3 h-3" />
+                        Add
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!isEditable) return;
-                        setSelectedSemester(term);
-                        setShowCourseModal(true);
-                        setSearchQuery('');
-                        setPlanError('');
-                      }}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs ${
-                        isEditable
-                          ? 'text-white'
-                          : 'text-gray-400 bg-gray-200 cursor-not-allowed'
-                      }`}
-                      style={isEditable ? { backgroundColor: '#500000' } : {}}
-                      onMouseEnter={(e) => {
-                        if (isEditable) {
-                          e.currentTarget.style.backgroundColor = '#3d0000';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (isEditable) {
-                          e.currentTarget.style.backgroundColor = '#500000';
-                        }
-                      }}
-                      disabled={!isEditable}
-                    >
-                      <Plus className="w-3 h-3" />
-                      Add Course
-                    </button>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-gray-700">
+                        {termValidation.totalCredits} credits
+                      </span>
+                      {(() => {
+                        const planned = (semesterPlans[term] || []);
+                        if (planned.length === 0) return null;
+                        const counts = { easy: 0, medium: 0, hard: 0 };
+                        planned.forEach((code) => {
+                          const d = getCourseDifficulty(code);
+                          if (d && counts[d] !== undefined) counts[d]++;
+                        });
+                        const total = counts.easy + counts.medium + counts.hard;
+                        if (total === 0) return null;
+                        const level = counts.hard >= 3 || (counts.hard >= 2 && counts.medium >= 2) ? 'hard'
+                          : counts.hard === 0 && counts.medium <= 1 ? 'easy' : 'medium';
+                        const cfg = DIFFICULTY_CONFIG[level];
+                        return (
+                          <>
+                            <span className="text-gray-300 text-xs">|</span>
+                            <span
+                              className="text-xs font-bold px-2 py-0.5 rounded-md border"
+                              style={{ borderColor: cfg.color, color: cfg.text, backgroundColor: cfg.bg }}
+                            >
+                              ⚡ {cfg.label} Load
+                            </span>
+                            <span className="text-xs text-gray-400">
+                              ({counts.easy > 0 ? `${counts.easy}E` : ''}{counts.easy > 0 && counts.medium > 0 ? '·' : ''}{counts.medium > 0 ? `${counts.medium}M` : ''}{(counts.easy > 0 || counts.medium > 0) && counts.hard > 0 ? '·' : ''}{counts.hard > 0 ? `${counts.hard}H` : ''})
+                            </span>
+                          </>
+                        );
+                      })()}
+                    </div>
                   </div>
 
-                  <div className="space-y-2">
+                  {/* ── Course List ── */}
+                  <div className="p-3 space-y-2">
                     {displayCourses.length === 0 ? (
-                      <div className="text-center py-6 text-gray-500 text-sm">
-                        <Calendar className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                      <div className="text-center py-8 text-gray-400 text-sm">
+                        <Calendar className="w-8 h-8 mx-auto mb-2 opacity-40" />
                         <p>No courses planned</p>
                       </div>
                     ) : (
@@ -5573,6 +5778,9 @@ Now answer the student's question using only this context.`
                         }
                         const hasPrereqIssue = plannedLaterPrereqs.length > 0 || trulyMissing.length > 0;
 
+                        const diffLevel = course.type === 'planned' ? getCourseDifficulty(course.code) : null;
+                        const diffCfg = diffLevel ? DIFFICULTY_CONFIG[diffLevel] : null;
+
                         return (
                           <div
                             key={`${term}-${course.code}-${course.type}`}
@@ -5584,36 +5792,47 @@ Now answer the student's question using only this context.`
                                   : 'border-gray-200 bg-white'
                             }`}
                           >
-                            <div className="flex justify-between items-start">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2">
-                                  <h4 className="font-semibold text-gray-900">{course.code}</h4>
-                                  <span className="text-xs bg-gray-200 px-2 py-1 rounded">
+                            <div className="flex justify-between items-start gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <h4 className="font-semibold text-sm text-gray-900">{course.code}</h4>
+                                  <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-medium">
                                     {course.credits} cr
                                   </span>
                                   {course.type === 'transcript' && (
-                                    <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
+                                    <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium">
                                       {course.status || 'Recorded'}
                                     </span>
                                   )}
+                                  {diffCfg && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); setShowDifficultyInfo(course.code); }}
+                                      className="text-xs font-bold px-1.5 py-0.5 rounded-md border cursor-pointer hover:opacity-80 transition-opacity"
+                                      style={{ borderColor: diffCfg.color, color: diffCfg.color, backgroundColor: 'transparent' }}
+                                      title="Click for difficulty info"
+                                    >
+                                      ● {diffCfg.label}
+                                    </button>
+                                  )}
                                 </div>
-                                <p className="text-xs text-gray-600 mt-1">
+                                <p className="text-xs text-gray-500 mt-1 truncate">
                                   {course.title || courseMeta?.title}
                                 </p>
                                 {trulyMissing.length > 0 && (
                                   <p className="text-xs text-red-600 mt-2 flex items-center gap-1">
-                                    <AlertTriangle className="w-3 h-3" />
+                                    <AlertTriangle className="w-3 h-3 shrink-0" />
                                     Missing prerequisites: {trulyMissing.join('; ')}
                                   </p>
                                 )}
                                 {plannedLaterPrereqs.length > 0 && (
                                   <p className="text-xs text-yellow-700 mt-1 flex items-center gap-1">
-                                    <AlertTriangle className="w-3 h-3" />
+                                    <AlertTriangle className="w-3 h-3 shrink-0" />
                                     {plannedLaterPrereqs.join('; ')}
                                   </p>
                                 )}
                                 <label
-                                  className="flex items-center gap-1.5 mt-1.5 cursor-pointer select-none"
+                                  className="flex items-center gap-1.5 mt-2 cursor-pointer select-none"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <input
@@ -5644,9 +5863,9 @@ Now answer the student's question using only this context.`
                                     if (!isEditable) return;
                                     removeCourseFromSemester(course.code, term);
                                   }}
-                                  className={`text-gray-400 ${
+                                  className={`shrink-0 p-1 rounded text-gray-400 ${
                                     isEditable
-                                      ? 'hover:text-red-600'
+                                      ? 'hover:text-red-600 hover:bg-red-50'
                                       : 'cursor-not-allowed opacity-50'
                                   }`}
                                   disabled={!isEditable}
@@ -5667,6 +5886,74 @@ Now answer the student's question using only this context.`
         </div>
 
         <AcademicRecordPanel />
+
+        {/* ── Difficulty Info Modal ── */}
+        {showDifficultyInfo && (() => {
+          const code = showDifficultyInfo;
+          const diff = getCourseDifficulty(code);
+          const cfg = diff ? DIFFICULTY_CONFIG[diff] : null;
+          const meta = COURSES[code];
+          const courseNum = parseInt(code.replace(/[^0-9]/g, ''), 10) || 0;
+          return (
+            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setShowDifficultyInfo(null)}>
+              <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                <div className="px-6 py-4 border-b border-gray-100" style={{ backgroundColor: cfg ? (theme === 'dark' ? `${cfg.color}22` : cfg.bg) : (theme === 'dark' ? '#334155' : '#f3f4f6') }}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-bold text-lg text-gray-900">{code}</h3>
+                      <p className="text-sm text-gray-600">{meta?.title || 'Course'}</p>
+                    </div>
+                    {cfg && (
+                      <span className="text-sm font-bold px-3 py-1 rounded-full border" style={{ borderColor: cfg.color, color: cfg.color }}>
+                        ● {cfg.label}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="px-6 py-4 space-y-4">
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-1">Estimated Difficulty</h4>
+                    <div className="flex gap-1">
+                      {['easy', 'medium', 'hard'].map((lvl) => {
+                        const c = DIFFICULTY_CONFIG[lvl];
+                        const active = lvl === diff;
+                        return (
+                          <div key={lvl} className={`flex-1 text-center py-1.5 rounded text-xs font-semibold border ${active ? 'ring-2 ring-offset-1' : 'opacity-40'}`}
+                            style={{ borderColor: c.color, color: active ? c.text : c.color, backgroundColor: active ? c.bg : 'transparent', ...(active ? { ringColor: c.color } : {}) }}>
+                            {c.label}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-1">How is this determined?</h4>
+                    <p className="text-xs text-gray-600 leading-relaxed">
+                      {COURSE_DIFFICULTY[code]
+                        ? 'This rating is based on a curated mapping of known course workloads, informed by historical student experiences and course characteristics.'
+                        : `This is an estimated rating derived from the course number (${courseNum}). Upper-division courses (300-400 level) and graduate courses (500+) are generally rated as more difficult.`
+                      }
+                    </p>
+                  </div>
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    <p className="text-xs text-amber-800">
+                      <strong>Advisory only</strong> — This is an estimate for planning support. Actual difficulty varies by instructor, semester, and individual preparation. Not an official university rating.
+                    </p>
+                  </div>
+                </div>
+                <div className="px-6 py-3 border-t border-gray-100 bg-gray-50 flex justify-end">
+                  <button
+                    onClick={() => setShowDifficultyInfo(null)}
+                    className="px-4 py-1.5 text-sm font-medium rounded-lg text-white"
+                    style={{ backgroundColor: '#500000' }}
+                  >
+                    Got it
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {showCourseModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -5749,12 +6036,12 @@ Now answer the student's question using only this context.`
                         }`}
                         onMouseEnter={(e) => {
                           if (!isDisabled) {
-                            e.currentTarget.style.borderColor = '#500000';
+                            e.currentTarget.style.borderColor = theme === 'dark' ? '#f1a0a0' : '#500000';
                           }
                         }}
                         onMouseLeave={(e) => {
                           if (!isDisabled) {
-                            e.currentTarget.style.borderColor = '#e5e7eb';
+                            e.currentTarget.style.borderColor = theme === 'dark' ? '#334155' : '#e5e7eb';
                           }
                         }}
                         onClick={() => {
@@ -6756,6 +7043,51 @@ Now answer the student's question using only this context.`
     );
   };
 
+  const SettingsTab = () => {
+    return (
+      <div className="space-y-6 max-w-2xl">
+        <div className="bg-white rounded-xl shadow p-6">
+          <h2 className="text-xl font-bold text-gray-900 mb-1">Settings</h2>
+          <p className="text-sm text-gray-500 mb-6">Manage your preferences for TAMU Academic Planner.</p>
+
+          {/* Accessibility section */}
+          <section>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
+              Accessibility
+            </h3>
+            <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 overflow-hidden">
+              {/* Dark mode toggle */}
+              <div className="flex items-center justify-between px-4 py-3.5 bg-white">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Dark mode</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Switch between light and dark interface
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={theme === 'dark'}
+                  onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[#500000] focus:ring-offset-2 ${
+                    theme === 'dark' ? 'bg-[#500000]' : 'bg-gray-300'
+                  }`}
+                >
+                  <span className="sr-only">Toggle dark mode</span>
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ${
+                      theme === 'dark' ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    );
+  };
+
   const LoginPage = () => {
     return (
       <div className="min-h-[70vh] flex items-center justify-center">
@@ -6818,33 +7150,67 @@ Now answer the student's question using only this context.`
                 </button>
                 <div className="flex gap-2">
                   {authUser ? (
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-2 bg-white/10 border border-white/25 px-3 py-2 rounded-lg text-white">
+                    <div className="relative" ref={profileDropdownRef}>
+                      <button
+                        type="button"
+                        onClick={() => setProfileDropdownOpen((prev) => !prev)}
+                        className="flex items-center gap-2.5 bg-white/10 border border-white/25 pl-3 pr-2.5 py-2 rounded-lg text-white hover:bg-white/20 transition-colors"
+                        aria-haspopup="true"
+                        aria-expanded={profileDropdownOpen}
+                      >
                         {authUser.picture ? (
                           <img
                             src={authUser.picture}
                             alt="avatar"
-                            className="w-6 h-6 rounded-full bg-white"
+                            className="w-7 h-7 rounded-full ring-1 ring-white/30"
                           />
                         ) : (
-                          <div className="w-6 h-6 rounded-full bg-white/80" />
+                          <div className="w-7 h-7 rounded-full bg-white/40 flex items-center justify-center text-xs font-bold">
+                            {(authUser.name || 'S')[0].toUpperCase()}
+                          </div>
                         )}
-                        <div className="leading-tight">
+                        <div className="leading-tight text-left hidden sm:block">
                           <div className="text-sm font-semibold">{authUser.name || 'Student'}</div>
-                          <div className="text-[11px] text-white/80">{authUser.email}</div>
+                          <div className="text-[11px] text-white/70">{authUser.email}</div>
                         </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (window.confirm('Are you sure you want to log out?')) {
-                            logout();
-                          }
-                        }}
-                        className="flex items-center gap-2 border border-white/60 px-4 py-2 rounded-lg text-white hover:bg-white/10"
-                      >
-                        Logout
+                        <ChevronDown
+                          className={`w-4 h-4 text-white/60 transition-transform duration-150 ${profileDropdownOpen ? 'rotate-180' : ''}`}
+                        />
                       </button>
+
+                      {profileDropdownOpen && (
+                        <div className="absolute right-0 top-full mt-2 w-52 bg-white rounded-xl shadow-xl border border-gray-200 py-1.5 z-50 animate-fade-in">
+                          <div className="px-4 py-2.5 border-b border-gray-100">
+                            <p className="text-sm font-semibold text-gray-900 truncate">{authUser.name || 'Student'}</p>
+                            <p className="text-xs text-gray-500 truncate">{authUser.email}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setProfileDropdownOpen(false);
+                              setActiveTab('settings');
+                            }}
+                            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                          >
+                            <Settings className="w-4 h-4 text-gray-500" />
+                            Settings
+                          </button>
+                          <div className="my-1 border-t border-gray-100" />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setProfileDropdownOpen(false);
+                              if (window.confirm('Are you sure you want to log out?')) {
+                                logout();
+                              }
+                            }}
+                            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                          >
+                            <X className="w-4 h-4" />
+                            Logout
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <button
@@ -6886,7 +7252,7 @@ Now answer the student's question using only this context.`
                           : 'border-transparent text-gray-600 hover:text-gray-900'
                       }`}
                       style={
-                        activeTab === tab.id ? { borderColor: '#500000', color: '#500000' } : {}
+                        activeTab === tab.id ? { borderColor: theme === 'dark' ? '#f1a0a0' : '#500000', color: theme === 'dark' ? '#f1a0a0' : '#500000' } : {}
                       }
                     >
                       {tab.label}
@@ -6901,18 +7267,26 @@ Now answer the student's question using only this context.`
 
       <main className={isFlowFullscreen ? 'p-0' : 'max-w-7xl mx-auto px-4 py-8'}>
         <div key={activeTab} className="animate-fade-in">
-          {activeTab === 'dashboard' && (authUser ? <DashboardTab /> : <LoginPage />)}
-          {activeTab === 'planner' && (authUser ? <PlannerTab /> : <LoginPage />)}
-          {activeTab === 'prerequisites' && (authUser ? (
-            <PrerequisiteTab
-              isFullscreen={isFlowFullscreen}
-              onFullscreenChange={setIsFlowFullscreen}
-            />
-          ) : <LoginPage />)}
-          {activeTab === 'admin' && authUser && isAdmin && (
-            <AdminPanel apiBase={API_BASE} authHeaders={authHeaders} />
+          {isLoadingData && activeTab !== 'login' ? (
+            <div className="flex flex-col items-center justify-center py-32 gap-4">
+              <div className="w-10 h-10 border-4 border-maroon/30 border-t-maroon rounded-full animate-spin" />
+              <p className="text-gray-500 text-sm">Loading your data&hellip;</p>
+            </div>
+          ) : (
+            <>
+              {activeTab === 'dashboard' && (authUser ? <DashboardTab /> : <LoginPage />)}
+              {activeTab === 'planner' && (authUser ? <PlannerTab /> : <LoginPage />)}
+              {activeTab === 'prerequisites' && (authUser ? (
+                <PrerequisiteTab
+                  isFullscreen={isFlowFullscreen}
+                  onFullscreenChange={setIsFlowFullscreen}
+                />
+              ) : <LoginPage />)}
+              {activeTab === 'settings' && (authUser ? <SettingsTab /> : <LoginPage />)}
+              {activeTab === 'admin' && (authUser && isAdmin ? <AdminPanel apiBase={API_BASE} authHeaders={authHeaders} onCatalogChange={refreshCatalog} /> : <LoginPage />)}
+              {activeTab === 'login' && <LoginPage />}
+            </>
           )}
-          {activeTab === 'login' && <LoginPage />}
         </div>
       </main>
 

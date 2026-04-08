@@ -46,3 +46,387 @@ details > summary .details-chevron {
 details[open] > summary .details-chevron {
   transform: rotate(180deg);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DARK MODE — comprehensive overrides
+   ═══════════════════════════════════════════════════════════════════════════ */
+.dark {
+  color-scheme: dark;
+}
+
+/* ─── Base surfaces ─────────────────────────────────────────────────────── */
+.dark body,
+.dark .min-h-screen {
+  background-color: #0f172a !important;
+}
+
+.dark .bg-white {
+  background-color: #1e293b !important;
+}
+.dark .bg-gray-50 {
+  background-color: #1e293b !important;
+}
+.dark .bg-gray-100 {
+  background-color: #0f172a !important;
+}
+.dark .bg-gray-200 {
+  background-color: #334155 !important;
+}
+
+/* ─── Text — gray scale ─────────────────────────────────────────────────── */
+.dark .text-gray-900 {
+  color: #f1f5f9 !important;
+}
+.dark .text-gray-800 {
+  color: #e2e8f0 !important;
+}
+.dark .text-gray-700 {
+  color: #cbd5e1 !important;
+}
+.dark .text-gray-600 {
+  color: #94a3b8 !important;
+}
+.dark .text-gray-500 {
+  color: #64748b !important;
+}
+.dark .text-gray-400 {
+  color: #94a3b8 !important;
+}
+
+/* ─── Text — semantic colors (lighter for dark backgrounds) ─────────────── */
+.dark .text-red-600 {
+  color: #f87171 !important;
+}
+.dark .text-red-700 {
+  color: #fca5a5 !important;
+}
+.dark .text-red-800 {
+  color: #fecaca !important;
+}
+.dark .text-red-900 {
+  color: #fecaca !important;
+}
+.dark .text-green-600 {
+  color: #4ade80 !important;
+}
+.dark .text-green-700 {
+  color: #86efac !important;
+}
+.dark .text-blue-600 {
+  color: #60a5fa !important;
+}
+.dark .text-blue-700 {
+  color: #93c5fd !important;
+}
+.dark .text-yellow-600 {
+  color: #fbbf24 !important;
+}
+.dark .text-yellow-700 {
+  color: #fcd34d !important;
+}
+.dark .text-yellow-800 {
+  color: #fde68a !important;
+}
+.dark .text-yellow-900 {
+  color: #fef3c7 !important;
+}
+.dark .text-amber-600 {
+  color: #fbbf24 !important;
+}
+.dark .text-amber-700 {
+  color: #fcd34d !important;
+}
+.dark .text-amber-800 {
+  color: #fde68a !important;
+}
+.dark .text-amber-900 {
+  color: #fef3c7 !important;
+}
+.dark .text-purple-700 {
+  color: #c084fc !important;
+}
+.dark .text-indigo-700 {
+  color: #a5b4fc !important;
+}
+.dark .text-green-500 {
+  color: #4ade80 !important;
+}
+.dark .text-amber-500 {
+  color: #fbbf24 !important;
+}
+
+/* ─── Borders — gray scale ──────────────────────────────────────────────── */
+.dark .border-gray-100 {
+  border-color: #1e293b !important;
+}
+.dark .border-gray-200 {
+  border-color: #334155 !important;
+}
+.dark .border-gray-300 {
+  border-color: #475569 !important;
+}
+
+/* ─── Borders — semantic colors ─────────────────────────────────────────── */
+.dark .border-red-200 {
+  border-color: rgba(248, 113, 113, 0.3) !important;
+}
+.dark .border-red-300 {
+  border-color: rgba(248, 113, 113, 0.4) !important;
+}
+.dark .border-green-200 {
+  border-color: rgba(74, 222, 128, 0.3) !important;
+}
+.dark .border-green-300 {
+  border-color: rgba(74, 222, 128, 0.4) !important;
+}
+.dark .border-blue-200 {
+  border-color: rgba(96, 165, 250, 0.3) !important;
+}
+.dark .border-blue-300 {
+  border-color: rgba(96, 165, 250, 0.4) !important;
+}
+.dark .border-yellow-200 {
+  border-color: rgba(251, 191, 36, 0.3) !important;
+}
+.dark .border-yellow-300 {
+  border-color: rgba(251, 191, 36, 0.4) !important;
+}
+.dark .border-amber-200 {
+  border-color: rgba(251, 191, 36, 0.3) !important;
+}
+.dark .border-amber-300 {
+  border-color: rgba(251, 191, 36, 0.4) !important;
+}
+.dark .border-amber-400 {
+  border-color: rgba(251, 191, 36, 0.5) !important;
+}
+
+/* ─── Colored backgrounds — pastels to dark tints ───────────────────────── */
+.dark .bg-red-50 {
+  background-color: rgba(248, 113, 113, 0.1) !important;
+}
+.dark .bg-red-100 {
+  background-color: rgba(248, 113, 113, 0.15) !important;
+}
+.dark .bg-red-200 {
+  background-color: rgba(248, 113, 113, 0.2) !important;
+}
+.dark .bg-green-50 {
+  background-color: rgba(74, 222, 128, 0.1) !important;
+}
+.dark .bg-green-100 {
+  background-color: rgba(74, 222, 128, 0.15) !important;
+}
+.dark .bg-green-200 {
+  background-color: rgba(74, 222, 128, 0.2) !important;
+}
+.dark .bg-blue-50 {
+  background-color: rgba(96, 165, 250, 0.1) !important;
+}
+.dark .bg-blue-100 {
+  background-color: rgba(96, 165, 250, 0.15) !important;
+}
+.dark .bg-blue-200 {
+  background-color: rgba(96, 165, 250, 0.2) !important;
+}
+.dark .bg-yellow-50 {
+  background-color: rgba(251, 191, 36, 0.1) !important;
+}
+.dark .bg-yellow-100 {
+  background-color: rgba(251, 191, 36, 0.15) !important;
+}
+.dark .bg-yellow-200 {
+  background-color: rgba(251, 191, 36, 0.2) !important;
+}
+.dark .bg-amber-50 {
+  background-color: rgba(251, 191, 36, 0.1) !important;
+}
+.dark .bg-amber-100 {
+  background-color: rgba(251, 191, 36, 0.15) !important;
+}
+.dark .bg-amber-200 {
+  background-color: rgba(251, 191, 36, 0.2) !important;
+}
+.dark .bg-purple-100 {
+  background-color: rgba(192, 132, 252, 0.15) !important;
+}
+.dark .bg-indigo-100 {
+  background-color: rgba(165, 180, 252, 0.15) !important;
+}
+
+/* Blue-50 with opacity (used in evaluation badges) */
+.dark .bg-blue-50\/50 {
+  background-color: rgba(96, 165, 250, 0.08) !important;
+}
+
+/* ─── Form controls ─────────────────────────────────────────────────────── */
+.dark input:not([type='checkbox']):not([type='radio']):not([type='range']),
+.dark select,
+.dark textarea {
+  background-color: #334155 !important;
+  color: #f1f5f9 !important;
+  border-color: #475569 !important;
+}
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* Disabled controls */
+.dark .disabled\:bg-gray-100:disabled {
+  background-color: #1e293b !important;
+}
+.dark .disabled\:bg-gray-300:disabled {
+  background-color: #475569 !important;
+}
+.dark .disabled\:bg-gray-50:disabled {
+  background-color: #1e293b !important;
+}
+.dark .disabled\:text-gray-400:disabled {
+  color: #64748b !important;
+}
+.dark .disabled\:cursor-not-allowed:disabled {
+  cursor: not-allowed;
+}
+
+/* ─── Hover states ──────────────────────────────────────────────────────── */
+.dark .hover\:bg-gray-50:hover {
+  background-color: #334155 !important;
+}
+.dark .hover\:bg-gray-100:hover {
+  background-color: #1e293b !important;
+}
+.dark .hover\:bg-red-50:hover {
+  background-color: rgba(248, 113, 113, 0.12) !important;
+}
+.dark .hover\:bg-green-50:hover {
+  background-color: rgba(74, 222, 128, 0.12) !important;
+}
+.dark .hover\:bg-blue-50:hover {
+  background-color: rgba(96, 165, 250, 0.12) !important;
+}
+.dark .hover\:bg-yellow-50:hover {
+  background-color: rgba(251, 191, 36, 0.12) !important;
+}
+.dark .hover\:bg-amber-100:hover {
+  background-color: rgba(251, 191, 36, 0.15) !important;
+}
+.dark .hover\:bg-red-50:hover {
+  background-color: rgba(248, 113, 113, 0.12) !important;
+}
+
+/* ─── Shadows ───────────────────────────────────────────────────────────── */
+.dark .shadow {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6) !important;
+}
+.dark .shadow-lg {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6) !important;
+}
+.dark .shadow-xl {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7) !important;
+}
+.dark .shadow-2xl {
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.8) !important;
+}
+
+/* ─── Nav & structural ──────────────────────────────────────────────────── */
+.dark nav.bg-white {
+  background-color: #1e293b !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5) !important;
+}
+.dark .border-b {
+  border-bottom-color: #334155 !important;
+}
+.dark .border-t {
+  border-top-color: #334155 !important;
+}
+
+/* Dividers */
+.dark .divide-y > :not([hidden]) ~ :not([hidden]),
+.dark .divide-gray-100 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #334155 !important;
+}
+
+/* ─── Arbitrary maroon color overrides (#500000 → visible on dark) ───────── */
+.dark .text-\[\#500000\] {
+  color: #f1a0a0 !important;
+}
+.dark .border-\[\#500000\] {
+  border-color: #f1a0a0 !important;
+}
+.dark .bg-\[\#500000\]\/5 {
+  background-color: rgba(241, 160, 160, 0.08) !important;
+}
+.dark .hover\:bg-\[\#500000\]\/5:hover {
+  background-color: rgba(241, 160, 160, 0.12) !important;
+}
+.dark .border-\[\#500000\]\/40 {
+  border-color: rgba(241, 160, 160, 0.4) !important;
+}
+.dark .border-\[\#500000\]\/60 {
+  border-color: rgba(241, 160, 160, 0.6) !important;
+}
+.dark .ring-\[\#500000\]\/20 {
+  --tw-ring-color: rgba(241, 160, 160, 0.2) !important;
+}
+
+/* ─── Focus rings ───────────────────────────────────────────────────────── */
+.dark .focus\:ring-offset-2:focus {
+  --tw-ring-offset-color: #1e293b;
+}
+
+/* ─── SVG inside dark mode (flowchart text visibility) ──────────────────── */
+.dark svg text[fill="#111827"] {
+  fill: #f1f5f9 !important;
+}
+.dark svg text[fill="#4b5563"] {
+  fill: #94a3b8 !important;
+}
+.dark svg line[stroke="#94a3b8"] {
+  stroke: #64748b !important;
+}
+.dark svg path[fill="#9ca3af"] {
+  fill: #64748b !important;
+}
+
+/* ─── Flowchart node fills (dark-aware) ─────────────────────────────────── */
+.dark .fill-\[\#dcfce7\] {
+  fill: rgba(74, 222, 128, 0.2) !important;
+}
+.dark .fill-\[\#dbeafe\] {
+  fill: rgba(96, 165, 250, 0.2) !important;
+}
+.dark .fill-\[\#fef9c3\] {
+  fill: rgba(251, 191, 36, 0.2) !important;
+}
+.dark .fill-\[\#f3f4f6\] {
+  fill: rgba(148, 163, 184, 0.12) !important;
+}
+.dark .stroke-\[\#16a34a\] {
+  stroke: #4ade80 !important;
+}
+.dark .stroke-\[\#2563eb\] {
+  stroke: #60a5fa !important;
+}
+.dark .stroke-\[\#ca8a04\] {
+  stroke: #fbbf24 !important;
+}
+.dark .stroke-\[\#9ca3af\] {
+  stroke: #64748b !important;
+}
+
+/* ─── Scrollbar styling ─────────────────────────────────────────────────── */
+.dark ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.dark ::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 4px;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}

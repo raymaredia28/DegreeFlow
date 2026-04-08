@@ -1812,13 +1812,13 @@
       {
         "name": "Business Minor",
         "rules": {
-          "allOf": [
-            "ACCT 209",
-            "MGMT 309",
-            "FINC 409",
-            "MKTG 409",
-            "ISTM 209",
-            "MGMT 209"
+          "items": [
+            { "anyOf": ["ACCT 209", "ACCT 229"] },
+            { "course": "MGMT 309" },
+            { "course": "FINC 409" },
+            { "course": "MKTG 409" },
+            { "course": "ISTM 209" },
+            { "course": "MGMT 209" }
           ]
         }
       }

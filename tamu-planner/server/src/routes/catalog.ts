@@ -168,6 +168,9 @@ catalogRouter.post("/api/requirements/evaluate-local", async (req, res, next) =>
       // degreeEmphasisId: pass this when evaluating the *degree* requirement set
       // but still need emphasis courses for the emphasisCredits sub-rule.
       degreeEmphasisId = null,
+      // degreeMinorId: pass this when evaluating the *degree* requirement set
+      // but still need minor-applied courses excluded from Work Not Applied.
+      degreeMinorId = null,
       minorId = null,
       hasHsLanguage = false,
       hasSabrCourse = false,
@@ -175,6 +178,7 @@ catalogRouter.post("/api/requirements/evaluate-local", async (req, res, next) =>
 
     const requirementSets = await loadJson("requirements.json");
     const emphases: any[] = await loadJson("emphasis_areas.json").catch(() => []);
+    const minors: any[] = await loadJson("minors.json").catch(() => []);
 
     const inferType = (name = "") => {
       if (name.startsWith("Minor -")) return "minor";
@@ -195,7 +199,6 @@ catalogRouter.post("/api/requirements/evaluate-local", async (req, res, next) =>
     }
 
     if (!requirementSet && minorId) {
-      const minors = await loadJson("minors.json").catch(() => []);
       const match = minors.find((m: any) => m.minor_id === minorId);
       if (match?.name || match?.minor_name) {
         const targetName = `Minor - ${match.name || match.minor_name}`;
@@ -291,12 +294,70 @@ catalogRouter.post("/api/requirements/evaluate-local", async (req, res, next) =>
       }
     }
 
+    const collectUsedCodes = (result: any): Set<string> => {
+      const used = new Set<string>();
+      (result?.groups || []).forEach((group: any) => {
+        (group?.usedCourses || []).forEach((code: string) => {
+          const normalized = normCode(code);
+          if (normalized) used.add(normalized);
+        });
+      });
+      return used;
+    };
+
+    const externallyAppliedCodes = new Set<string>();
+    const isDegreeEvaluation = inferType(requirementSet.name) === "degree";
+
+    // When evaluating the degree requirement set, also treat courses used by the
+    // selected minor/emphasis requirement sets as "applied" so Work Not Applied
+    // reflects true excess-only courses across all active requirement contexts.
+    if (isDegreeEvaluation) {
+      if (degreeMinorId) {
+        const minorMatch = minors.find((m: any) => m.minor_id === degreeMinorId);
+        if (minorMatch?.name || minorMatch?.minor_name) {
+          const minorSetName = `Minor - ${minorMatch.name || minorMatch.minor_name}`;
+          const minorReqSet = requirementSets.find((r: any) => r.name === minorSetName);
+          if (minorReqSet) {
+            const minorEval = evaluateRequirements({
+              requirementSet: minorReqSet,
+              studentCourses,
+              emphasisCourseIds: new Set<number>(),
+              hasHsLanguage: Boolean(hasHsLanguage),
+              hasSabrCourse: Boolean(hasSabrCourse),
+            });
+            collectUsedCodes(minorEval).forEach((code) => externallyAppliedCodes.add(code));
+          }
+        }
+      }
+
+      if (degreeEmphasisId) {
+        const emphasisMatch = emphases.find((e: any) => e.emphasis_id === degreeEmphasisId);
+        if (emphasisMatch?.name || emphasisMatch?.emphasis_name) {
+          const emphasisSetName = `CSCE Emphasis - ${emphasisMatch.name || emphasisMatch.emphasis_name}`;
+          const emphasisReqSet = requirementSets.find((r: any) => r.name === emphasisSetName);
+          if (emphasisReqSet) {
+            const emphasisEval = evaluateRequirements({
+              requirementSet: emphasisReqSet,
+              studentCourses,
+              emphasisCourseIds,
+              hasHsLanguage: Boolean(hasHsLanguage),
+              hasSabrCourse: Boolean(hasSabrCourse),
+            });
+            collectUsedCodes(emphasisEval).forEach((code) => externallyAppliedCodes.add(code));
+          }
+        }
+      }
+    }
+
+    const externallyAppliedCodeList: string[] = Array.from(externallyAppliedCodes);
+
     const result = evaluateRequirements({
       requirementSet,
       studentCourses,
       emphasisCourseIds,
       hasHsLanguage: Boolean(hasHsLanguage),
       hasSabrCourse: Boolean(hasSabrCourse),
+      externallyAppliedCodes: externallyAppliedCodeList as any,
     });
 
     res.json(result);

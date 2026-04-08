@@ -140,6 +140,28 @@ export const buildExportHtmlFromDegreeResult = (
     .join('')}</tbody></table>
   ${areasSections}
   ${(() => {
+    const wna = Array.isArray(degreeResult?.workNotApplied) ? degreeResult.workNotApplied : [];
+    if (wna.length === 0) return '';
+    const wnaRows = wna.map((entry) => {
+      const c = courseIndex.get(entry.code) || {};
+      const credits = entry.credits != null ? Number(entry.credits).toFixed(2) : (c.credits != null ? Number(c.credits).toFixed(2) : '');
+      const grade = esc(c.grade || '');
+      const title = esc(c.title || '');
+      const term = esc(c.termLabel || '');
+      const transfer = c.transfer ? 'T' : 'H';
+      const potential = (entry.potentialGroups || []).length > 0
+        ? entry.potentialGroups.map(esc).join(', ')
+        : '';
+      return `<tr><td>${esc(entry.code)}</td><td>${title}</td><td>${credits}</td><td>${grade}</td><td>${term}</td><td>${transfer}</td><td>${potential}</td></tr>`;
+    }).join('');
+    const totalCredits = wna.reduce((sum, e) => sum + (Number(e.credits) || 0), 0);
+    return `<h2 style="color:#500000;font-size:14px;margin:24px 0 8px 0;">Work Not Applied</h2>
+    <p class="area-summary">${wna.length} course${wna.length !== 1 ? 's' : ''} (${totalCredits} credits) completed but not matched to any requirement group</p>
+    <table class="rows"><thead><tr>
+      <th>Course</th><th>Title</th><th>Credits</th><th>Grade</th><th>Term</th><th>Source</th><th>Could Apply To</th>
+    </tr></thead><tbody>${wnaRows}</tbody></table>`;
+  })()}
+  ${(() => {
     const mr = meta?.minorResult;
     if (!mr || !Array.isArray(mr.groups) || mr.groups.length === 0) return '';
     const minorName = esc(mr.requirementSet?.name || 'Minor');

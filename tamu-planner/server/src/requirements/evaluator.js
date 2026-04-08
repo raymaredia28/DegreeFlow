@@ -718,10 +718,14 @@ const summarizeGroup = (name, rules, context, { deriveCredits = false } = {}) =>
   };
 };
 
-const computeWorkNotApplied = (groups, courseIndex) => {
+const computeWorkNotApplied = (groups, courseIndex, externallyAppliedCodes = []) => {
   const allUsed = new Set();
   groups.forEach(group => {
     (group.usedCourses || []).forEach(code => allUsed.add(code));
+  });
+  externallyAppliedCodes.forEach((code) => {
+    const normalized = normalizeCode(code);
+    if (normalized) allUsed.add(normalized);
   });
 
   const seenRecords = new Set();
@@ -813,7 +817,14 @@ const findAlternativePlacements = (unappliedCourses, requirementSet, courseIndex
   });
 };
 
-const evaluateRequirements = ({ requirementSet, studentCourses, emphasisCourseIds, hasHsLanguage, hasSabrCourse }) => {
+const evaluateRequirements = ({
+  requirementSet,
+  studentCourses,
+  emphasisCourseIds,
+  hasHsLanguage,
+  hasSabrCourse,
+  externallyAppliedCodes = []
+}) => {
   const courseIndex = buildCourseIndex(studentCourses);
   const completedCourses = Array.from(courseIndex.values()).filter((course) =>
     isCompleted(course, null)
@@ -832,7 +843,7 @@ const evaluateRequirements = ({ requirementSet, studentCourses, emphasisCourseId
     summarizeGroup(group.name, group.rules || {}, context, { deriveCredits: isMinor })
   );
 
-  let workNotApplied = computeWorkNotApplied(groups, courseIndex);
+  let workNotApplied = computeWorkNotApplied(groups, courseIndex, externallyAppliedCodes);
   workNotApplied = findAlternativePlacements(workNotApplied, requirementSet, courseIndex);
 
   return {

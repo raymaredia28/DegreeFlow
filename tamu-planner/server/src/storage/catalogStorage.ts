@@ -17,6 +17,30 @@ export interface CatalogStorageProvider {
   deleteCourse(courseId: number): Promise<boolean>;
 }
 
+// ── Full-catalog cache (shared by both providers) ────────────────────────────
+
+const CATALOG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+let cachedFullCatalog: any[] | null = null;
+let catalogCacheTime = 0;
+
+export function invalidateCatalogCache(): void {
+  cachedFullCatalog = null;
+  catalogCacheTime = 0;
+}
+
+function getCachedCatalog(): any[] | null {
+  if (cachedFullCatalog && Date.now() - catalogCacheTime < CATALOG_CACHE_TTL) {
+    return cachedFullCatalog;
+  }
+  return null;
+}
+
+function setCachedCatalog(catalog: any[]): any[] {
+  cachedFullCatalog = catalog;
+  catalogCacheTime = Date.now();
+  return catalog;
+}
+
 const COURSES_FILE = path.resolve("data", "courses.json");
 
 const isCsceCourse = (c: any) => c.primary_subject === ADMIN_SUBJECT;
@@ -101,7 +125,9 @@ const localCatalogStorage: CatalogStorageProvider = {
   },
 
   async getFullCatalog() {
-    return readCoursesFile();
+    const cached = getCachedCatalog();
+    if (cached) return cached;
+    return setCachedCatalog(await readCoursesFile());
   },
 
   async getCourseById(courseId) {
@@ -114,6 +140,7 @@ const localCatalogStorage: CatalogStorageProvider = {
     const newCourse = { ...course, course_id: nextCourseId(courses) };
     courses.push(newCourse);
     await writeCoursesFile(courses);
+    invalidateCatalogCache();
     return newCourse;
   },
 
@@ -123,6 +150,7 @@ const localCatalogStorage: CatalogStorageProvider = {
     if (idx === -1) return null;
     courses[idx] = { ...courses[idx], ...updates, course_id: courseId };
     await writeCoursesFile(courses);
+    invalidateCatalogCache();
     return courses[idx];
   },
 
@@ -132,6 +160,7 @@ const localCatalogStorage: CatalogStorageProvider = {
     if (idx === -1) return false;
     courses.splice(idx, 1);
     await writeCoursesFile(courses);
+    invalidateCatalogCache();
     return true;
   },
 };
@@ -208,12 +237,15 @@ const firestoreCatalogStorage: CatalogStorageProvider = {
   },
 
   async getFullCatalog() {
+    const cached = getCachedCatalog();
+    if (cached) return cached;
+
     const allStatic = await readCoursesFile();
     const csceCourses = await getFirestoreCsceCourses();
 
     const csceById = new Map(csceCourses.map((c: any) => [c.course_id, c]));
     const nonCsce = allStatic.filter((c: any) => !isCsceCourse(c));
-    return [...nonCsce, ...csceById.values()];
+    return setCachedCatalog([...nonCsce, ...csceById.values()]);
   },
 
   async getCourseById(courseId) {
@@ -240,6 +272,7 @@ const firestoreCatalogStorage: CatalogStorageProvider = {
 
     const newCourse = { ...course, course_id: newId };
     await db.collection(COURSES_COLLECTION).doc(String(newId)).set(sanitizeForFirestore(newCourse));
+    invalidateCatalogCache();
     return newCourse;
   },
 
@@ -252,6 +285,7 @@ const firestoreCatalogStorage: CatalogStorageProvider = {
 
     const updated = { ...deserializeFromFirestore(doc.data()), ...updates, course_id: courseId };
     await docRef.set(sanitizeForFirestore(updated), { merge: true });
+    invalidateCatalogCache();
     return updated;
   },
 
@@ -263,6 +297,7 @@ const firestoreCatalogStorage: CatalogStorageProvider = {
     if (!doc.exists) return false;
 
     await docRef.delete();
+    invalidateCatalogCache();
     return true;
   },
 };
