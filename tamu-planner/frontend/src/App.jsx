@@ -2190,15 +2190,121 @@ function App() {
     COURSES[courseCode]?.status === 'in-progress';
   const isCoursePlanned = (courseCode) =>
     Object.values(semesterPlans).some((courses) => courses?.includes(courseCode));
+  const isCoursePlannedOnly = (courseCode) =>
+    Boolean(courseCode) &&
+    isCoursePlanned(courseCode) &&
+    !isCourseCompleted(courseCode) &&
+    !isCourseInProgress(courseCode);
+  const getCourseCreditsForRequirementBar = (rawCode) => {
+    const code = normalizeCode(rawCode);
+    if (!code) return 0;
 
-  // Checks if a prerequisite is satisfied for a given semester, considering:
-  // 1. Already completed (on transcript)
-  // 2. In progress (on transcript)
-  // 3. Planned in an earlier semester
-  const isPrereqSatisfiedForSemester = (prereqCode, semester) => {
-    if (isCourseCompleted(prereqCode) || isCourseInProgress(prereqCode)) return true;
-    return isCoursePlannedInEarlierSemester(prereqCode, semester);
+    const fromCatalogMap = Number(coursesIndex.get(code)?.credits);
+    if (Number.isFinite(fromCatalogMap) && fromCatalogMap > 0) return fromCatalogMap;
+
+    const fromCourses = Number(COURSES[code]?.credits);
+    if (Number.isFinite(fromCourses) && fromCourses > 0) return fromCourses;
+
+    const transcriptMatch = transcriptCourseList.find(
+      (course) => normalizeCode(course?.code) === code
+    );
+    const fromTranscript = Number(transcriptMatch?.credits);
+    if (Number.isFinite(fromTranscript) && fromTranscript > 0) return fromTranscript;
+
+    return 3;
   };
+  const getRequirementProgressBreakdown = (group) => {
+    const required = Number(group?.requiredCredits) || 0;
+    const earned = Number(group?.earnedCredits) || 0;
+
+    if (required <= 0) {
+      return {
+        greenCredits: earned,
+        plannedCredits: 0,
+        greenPct: group?.satisfied ? 100 : 0,
+        plannedPct: 0,
+        combinedPct: group?.satisfied ? 100 : 0,
+        plannedLabelCredits: 0
+      };
+    }
+
+    const usedCodes = Array.from(
+      new Set(
+        (Array.isArray(group?.usedCourses) ? group.usedCourses : [])
+          .map((code) => normalizeCode(code))
+          .filter(Boolean)
+      )
+    );
+
+    let usedPlannedCredits = 0;
+    usedCodes.forEach((code) => {
+      const credits = getCourseCreditsForRequirementBar(code);
+      if (credits <= 0) return;
+
+      const isPlannedByEquivalent = getEquivalents(code).some((eq) => isCoursePlannedOnly(eq));
+      const isPlannedOnlyCode = isCoursePlannedOnly(code) || isPlannedByEquivalent;
+
+      if (isPlannedOnlyCode) {
+        usedPlannedCredits += credits;
+      }
+    });
+
+    // Keep total fill as "earned / required" and recolor the tail segment for planned credits.
+    const combinedCredits = Math.min(Math.max(earned, 0), required);
+    const plannedCredits = Math.min(Math.max(usedPlannedCredits, 0), combinedCredits);
+    const greenCredits = Math.max(combinedCredits - plannedCredits, 0);
+
+    return {
+      greenCredits,
+      plannedCredits,
+      greenPct: Math.min((greenCredits / required) * 100, 100),
+      plannedPct: Math.min((plannedCredits / required) * 100, 100),
+      combinedPct: Math.min(Math.round((combinedCredits / required) * 100), 100),
+      plannedLabelCredits: plannedCredits
+    };
+  };
+
+  const getPrereqOptionSemesterState = (option, semester) => {
+    const normalizedOption = normalizePrereqOption(option);
+    if (!normalizedOption) {
+      return {
+        satisfied: false,
+        completedOrInProgress: false,
+        plannedEarlier: false,
+        plannedThisSemester: false,
+        plannedAnywhere: false
+      };
+    }
+
+    const equivalentCodes = [normalizedOption.code, ...getEquivalents(normalizedOption.code)];
+    const completedOrInProgress = equivalentCodes.some(
+      (eqCode) => isCourseCompleted(eqCode) || isCourseInProgress(eqCode)
+    );
+    const plannedEarlier = equivalentCodes.some((eqCode) =>
+      isCoursePlannedInEarlierSemester(eqCode, semester)
+    );
+    const plannedThisSemester = equivalentCodes.some((eqCode) =>
+      (semesterPlans[semester] || []).includes(eqCode)
+    );
+    const plannedAnywhere = equivalentCodes.some((eqCode) => isCoursePlanned(eqCode));
+
+    return {
+      satisfied:
+        completedOrInProgress ||
+        plannedEarlier ||
+        (normalizedOption.concurrentOk && plannedThisSemester),
+      completedOrInProgress,
+      plannedEarlier,
+      plannedThisSemester,
+      plannedAnywhere
+    };
+  };
+
+  const isPrereqOptionSatisfiedForSemester = (option, semester) =>
+    getPrereqOptionSemesterState(option, semester).satisfied;
+
+  const isPrereqSatisfiedForSemester = (prereqCode, semester) =>
+    isPrereqOptionSatisfiedForSemester({ code: prereqCode, concurrentOk: false }, semester);
 
   const deriveTermStatus = (courses = []) => {
     let status = 'Evaluated';
@@ -2502,7 +2608,7 @@ function App() {
       const name = String(file.name || '').toLowerCase();
       const isPdf = file.type === 'application/pdf' || name.endsWith('.pdf');
       if (!isPdf) {
-        setTranscriptError('Please upload a PDF transcript file.');
+        setTranscriptError('Please upload a PDF file.');
         showToast('Please select a PDF file.', 'error');
         return;
       }
@@ -2615,7 +2721,7 @@ function App() {
             .filter(Boolean)
         )
       );
-      const looksLikePrereqQuestion = /\b(prereq|pre-req|prerequisite|co-req|coreq|co-?enroll|concurrent|before)\b/i.test(
+      const looksLikePrereqQuestion = /\b(prereq(?:uisite)?s?|pre[-\s]?req(?:uisite)?s?|pre[-\s]?requisite(?:s)?|co[-\s]?req(?:uisite)?s?|co[-\s]?requisite(?:s)?|coreq(?:uisite)?s?|co-?enroll(?:ment)?|concurrent|before)\b/i.test(
         userMessage
       );
       const looksLikePlannerEdit = /\b(add|remove|delete|drop|insert|schedule)\b/i.test(
@@ -3106,6 +3212,38 @@ function App() {
         });
       };
 
+      const estimateCoursesNeededForCredits = (codes, remainingCredits) => {
+        const neededCredits = Number(remainingCredits);
+        if (!Number.isFinite(neededCredits) || neededCredits <= 0) return 0;
+
+        const uniqueCodes = Array.from(
+          new Set((Array.isArray(codes) ? codes : []).map((code) => normalizeCode(code)).filter(Boolean))
+        ).filter((code) => !isCourseSatisfiedForGuidance(code));
+
+        const creditValues = uniqueCodes
+          .map((code) => getCourseCreditsForGuidance(code))
+          .filter((credit) => Number.isFinite(credit) && credit > 0)
+          .sort((a, b) => b - a);
+
+        if (creditValues.length === 0) {
+          return Math.max(1, Math.ceil(neededCredits / 3));
+        }
+
+        let coveredCredits = 0;
+        let courseCount = 0;
+        for (const credit of creditValues) {
+          if (coveredCredits >= neededCredits) break;
+          coveredCredits += credit;
+          courseCount += 1;
+        }
+
+        if (coveredCredits < neededCredits) {
+          courseCount += Math.ceil((neededCredits - coveredCredits) / 3);
+        }
+
+        return Math.max(courseCount, 1);
+      };
+
       const guidanceTargets = collectGuidanceTargetsFromEvaluation(
         degreeResult,
         requirementsResult,
@@ -3121,6 +3259,23 @@ function App() {
         sequencingPlan,
         unmetGroupsForGuidance
       );
+      const guidanceCreditNeedSummaries = unmetGroupsForGuidance
+        .map((group) => {
+          const remainingCredits = Number(group?.remainingCredits);
+          if (!Number.isFinite(remainingCredits) || remainingCredits <= 0) return null;
+          const candidateCodes = [
+            ...(Array.isArray(group?.recommendedCodes) ? group.recommendedCodes : []),
+            ...(Array.isArray(group?.missingCodes) ? group.missingCodes : []),
+            ...(Array.isArray(group?.optionCodes) ? group.optionCodes : [])
+          ];
+          const estimatedCourses = estimateCoursesNeededForCredits(candidateCodes, remainingCredits);
+          return {
+            name: String(group?.name || 'Requirement').trim() || 'Requirement',
+            remainingCredits,
+            estimatedCourses
+          };
+        })
+        .filter(Boolean);
       const looksLikeGuidanceQuestion = /\b(what\s+should\s+i\s+take|what\s+courses?\s+should\s+i\s+plan|what\s+do\s+i\s+need|which\s+courses?\s+(should|do)|which\s+course.*first|what.*missing|next\s+courses?|future\s+semesters?|course\s+order|course\s+sequence|course\s+plan|plan\s+my|remaining\s+requirements?|requirements?\s+check|what\s+do\s+you\s+recommend|recommend(?:ed|ation)?(?:\s+for\s+me)?|recommend.*courses?)\b/i.test(
         userMessage
       );
@@ -3129,6 +3284,23 @@ function App() {
         lines.push('Here is your prioritized next-course list (highest priority first):');
         if (nextGuidanceTerm) {
           lines.push(`Start planning from **${nextGuidanceTerm}**.`);
+        }
+        if (guidanceCreditNeedSummaries.length === 1) {
+          const summary = guidanceCreditNeedSummaries[0];
+          const creditWord = summary.remainingCredits === 1 ? 'credit hour' : 'credit hours';
+          const courseWord = summary.estimatedCourses === 1 ? 'course' : 'courses';
+          lines.push(
+            `You are missing **${summary.remainingCredits}** ${creditWord} in **${summary.name}**, so you only need to choose about **${summary.estimatedCourses}** ${courseWord} from the prioritized list below.`
+          );
+        } else if (guidanceCreditNeedSummaries.length > 1) {
+          lines.push('Credit-hour needs by unmet requirement:');
+          guidanceCreditNeedSummaries.forEach((summary) => {
+            const creditWord = summary.remainingCredits === 1 ? 'credit hour' : 'credit hours';
+            const courseWord = summary.estimatedCourses === 1 ? 'course' : 'courses';
+            lines.push(
+              `- **${summary.name}**: ${summary.remainingCredits} ${creditWord} remaining (about ${summary.estimatedCourses} ${courseWord}).`
+            );
+          });
         }
         lines.push('');
         if (prioritizedGuidanceCourses.length === 0) {
@@ -3671,13 +3843,45 @@ Now answer the student's question using only this context.`
         errors.push(`${code} has already been taken or planned in a prior semester`);
       }
 
-      (course.prereqs || []).forEach((prereq) => {
-        if (isPrereqSatisfiedForSemester(prereq, semester)) return;
-        if (isCoursePlanned(prereq)) {
-          warnings.push(`${code}: prerequisite ${prereq} is planned but not in an earlier semester`);
-        } else {
-          errors.push(`${code} requires ${prereq} (not completed or planned)`);
+      const prereqGroups = getCoursePrereqGroups(course);
+      prereqGroups.forEach((group) => {
+        const optionStates = group.map((option) => ({
+          option,
+          state: getPrereqOptionSemesterState(option, semester)
+        }));
+
+        if (optionStates.some(({ state }) => state.satisfied)) return;
+
+        const strictPlanned = optionStates.find(
+          ({ option, state }) => !option.concurrentOk && state.plannedAnywhere
+        );
+        if (strictPlanned) {
+          warnings.push(
+            `${code}: prerequisite ${strictPlanned.option.code} is planned but not in an earlier semester`
+          );
+          return;
         }
+
+        const coreqPlannedLater = optionStates.find(
+          ({ option, state }) =>
+            option.concurrentOk &&
+            state.plannedAnywhere &&
+            !state.plannedEarlier &&
+            !state.plannedThisSemester
+        );
+        if (coreqPlannedLater) {
+          warnings.push(
+            `${code}: co-requisite ${coreqPlannedLater.option.code} is planned in a later semester`
+          );
+          return;
+        }
+
+        const requiredLabel = group
+          .map((option) =>
+            option.concurrentOk ? `${option.code} (or concurrent enrollment)` : option.code
+          )
+          .join(' or ');
+        errors.push(`${code} requires ${requiredLabel} (not completed or planned)`);
       });
 
       // Warn about equivalent courses already completed/planned
@@ -4130,11 +4334,13 @@ Now answer the student's question using only this context.`
             const renderGroup = (group) => {
               const earned = group.earnedCredits || 0;
               const required = group.requiredCredits || 0;
-              const pct = required > 0 ? Math.min(Math.round((earned / required) * 100), 100) : (group.satisfied ? 100 : 0);
+              const progressBreakdown = getRequirementProgressBreakdown(group);
+              const pct = required > 0 ? progressBreakdown.combinedPct : (group.satisfied ? 100 : 0);
               const exceeded = required > 0 && earned > required;
               const extraCredits = exceeded ? earned - required : 0;
+              const plannedCredits = progressBreakdown.plannedLabelCredits || 0;
               const ariaLabel = required > 0
-                ? `${earned} of ${required} credits completed${exceeded ? `, ${extraCredits} extra` : ''}`
+                ? `${earned} of ${required} credits counted${plannedCredits > 0 ? `, ${plannedCredits} planned` : ''}${exceeded ? `, ${extraCredits} extra` : ''}`
                 : (group.satisfied ? 'Satisfied' : 'Not satisfied');
               const hasOverflow = group.overflowCourses?.length > 0;
               const hasDetails = (group.missing?.length > 0) || (group.usedCourses?.length > 0) || hasOverflow;
@@ -4166,6 +4372,11 @@ Now answer the student's question using only this context.`
                         {group.satisfied && !exceeded && required > 0 && (
                           <span className="text-xs font-medium text-green-600">Completed</span>
                         )}
+                        {plannedCredits > 0 && (
+                          <span className="text-xs font-medium text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
+                            +{plannedCredits} planned
+                          </span>
+                        )}
                       </div>
                       {required > 0 && (
                         <div
@@ -4177,10 +4388,20 @@ Now answer the student's question using only this context.`
                           aria-label={ariaLabel}
                           title={ariaLabel}
                         >
-                          <div
-                            className="h-full rounded-full transition-all"
-                            style={{ width: `${pct}%`, backgroundColor: '#16a34a' }}
-                          />
+                          <div className="h-full flex">
+                            {progressBreakdown.greenPct > 0 && (
+                              <div
+                                className={`h-full ${progressBreakdown.plannedPct > 0 ? 'rounded-l-full' : 'rounded-full'} transition-all`}
+                                style={{ width: `${progressBreakdown.greenPct}%`, backgroundColor: '#16a34a' }}
+                              />
+                            )}
+                            {progressBreakdown.plannedPct > 0 && (
+                              <div
+                                className={`h-full ${progressBreakdown.greenPct > 0 ? '' : 'rounded-l-full'} ${pct >= 100 ? 'rounded-r-full' : ''} transition-all`}
+                                style={{ width: `${progressBreakdown.plannedPct}%`, backgroundColor: '#2563eb' }}
+                              />
+                            )}
+                          </div>
                         </div>
                       )}
                       {!required && (
@@ -4338,11 +4559,13 @@ Now answer the student's question using only this context.`
             const renderGroup = (group) => {
               const earned = group.earnedCredits || 0;
               const required = group.requiredCredits || 0;
-              const pct = required > 0 ? Math.min(Math.round((earned / required) * 100), 100) : (group.satisfied ? 100 : 0);
+              const progressBreakdown = getRequirementProgressBreakdown(group);
+              const pct = required > 0 ? progressBreakdown.combinedPct : (group.satisfied ? 100 : 0);
               const exceeded = required > 0 && earned > required;
               const extraCredits = exceeded ? earned - required : 0;
+              const plannedCredits = progressBreakdown.plannedLabelCredits || 0;
               const ariaLabel = required > 0
-                ? `${earned} of ${required} credits completed${exceeded ? `, ${extraCredits} extra` : ''}`
+                ? `${earned} of ${required} credits counted${plannedCredits > 0 ? `, ${plannedCredits} planned` : ''}${exceeded ? `, ${extraCredits} extra` : ''}`
                 : (group.satisfied ? 'Satisfied' : 'Not satisfied');
               const hasOverflow = group.overflowCourses?.length > 0;
               const hasDetails = (group.missing?.length > 0) || (group.usedCourses?.length > 0) || hasOverflow;
@@ -4374,6 +4597,11 @@ Now answer the student's question using only this context.`
                         {group.satisfied && !exceeded && required > 0 && (
                           <span className="text-xs font-medium text-green-600">Completed</span>
                         )}
+                        {plannedCredits > 0 && (
+                          <span className="text-xs font-medium text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
+                            +{plannedCredits} planned
+                          </span>
+                        )}
                       </div>
                       {required > 0 && (
                         <div
@@ -4385,10 +4613,20 @@ Now answer the student's question using only this context.`
                           aria-label={ariaLabel}
                           title={ariaLabel}
                         >
-                          <div
-                            className="h-full rounded-full transition-all"
-                            style={{ width: `${pct}%`, backgroundColor: '#16a34a' }}
-                          />
+                          <div className="h-full flex">
+                            {progressBreakdown.greenPct > 0 && (
+                              <div
+                                className={`h-full ${progressBreakdown.plannedPct > 0 ? 'rounded-l-full' : 'rounded-full'} transition-all`}
+                                style={{ width: `${progressBreakdown.greenPct}%`, backgroundColor: '#16a34a' }}
+                              />
+                            )}
+                            {progressBreakdown.plannedPct > 0 && (
+                              <div
+                                className={`h-full ${progressBreakdown.greenPct > 0 ? '' : 'rounded-l-full'} ${pct >= 100 ? 'rounded-r-full' : ''} transition-all`}
+                                style={{ width: `${progressBreakdown.plannedPct}%`, backgroundColor: '#2563eb' }}
+                              />
+                            )}
+                          </div>
                         </div>
                       )}
                       {!required && (
@@ -4525,11 +4763,13 @@ Now answer the student's question using only this context.`
               {minorResult.groups?.map((group) => {
                 const earned = group.earnedCredits || 0;
                 const required = group.requiredCredits || 0;
-                const pct = required > 0 ? Math.min(Math.round((earned / required) * 100), 100) : (group.satisfied ? 100 : 0);
+                const progressBreakdown = getRequirementProgressBreakdown(group);
+                const pct = required > 0 ? progressBreakdown.combinedPct : (group.satisfied ? 100 : 0);
                 const exceeded = required > 0 && earned > required;
                 const extraCredits = exceeded ? earned - required : 0;
+                const plannedCredits = progressBreakdown.plannedLabelCredits || 0;
                 const ariaLabel = required > 0
-                  ? `${earned} of ${required} credits completed${exceeded ? `, ${extraCredits} extra` : ''}`
+                  ? `${earned} of ${required} credits counted${plannedCredits > 0 ? `, ${plannedCredits} planned` : ''}${exceeded ? `, ${extraCredits} extra` : ''}`
                   : (group.satisfied ? 'Satisfied' : 'Not satisfied');
                 const hasOverflow = group.overflowCourses?.length > 0;
                 const hasDetails = (group.missing?.length > 0) || (group.usedCourses?.length > 0) || hasOverflow;
@@ -4564,6 +4804,11 @@ Now answer the student's question using only this context.`
                           {group.satisfied && !exceeded && required > 0 && (
                             <span className="text-xs font-medium text-green-600">Completed</span>
                           )}
+                          {plannedCredits > 0 && (
+                            <span className="text-xs font-medium text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
+                              +{plannedCredits} planned
+                            </span>
+                          )}
                         </div>
                         {required > 0 && (
                           <div
@@ -4575,10 +4820,20 @@ Now answer the student's question using only this context.`
                             aria-label={ariaLabel}
                             title={ariaLabel}
                           >
-                            <div
-                              className="h-full rounded-full transition-all"
-                              style={{ width: `${pct}%`, backgroundColor: '#16a34a' }}
-                            />
+                            <div className="h-full flex">
+                              {progressBreakdown.greenPct > 0 && (
+                                <div
+                                  className={`h-full ${progressBreakdown.plannedPct > 0 ? 'rounded-l-full' : 'rounded-full'} transition-all`}
+                                  style={{ width: `${progressBreakdown.greenPct}%`, backgroundColor: '#16a34a' }}
+                                />
+                              )}
+                              {progressBreakdown.plannedPct > 0 && (
+                                <div
+                                  className={`h-full ${progressBreakdown.greenPct > 0 ? '' : 'rounded-l-full'} ${pct >= 100 ? 'rounded-r-full' : ''} transition-all`}
+                                  style={{ width: `${progressBreakdown.plannedPct}%`, backgroundColor: '#2563eb' }}
+                                />
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -5475,16 +5730,53 @@ Now answer the student's question using only this context.`
                     ) : (
                       displayCourses.map((course) => {
                         const courseMeta = COURSES[course.code];
-                        const missingPrereqs = course.type === 'planned'
-                          ? (courseMeta?.prereqs || []).filter((p) => !isPrereqSatisfiedForSemester(p, term))
-                          : [];
-                        const hasPrereqIssue = missingPrereqs.length > 0;
-                        const plannedLaterPrereqs = hasPrereqIssue
-                          ? missingPrereqs.filter((p) => isCoursePlanned(p))
-                          : [];
-                        const trulyMissing = hasPrereqIssue
-                          ? missingPrereqs.filter((p) => !isCoursePlanned(p))
-                          : [];
+                        const plannedLaterPrereqs = [];
+                        const trulyMissing = [];
+                        if (course.type === 'planned') {
+                          const prereqGroups = getCoursePrereqGroups(courseMeta);
+                          prereqGroups.forEach((group) => {
+                            const optionStates = group.map((option) => ({
+                              option,
+                              state: getPrereqOptionSemesterState(option, term)
+                            }));
+
+                            if (optionStates.some(({ state }) => state.satisfied)) return;
+
+                            const strictPlanned = optionStates.find(
+                              ({ option, state }) => !option.concurrentOk && state.plannedAnywhere
+                            );
+                            if (strictPlanned) {
+                              plannedLaterPrereqs.push(
+                                `Prerequisite ${strictPlanned.option.code} is planned but not in an earlier semester`
+                              );
+                              return;
+                            }
+
+                            const coreqPlannedLater = optionStates.find(
+                              ({ option, state }) =>
+                                option.concurrentOk &&
+                                state.plannedAnywhere &&
+                                !state.plannedEarlier &&
+                                !state.plannedThisSemester
+                            );
+                            if (coreqPlannedLater) {
+                              plannedLaterPrereqs.push(
+                                `Co-requisite ${coreqPlannedLater.option.code} is planned in a later semester`
+                              );
+                              return;
+                            }
+
+                            const groupLabel = optionStates
+                              .map(({ option }) =>
+                                option.concurrentOk
+                                  ? `${option.code} (or concurrent enrollment)`
+                                  : option.code
+                              )
+                              .join(' OR ');
+                            trulyMissing.push(groupLabel);
+                          });
+                        }
+                        const hasPrereqIssue = plannedLaterPrereqs.length > 0 || trulyMissing.length > 0;
 
                         const diffLevel = course.type === 'planned' ? getCourseDifficulty(course.code) : null;
                         const diffCfg = diffLevel ? DIFFICULTY_CONFIG[diffLevel] : null;
@@ -5528,15 +5820,15 @@ Now answer the student's question using only this context.`
                                   {course.title || courseMeta?.title}
                                 </p>
                                 {trulyMissing.length > 0 && (
-                                  <p className="text-xs text-red-600 mt-1.5 flex items-center gap-1">
+                                  <p className="text-xs text-red-600 mt-2 flex items-center gap-1">
                                     <AlertTriangle className="w-3 h-3 shrink-0" />
-                                    Missing prereqs: {trulyMissing.join(', ')}
+                                    Missing prerequisites: {trulyMissing.join('; ')}
                                   </p>
                                 )}
                                 {plannedLaterPrereqs.length > 0 && (
                                   <p className="text-xs text-yellow-700 mt-1 flex items-center gap-1">
                                     <AlertTriangle className="w-3 h-3 shrink-0" />
-                                    Prereq not in earlier semester: {plannedLaterPrereqs.join(', ')}
+                                    {plannedLaterPrereqs.join('; ')}
                                   </p>
                                 )}
                                 <label
@@ -5825,6 +6117,9 @@ Now answer the student's question using only this context.`
     const levelOptions = [100, 200, 300, 400];
     const [selectedLevel, setSelectedLevel] = useState(100);
     const [selectedFlowCourseCode, setSelectedFlowCourseCode] = useState('');
+    const [flowSearchQuery, setFlowSearchQuery] = useState('');
+    const [flowSearchError, setFlowSearchError] = useState('');
+    const [hoveredFlowNodeKey, setHoveredFlowNodeKey] = useState('');
 
     const parseCodeParts = (rawCode) => {
       const match = normalizeCode(rawCode)?.match(/^([A-Z]{2,4})\s+(\d{3})$/);
@@ -5850,9 +6145,13 @@ Now answer the student's question using only this context.`
       return option.concurrentOk && isCoursePlanned(option.code);
     };
 
+    const isCoursePlannedOnly = (code) =>
+      isCoursePlanned(code) && !isCourseCompleted(code) && !isCourseInProgress(code);
+
     const getFlowCourseStatus = (code) => {
       if (isCourseCompleted(code)) return 'completed';
       if (isCourseInProgress(code)) return 'in-progress';
+      if (isCoursePlannedOnly(code)) return 'planned';
       const course = flowchartCourses[code] || COURSES[code];
       if (!course) return 'locked';
       const prereqGroups = getCoursePrereqGroups(course);
@@ -5865,8 +6164,14 @@ Now answer the student's question using only this context.`
     const flowStatusClasses = {
       completed: 'bg-green-100 text-green-700 border-green-300',
       'in-progress': 'bg-blue-100 text-blue-700 border-blue-300',
+      planned: 'bg-blue-100 text-blue-700 border-blue-300',
       available: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-      locked: 'bg-gray-100 text-gray-600 border-gray-300'
+      locked: 'bg-white text-gray-600 border-gray-300'
+    };
+    const getFlowStatusLabel = (status) => {
+      if (status === 'locked') return 'Locked';
+      if (status === 'in-progress') return 'in progress';
+      return status;
     };
 
     const csceCourseCodes = useMemo(
@@ -5876,6 +6181,54 @@ Now answer the student's question using only this context.`
           .sort(compareCourseCodes),
       [flowchartCourses]
     );
+
+    const selectFlowCourse = (rawCode) => {
+      const code = normalizeCode(rawCode);
+      if (!code) return;
+      const parsed = parseCodeParts(code);
+      if (parsed) {
+        const level = Math.floor(parsed.number / 100) * 100;
+        if (levelOptions.includes(level)) setSelectedLevel(level);
+      }
+      setSelectedFlowCourseCode(code);
+      setFlowSearchQuery(code);
+      setFlowSearchError('');
+    };
+
+    const resolveFlowSearchCourse = (rawQuery) => {
+      const query = String(rawQuery || '').trim();
+      if (!query) return '';
+
+      const compact = query.toUpperCase().replace(/\s+/g, '');
+      const numericOnlyMatch = compact.match(/^(\d{3})$/);
+      const compactCodeMatch = compact.match(/^([A-Z]{2,4})(\d{3})$/);
+
+      const candidates = new Set();
+      const normalized = normalizeCode(query);
+      if (normalized) candidates.add(normalized);
+      if (numericOnlyMatch) candidates.add(`CSCE ${numericOnlyMatch[1]}`);
+      if (compactCodeMatch) candidates.add(`${compactCodeMatch[1]} ${compactCodeMatch[2]}`);
+
+      for (const candidate of candidates) {
+        if (csceCourseCodes.includes(candidate)) return candidate;
+      }
+
+      return '';
+    };
+
+    const handleFlowSearch = () => {
+      const raw = flowSearchQuery.trim();
+      if (!raw) {
+        setFlowSearchError('Please enter a course code like CSCE 221.');
+        return;
+      }
+      const match = resolveFlowSearchCourse(raw);
+      if (!match) {
+        setFlowSearchError(`"${raw}" was not found in the CSCE prerequisite flowchart.`);
+        return;
+      }
+      selectFlowCourse(match);
+    };
 
     const coursesByLevel = useMemo(() => {
       const buckets = new Map(levelOptions.map((level) => [level, []]));
@@ -5926,12 +6279,23 @@ Now answer the student's question using only this context.`
 
       selectedCourseGroups.forEach((group, groupIndex) => {
         if (!Array.isArray(group) || group.length === 0) return;
+        const hasCoreq = group.some((option) => Boolean(option?.concurrentOk));
+        const hasPrereq = group.some((option) => !Boolean(option?.concurrentOk));
+        const groupType = hasCoreq && hasPrereq ? 'mixed' : hasCoreq ? 'coreq' : 'prereq';
+        const groupTitle =
+          groupType === 'mixed'
+            ? 'Mixed group'
+            : groupType === 'coreq'
+              ? 'Co-requisite group'
+              : 'Prerequisite group';
         const labelY = currentGroupTop + 12;
         const firstNodeCenterY = currentGroupTop + labelToNodeGap + optionHeight / 2;
 
         groupLabels.push({
           groupIndex,
-          labelY
+          labelY,
+          groupType,
+          groupTitle
         });
 
         group.forEach((option, optionIndex) => {
@@ -5939,6 +6303,7 @@ Now answer the student's question using only this context.`
             key: `${groupIndex}-${optionIndex}-${option.code}`,
             code: normalizeCode(option.code),
             concurrentOk: Boolean(option.concurrentOk),
+            showOptionType: groupType === 'mixed',
             groupIndex,
             centerY: firstNodeCenterY + optionIndex * optionSpacing
           });
@@ -5953,7 +6318,7 @@ Now answer the student's question using only this context.`
       const optionTopValues = optionNodes.map((node) => node.centerY - optionHeight / 2);
       const optionBottomValues = optionNodes.map((node) => node.centerY + optionHeight / 2);
       const labelTopValues = groupLabels.map((group) => group.labelY - 14);
-      const labelBottomValues = groupLabels.map((group) => group.labelY + 4);
+      const labelBottomValues = groupLabels.map((group) => group.labelY + 10);
       const targetCenterY =
         centerValues.length > 0
           ? centerValues.reduce((sum, value) => sum + value, 0) / centerValues.length
@@ -5998,15 +6363,18 @@ Now answer the student's question using only this context.`
     const getNodePalette = (code, statusOverride = '') => {
       const status = statusOverride || getFlowCourseStatus(code);
       if (status === 'completed') {
-        return { fill: '#dcfce7', stroke: '#16a34a', text: '#065f46' };
+        return { fill: '#dcfce7', stroke: '#111827', text: '#111827' };
       }
       if (status === 'in-progress') {
-        return { fill: '#dbeafe', stroke: '#2563eb', text: '#1e3a8a' };
+        return { fill: '#dbeafe', stroke: '#111827', text: '#111827' };
+      }
+      if (status === 'planned') {
+        return { fill: '#dbeafe', stroke: '#111827', text: '#111827' };
       }
       if (status === 'available') {
-        return { fill: '#fef9c3', stroke: '#ca8a04', text: '#92400e' };
+        return { fill: '#fef9c3', stroke: '#111827', text: '#111827' };
       }
-      return { fill: '#f8fafc', stroke: '#94a3b8', text: '#1f2937' };
+      return { fill: '#ffffff', stroke: '#111827', text: '#111827' };
     };
 
     return (
@@ -6014,8 +6382,75 @@ Now answer the student's question using only this context.`
         <div className="bg-white rounded-lg shadow p-6">
           <h3 className="text-lg font-bold text-gray-900 mb-2">Course Prerequisite Flowchart</h3>
           <p className="text-sm text-gray-600 mb-6">
-            Solid (full) lines indicate prerequisites; dashed blue lines indicate co-requisites.
+            Solid (full) lines indicate prerequisites; dashed lines indicate co-requisites.
           </p>
+
+          <div className="mb-4">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={flowSearchQuery}
+                  onChange={(e) => {
+                    setFlowSearchQuery(e.target.value);
+                    if (flowSearchError) setFlowSearchError('');
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleFlowSearch();
+                    }
+                  }}
+                  placeholder="Search a course code (e.g., CSCE 221 or 221)"
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleFlowSearch}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
+                style={{ backgroundColor: '#500000' }}
+              >
+                Search
+              </button>
+            </div>
+            {flowSearchError && (
+              <p className="text-xs text-red-600 mt-2">{flowSearchError}</p>
+            )}
+          </div>
+
+          <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs sm:text-sm text-gray-700">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <span className="font-semibold text-gray-900">Legend:</span>
+              <span className="inline-flex items-center">
+                <span className="inline-block w-3 h-3 rounded-sm border border-green-300 bg-green-100 mr-1" />
+                Green - Completed Course
+              </span>
+              <span className="inline-flex items-center">
+                <span className="inline-block w-3 h-3 rounded-sm border border-yellow-300 bg-yellow-100 mr-1" />
+                Yellow - Available Courses
+              </span>
+              <span className="inline-flex items-center">
+                <span className="inline-block w-3 h-3 rounded-sm border border-blue-300 bg-blue-100 mr-1" />
+                Blue - Planned Courses
+              </span>
+              <span className="inline-flex items-center">
+                <span className="inline-block w-3 h-3 rounded-sm border border-gray-300 bg-white mr-1" />
+                White - Locked Course
+              </span>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 sm:pl-[72px]">
+              <span className="inline-flex items-center">
+                <span className="inline-block w-7 border-t-2 border-black mr-1" />
+                Black / Solid Line - Pre-requisite
+              </span>
+              <span className="inline-flex items-center">
+                <span className="inline-block w-7 border-t-2 border-black border-dashed mr-1" />
+                Black / Dashed Line - Co-requisite
+              </span>
+            </div>
+          </div>
 
           <div className="flex flex-wrap gap-2 mb-4">
             {levelOptions.map((level) => (
@@ -6053,7 +6488,7 @@ Now answer the student's question using only this context.`
                       <button
                         key={code}
                         type="button"
-                        onClick={() => setSelectedFlowCourseCode(code)}
+                        onClick={() => selectFlowCourse(code)}
                         className={`w-full text-left p-3 rounded-lg border transition ${
                           selected
                             ? 'border-[#500000] bg-[#500000]/5'
@@ -6128,7 +6563,7 @@ Now answer the student's question using only this context.`
                             orient="auto"
                             markerUnits="userSpaceOnUse"
                           >
-                            <path d="M0,0 L10,5 L0,10 Z" fill="#94a3b8" />
+                            <path d="M0,0 L10,5 L0,10 Z" fill="#111827" />
                           </marker>
                           <marker
                             id="selected-flow-arrow-coreq"
@@ -6140,89 +6575,196 @@ Now answer the student's question using only this context.`
                             orient="auto"
                             markerUnits="userSpaceOnUse"
                           >
-                            <path d="M0,0 L10,5 L0,10 Z" fill="#3b82f6" />
+                            <path d="M0,0 L10,5 L0,10 Z" fill="#111827" />
+                          </marker>
+                          <marker
+                            id="selected-flow-arrow-coreq-planned"
+                            markerWidth="10"
+                            markerHeight="10"
+                            viewBox="0 0 10 10"
+                            refX="8"
+                            refY="5"
+                            orient="auto"
+                            markerUnits="userSpaceOnUse"
+                          >
+                            <path d="M0,0 L10,5 L0,10 Z" fill="#2563eb" />
                           </marker>
                         </defs>
 
-                        {selectedCourseGraph.optionNodes.map((node) => {
-                          const palette = getNodePalette(node.code);
-                          const startX = selectedCourseGraph.optionX + selectedCourseGraph.optionWidth + 2;
-                          const endX = selectedCourseGraph.targetX - 12;
+                        {selectedCourseGraph.groupLabels.map((group) => {
+                          const groupNodes = selectedCourseGraph.optionNodes.filter(
+                            (node) => node.groupIndex === group.groupIndex
+                          );
+                          const groupSatisfied = groupNodes.some((node) =>
+                            isFlowPrereqOptionSatisfied({
+                              code: node.code,
+                              concurrentOk: node.concurrentOk
+                            })
+                          );
+                          const groupLabelBody = `Group ${group.groupIndex + 1}: ${group.groupTitle} (choose one)`;
+                          const groupLabelWidth = Math.ceil(46 + groupLabelBody.length * 7);
                           return (
-                            <g key={node.key}>
-                              <line
-                                x1={startX}
-                                y1={node.centerY}
-                                x2={endX}
-                                y2={selectedCourseGraph.targetCenterY}
-                                stroke={node.concurrentOk ? '#3b82f6' : '#94a3b8'}
-                                strokeWidth="1.75"
-                                strokeOpacity="0.85"
-                                strokeDasharray={node.concurrentOk ? '6 4' : undefined}
-                                markerEnd={
-                                  node.concurrentOk
-                                    ? 'url(#selected-flow-arrow-coreq)'
-                                    : 'url(#selected-flow-arrow)'
-                                }
-                                strokeLinecap="round"
-                              />
+                            <g key={`group-label-${group.groupIndex}`}>
                               <rect
-                                x={selectedCourseGraph.optionX}
-                                y={node.centerY - selectedCourseGraph.optionHeight / 2}
-                                width={selectedCourseGraph.optionWidth}
-                                height={selectedCourseGraph.optionHeight}
-                                rx="8"
-                                fill={palette.fill}
-                                stroke={palette.stroke}
-                                strokeWidth="1.5"
+                                x="14"
+                                y={group.labelY - 17}
+                                width={groupLabelWidth}
+                                height="28"
+                                rx="6"
+                                fill="#d1d5db"
                               />
                               <text
-                                x={selectedCourseGraph.optionX + 10}
-                                y={node.centerY - 5}
-                                fill={palette.text}
-                                fontSize="13"
-                                fontWeight="600"
+                                x="20"
+                                y={group.labelY + 2}
+                                fontSize="15"
+                                fontWeight="700"
                               >
-                                {node.code}
-                              </text>
-                              <text
-                                x={selectedCourseGraph.optionX + 10}
-                                y={node.centerY + 13}
-                                fill="#6b7280"
-                                fontSize="11"
-                              >
-                                {node.concurrentOk ? 'Co-requisite option' : 'Prerequisite option'}
+                                <tspan fill={groupSatisfied ? '#16a34a' : '#dc2626'}>
+                                  {groupSatisfied ? '✅' : '❌'}
+                                </tspan>
+                                <tspan dx="6" fill="#111827">
+                                  {groupLabelBody}
+                                </tspan>
                               </text>
                             </g>
                           );
                         })}
 
-                        {selectedCourseGraph.groupLabels.map((group) => (
-                          <g key={`group-label-${group.groupIndex}`}>
-                            <rect
-                              x="14"
-                              y={group.labelY - 13}
-                              width="176"
-                              height="20"
-                              rx="5"
-                              fill="#f8fafc"
-                            />
-                            <text
-                              x="20"
-                              y={group.labelY}
-                              fill="#6b7280"
-                              fontSize="12"
-                            >
-                              Group {group.groupIndex + 1}: choose one
-                            </text>
-                          </g>
-                        ))}
+                        {selectedCourseGraph.optionNodes.map((node) => {
+                          const palette = getNodePalette(node.code);
+                          const nodeStatus = getFlowCourseStatus(node.code);
+                          const nodeStatusLabel = getFlowStatusLabel(nodeStatus);
+                          const nodeIsNavigable = csceCourseCodes.includes(node.code);
+                          const nodeIsHovered = hoveredFlowNodeKey === node.key;
+                          const statusBadge = {
+                            completed: { fill: '#dcfce7', stroke: '#111827', text: '#111827' },
+                            planned: { fill: '#dbeafe', stroke: '#111827', text: '#111827' },
+                            available: { fill: '#fef9c3', stroke: '#111827', text: '#111827' },
+                            locked: { fill: '#ffffff', stroke: '#111827', text: '#111827' },
+                            'in-progress': { fill: '#dbeafe', stroke: '#111827', text: '#111827' }
+                          }[nodeStatus] || { fill: '#f3f4f6', stroke: '#111827', text: '#111827' };
+                          const startX = selectedCourseGraph.optionX + selectedCourseGraph.optionWidth + 2;
+                          const endX = selectedCourseGraph.targetX - 12;
+                          const shouldRenderEdge =
+                            nodeStatus === 'completed' ||
+                            (node.concurrentOk && nodeStatus === 'planned');
+                          const edgeStrokeColor =
+                            node.concurrentOk && nodeStatus === 'planned' ? '#2563eb' : '#111827';
+                          return (
+                            <g key={node.key}>
+                              {shouldRenderEdge && (
+                                <line
+                                  x1={startX}
+                                  y1={node.centerY}
+                                  x2={endX}
+                                  y2={selectedCourseGraph.targetCenterY}
+                                  stroke={edgeStrokeColor}
+                                  strokeWidth="1.75"
+                                  strokeOpacity="0.85"
+                                  strokeDasharray={node.concurrentOk ? '6 4' : undefined}
+                                  markerEnd={
+                                    node.concurrentOk && nodeStatus === 'planned'
+                                      ? 'url(#selected-flow-arrow-coreq-planned)'
+                                      : node.concurrentOk
+                                      ? 'url(#selected-flow-arrow-coreq)'
+                                      : 'url(#selected-flow-arrow)'
+                                  }
+                                  strokeLinecap="round"
+                                />
+                              )}
+                              <g
+                                role={nodeIsNavigable ? 'button' : undefined}
+                                tabIndex={nodeIsNavigable ? 0 : undefined}
+                                onClick={nodeIsNavigable ? () => selectFlowCourse(node.code) : undefined}
+                                onMouseEnter={
+                                  nodeIsNavigable ? () => setHoveredFlowNodeKey(node.key) : undefined
+                                }
+                                onMouseLeave={
+                                  nodeIsNavigable ? () => setHoveredFlowNodeKey('') : undefined
+                                }
+                                onKeyDown={
+                                  nodeIsNavigable
+                                    ? (event) => {
+                                        if (event.key === 'Enter' || event.key === ' ') {
+                                          event.preventDefault();
+                                          selectFlowCourse(node.code);
+                                        }
+                                      }
+                                    : undefined
+                                }
+                                style={{ cursor: nodeIsNavigable ? 'pointer' : 'default' }}
+                              >
+                                <title>
+                                  {nodeIsNavigable
+                                    ? `Open ${node.code} prerequisite flowchart`
+                                    : `${node.code} prerequisite option`}
+                                </title>
+                                <rect
+                                  x={selectedCourseGraph.optionX}
+                                  y={node.centerY - selectedCourseGraph.optionHeight / 2}
+                                  width={selectedCourseGraph.optionWidth}
+                                  height={selectedCourseGraph.optionHeight}
+                                  rx="8"
+                                  fill={palette.fill}
+                                  stroke="#111827"
+                                  strokeWidth={nodeIsNavigable && nodeIsHovered ? '2' : '1.5'}
+                                  style={
+                                    nodeIsNavigable && nodeIsHovered
+                                      ? { filter: 'drop-shadow(0px 3px 6px rgba(17,24,39,0.35))' }
+                                      : undefined
+                                  }
+                                />
+                                <rect
+                                  x={selectedCourseGraph.optionX + selectedCourseGraph.optionWidth - 74}
+                                  y={node.centerY - selectedCourseGraph.optionHeight / 2 + 6}
+                                  width="64"
+                                  height="14"
+                                  rx="7"
+                                  fill={statusBadge.fill}
+                                  stroke={statusBadge.stroke}
+                                  strokeWidth="1"
+                                />
+                                <text
+                                  x={selectedCourseGraph.optionX + 10}
+                                  y={node.centerY - 5}
+                                  fill="#111827"
+                                  fontSize="15"
+                                  fontWeight="700"
+                                >
+                                  {node.code}
+                                </text>
+                                <text
+                                  x={selectedCourseGraph.optionX + selectedCourseGraph.optionWidth - 42}
+                                  y={node.centerY - 10}
+                                  fill={statusBadge.text}
+                                  fontSize="10"
+                                  fontWeight="600"
+                                  textAnchor="middle"
+                                >
+                                  {nodeStatusLabel}
+                                </text>
+                              </g>
+                              {node.showOptionType && (
+                                <text
+                                  x={selectedCourseGraph.optionX + 10}
+                                  y={node.centerY + 13}
+                                  fill="#111827"
+                                  fontSize="12"
+                                  fontWeight="400"
+                                >
+                                  {node.concurrentOk ? 'Co-requisite option' : 'Prerequisite option'}
+                                </text>
+                              )}
+                            </g>
+                          );
+                        })}
 
                         {(() => {
                           const targetPalette = getNodePalette(
                             selectedFlowCourseCode,
                             getFlowCourseStatus(selectedFlowCourseCode)
                           );
+                          const targetCourseTitle = selectedCourse?.title || 'Target course';
                           return (
                             <g>
                               <rect
@@ -6232,14 +6774,14 @@ Now answer the student's question using only this context.`
                                 height={selectedCourseGraph.targetHeight}
                                 rx="9"
                                 fill={targetPalette.fill}
-                                stroke={targetPalette.stroke}
+                                stroke="#111827"
                                 strokeWidth="2"
                               />
                               <text
                                 x={selectedCourseGraph.targetX + 12}
                                 y={selectedCourseGraph.targetY + 24}
-                                fill={targetPalette.text}
-                                fontSize="14"
+                                fill="#111827"
+                                fontSize="16"
                                 fontWeight="700"
                               >
                                 {selectedFlowCourseCode}
@@ -6250,7 +6792,7 @@ Now answer the student's question using only this context.`
                                 fill="#374151"
                                 fontSize="11"
                               >
-                                Target course
+                                {targetCourseTitle}
                               </text>
                             </g>
                           );
@@ -6459,10 +7001,10 @@ Now answer the student's question using only this context.`
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-8">
           <h2 className="text-xl font-bold text-gray-900 mb-3">Data Storage Consent</h2>
           <p className="text-sm text-gray-700 mb-4">
-            By uploading your transcript, you consent to DegreeFlow storing your course history
-            (course codes, grades, and credit hours) to power your degree plan. Your data is
-            associated with your TAMU Google account and is used solely for academic planning
-            within this application.
+            By uploading your transcript or degree evaluation PDF, you consent to DegreeFlow
+            storing your course history (course codes, grades, and credit hours) to power your
+            degree plan. Your data is associated with your TAMU Google account and is used solely
+            for academic planning within this application.
           </p>
           <ul className="text-xs text-gray-500 space-y-1 mb-6 list-disc list-inside">
             <li>Only course codes, titles, grades, and credit hours are stored.</li>
@@ -6810,9 +7352,20 @@ Now answer the student's question using only this context.`
               </div>
               <div className="flex-1 min-h-0 px-4 py-3 text-xs text-gray-600 space-y-2 overflow-y-auto">
                 {chatMessages.length === 0 ? (
-                  <div className="text-center text-gray-400 mt-8">
-                    <p className="font-semibold mb-1">Welcome to DegreeFlow Assistant!</p>
-                    <p className="text-xs">Ask me anything about course planning, requirements, or your degree.</p>
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-gray-700">
+                    <p className="font-semibold text-gray-900">Welcome to DegreeFlow Assistant!</p>
+                    <p className="mt-1 text-xs text-gray-600">I can help you with:</p>
+                    <ul className="mt-2 list-disc pl-5 space-y-1 text-xs text-gray-700">
+                      <li>Identify which degree evaluation requirements are still not met.</li>
+                      <li>Recommend future courses based on prerequisites and missing requirements.</li>
+                      <li>Add or remove courses in your planner (with pre-requisite check and confirmation).</li>
+                      <li>Explain prerequisites and co-requisites for a course.</li>
+                      <li>Parse an uploaded transcript PDF and update your plan.</li>
+                      <li>Parse a degree evaluation PDF and update your plan.</li>
+                    </ul>
+                    <p className="mt-2 text-xs text-gray-500">
+                      Try asking: "What requirements am I still missing?" or "What should I take next semester?"
+                    </p>
                   </div>
                 ) : (
                   chatMessages.map((message) => {
@@ -6915,7 +7468,7 @@ Now answer the student's question using only this context.`
                           {
                             id: `assistant-upload-${Date.now()}`,
                             role: 'assistant',
-                            text: `I can parse ${file.name}. Please confirm the consent dialog to continue.`
+                            text: `I can parse ${file.name}. I will auto-detect transcript vs degree evaluation after you confirm the consent dialog.`
                           }
                         ]);
                       }
@@ -6927,9 +7480,9 @@ Now answer the student's question using only this context.`
                     onClick={() => chatUploadInputRef.current?.click()}
                     disabled={isChatLoading || transcriptLoading}
                     className="rounded-lg border border-gray-200 px-2.5 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
-                    title="Upload transcript PDF"
+                    title="Upload transcript or degree evaluation PDF"
                   >
-                    PDF
+                    Upload
                   </button>
                   <input
                     type="text"

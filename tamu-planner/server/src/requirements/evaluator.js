@@ -9,6 +9,49 @@ const normalizeCode = (raw) => {
   return spaced;
 };
 
+const DEPT_PREFIX_FIX_CODES = new Set([
+  'AFST',
+  'ANTH',
+  'ARCH',
+  'ARTS',
+  'COMM',
+  'CSCE',
+  'DCED',
+  'ENDS',
+  'ENGL',
+  'FILM',
+  'FINC',
+  'FREN',
+  'GEOL',
+  'GLST',
+  'HISP',
+  'HIST',
+  'HORT',
+  'INTA',
+  'KINE',
+  'MATH',
+  'MKTG',
+  'MSTC',
+  'MUSC',
+  'PERF',
+  'PHIL',
+  'PHYS',
+  'POLS',
+  'RELS',
+  'THEA'
+]);
+
+const normalizeDepartment = (rawDept) => {
+  const dept = String(rawDept || '').trim().toUpperCase();
+  if (dept.length >= 4 && (dept.startsWith('U') || dept.startsWith('N'))) {
+    const candidate = dept.slice(1);
+    if (DEPT_PREFIX_FIX_CODES.has(candidate)) {
+      return candidate;
+    }
+  }
+  return dept;
+};
+
 // Equivalent/renamed courses — only one from each group should count
 const EQUIVALENT_COURSE_GROUPS = [
   ['CSCE 120', 'CSCE 121'],
@@ -69,7 +112,7 @@ const meetsMinGrade = (grade, minGrade) => {
 };
 
 const courseCodeFromRecord = (course) =>
-  normalizeCode(`${course.department} ${course.course_number}`);
+  normalizeCode(`${normalizeDepartment(course.department)} ${course.course_number}`);
 
 const buildCourseIndex = (studentCourses) => {
   const map = new Map();
@@ -91,7 +134,7 @@ const buildCourseIndex = (studentCourses) => {
       status: entry.status,
       credits: entry.course.credits,
       categories: entry.course.categories || [],
-      department: entry.course.department,
+      department: normalizeDepartment(entry.course.department),
       course_number: entry.course.course_number,
       course_id: entry.course.course_id
     };

@@ -28,9 +28,19 @@
           "gradeAtLeast": "C",
           "minCredits": 46,
           "items": [
-            { "course": "ENGR 102" },
-            { "anyOf": ["ENGR 216", "PHYS 216"] },
-            { "course": "CSCE 411", "note": "Theory directed elective" },
+            {
+              "course": "ENGR 102"
+            },
+            {
+              "anyOf": [
+                "ENGR 216",
+                "PHYS 216"
+              ]
+            },
+            {
+              "course": "CSCE 411",
+              "note": "Theory directed elective"
+            },
             {
               "pool": [
                 "CSCE 410",
@@ -216,15 +226,33 @@
                 "CSCE 452",
                 "CSCE 470",
                 "CSCE 491",
-                "ENGR 385","CSCE 402","CYBR 402","MARA 403","CSCE 477","CYBR 403"
+                "ENGR 385",
+                "CSCE 402",
+                "CYBR 402",
+                "MARA 403",
+                "CSCE 477",
+                "CYBR 403"
               ],
               "minCredits": 3,
               "note": "CSCE Elective (tracked/untracked/CSCE 491/ENGR 385)"
             },
-            { "course": "STAT 211" },
-            { "course": "MATH 304" },
-            { "anyOf": ["MATH 251", "MATH 308", "STAT 212"] },
-            { "emphasisCredits": 12, "note": "Advisor-approved emphasis outside CSCE" }
+            {
+              "course": "STAT 211"
+            },
+            {
+              "course": "MATH 304"
+            },
+            {
+              "anyOf": [
+                "MATH 251",
+                "MATH 308",
+                "STAT 212"
+              ]
+            },
+            {
+              "emphasisCredits": 12,
+              "note": "Advisor-approved emphasis outside CSCE"
+            }
           ]
         }
       },
@@ -233,8 +261,19 @@
         "rules": {
           "minCredits": 6,
           "items": [
-            { "anyOf": ["ENGL 103", "ENGL 104"] },
-            { "anyOf": ["COMM 203", "COMM 205", "ENGL 210"] }
+            {
+              "anyOf": [
+                "ENGL 103",
+                "ENGL 104"
+              ]
+            },
+            {
+              "anyOf": [
+                "COMM 203",
+                "COMM 205",
+                "ENGL 210"
+              ]
+            }
           ]
         }
       },
@@ -243,7 +282,10 @@
         "rules": {
           "gradeAtLeast": "C",
           "minCredits": 8,
-          "allOf": ["MATH 151", "MATH 152"]
+          "allOf": [
+            "MATH 151",
+            "MATH 152"
+          ]
         }
       },
       {
@@ -251,8 +293,20 @@
         "rules": {
           "minCredits": 14,
           "items": [
-            { "anyOf": ["CHEM 119", { "allOf": ["CHEM 107", "CHEM 117"] }] },
-            { "course": "PHYS 206" },
+            {
+              "anyOf": [
+                "CHEM 119",
+                {
+                  "allOf": [
+                    "CHEM 107",
+                    "CHEM 117"
+                  ]
+                }
+              ]
+            },
+            {
+              "course": "PHYS 206"
+            },
             {
               "pool": [
                 "AGSM 105",
@@ -321,7 +375,12 @@
                 "SCSC 105",
                 "SCSC 301"
               ],
-              "exclude": ["CHEM 107", "CHEM 108", "CHEM 117", "CHEM 119"],
+              "exclude": [
+                "CHEM 107",
+                "CHEM 108",
+                "CHEM 117",
+                "CHEM 119"
+              ],
               "minCredits": 7
             }
           ]
@@ -488,6 +547,7 @@
             "MUSC 226",
             "MUSC 386",
             "THEA 386",
+            "PERF 200",
             "PERF 223",
             "PERF 301",
             "PERF 328",
@@ -554,8 +614,12 @@
         "rules": {
           "minCredits": 12,
           "items": [
-            { "course": "POLS 206" },
-            { "course": "POLS 207" },
+            {
+              "course": "POLS 206"
+            },
+            {
+              "course": "POLS 207"
+            },
             {
               "pool": [
                 "AFST 300",
@@ -601,7 +665,10 @@
                 "CSCE 291",
                 "CSCE 491",
                 "ENGR 385",
-                { "tag": "attr-sabr", "minCount": 1 }
+                {
+                  "tag": "attr-sabr",
+                  "minCount": 1
+                }
               ],
               "note": "or any study abroad course with SABR attribute"
             }
@@ -925,15 +992,58 @@
         "name": "Foreign Language",
         "rules": {
           "anyOf": [
-            { "tag": "attr-hs-lang-2y", "minCount": 1 },
-            { "allOf": ["ARAB 201", "ARAB 202"] },
-            { "allOf": ["CHIN 201", "CHIN 202"] },
-            { "allOf": ["FREN 201", "FREN 202"] },
-            { "allOf": ["GERM 201", "GERM 202"] },
-            { "allOf": ["ITAL 201", "ITAL 202"] },
-            { "allOf": ["JAPN 201", "JAPN 202"] },
-            { "allOf": ["RUSS 201", "RUSS 202"] },
-            { "allOf": ["SPAN 201", "SPAN 202"] }
+            {
+              "tag": "attr-hs-lang-2y",
+              "minCount": 1
+            },
+            {
+              "allOf": [
+                "ARAB 201",
+                "ARAB 202"
+              ]
+            },
+            {
+              "allOf": [
+                "CHIN 201",
+                "CHIN 202"
+              ]
+            },
+            {
+              "allOf": [
+                "FREN 201",
+                "FREN 202"
+              ]
+            },
+            {
+              "allOf": [
+                "GERM 201",
+                "GERM 202"
+              ]
+            },
+            {
+              "allOf": [
+                "ITAL 201",
+                "ITAL 202"
+              ]
+            },
+            {
+              "allOf": [
+                "JAPN 201",
+                "JAPN 202"
+              ]
+            },
+            {
+              "allOf": [
+                "RUSS 201",
+                "RUSS 202"
+              ]
+            },
+            {
+              "allOf": [
+                "SPAN 201",
+                "SPAN 202"
+              ]
+            }
           ],
           "note": "2 years same language in HS or completion of a 201/202 college sequence in the same language"
         }
@@ -984,10 +1094,16 @@
                 "MATH 490"
               ],
               "minCredits": 6,
-              "exclude": ["MATH 403"]
+              "exclude": [
+                "MATH 403"
+              ]
             },
             {
-              "pool": ["MATH 251", "MATH 302", "MATH 308"],
+              "pool": [
+                "MATH 251",
+                "MATH 302",
+                "MATH 308"
+              ],
               "maxCount": 2
             }
           ]
@@ -1004,10 +1120,21 @@
         "rules": {
           "minCredits": 12,
           "items": [
-            { "anyOf": ["ACCT 209", "ACCT 229"] },
-            { "course": "FINC 409" },
-            { "course": "MGMT 309" },
-            { "course": "MKTG 409" }
+            {
+              "anyOf": [
+                "ACCT 209",
+                "ACCT 229"
+              ]
+            },
+            {
+              "course": "FINC 409"
+            },
+            {
+              "course": "MGMT 309"
+            },
+            {
+              "course": "MKTG 409"
+            }
           ]
         }
       }
@@ -1021,7 +1148,9 @@
         "name": "Art Emphasis (16 credits)",
         "rules": {
           "minCredits": 16,
-          "allOf": ["ARTS 104"],
+          "allOf": [
+            "ARTS 104"
+          ],
           "items": [
             {
               "pool": [
@@ -1527,7 +1656,10 @@
         "name": "Other / Double Degree (12 credits)",
         "rules": {
           "items": [
-            { "emphasisCredits": 12, "note": "Mark courses as 'Count toward emphasis' in your Academic Record" }
+            {
+              "emphasisCredits": 12,
+              "note": "Mark courses as 'Count toward emphasis' in your Academic Record"
+            }
           ]
         }
       }
@@ -1542,7 +1674,11 @@
         "rules": {
           "items": [
             {
-              "anyOf": ["MATH 148", "MATH 152", "MATH 172"]
+              "anyOf": [
+                "MATH 148",
+                "MATH 152",
+                "MATH 172"
+              ]
             },
             {
               "pool": [
@@ -1633,7 +1769,12 @@
         "name": "Statistics Minor",
         "rules": {
           "items": [
-            { "allOf": ["STAT 211", "STAT 212"] },
+            {
+              "allOf": [
+                "STAT 211",
+                "STAT 212"
+              ]
+            },
             {
               "pool": [
                 "STAT 315",
@@ -1691,10 +1832,29 @@
         "name": "Game Design Minor",
         "rules": {
           "items": [
-            { "allOf": ["CSCE 110"] },
-            { "anyOf": ["CSCE 111", "CSCE 120"] },
-            { "anyOf": ["CSCE 441", "VIST 386"] },
-            { "anyOf": ["CSCE 443", "VIST 487"] },
+            {
+              "allOf": [
+                "CSCE 110"
+              ]
+            },
+            {
+              "anyOf": [
+                "CSCE 111",
+                "CSCE 120"
+              ]
+            },
+            {
+              "anyOf": [
+                "CSCE 441",
+                "VIST 386"
+              ]
+            },
+            {
+              "anyOf": [
+                "CSCE 443",
+                "VIST 487"
+              ]
+            },
             {
               "pool": [
                 "COMM 230",
