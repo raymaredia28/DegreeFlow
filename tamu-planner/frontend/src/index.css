@@ -415,6 +415,42 @@ details[open] > summary .details-chevron {
   stroke: #64748b !important;
 }
 
+/* ─── Missing color overrides ───────────────────────────────────────────── */
+/* text-blue-900 used in DegreeProgress "credits remaining" banner */
+.dark .text-blue-900 {
+  color: #93c5fd !important;
+}
+/* Cancel button hover (hover:bg-gray-200) */
+.dark .hover\:bg-gray-200:hover {
+  background-color: #334155 !important;
+}
+/* Settings toggle unchecked pill (bg-gray-300) */
+.dark .bg-gray-300 {
+  background-color: #475569 !important;
+}
+/* AdminPanel edit-course hover (hover:text-[#500000]) */
+.dark .hover\:text-\[\#500000\]:hover {
+  color: #f1a0a0 !important;
+}
+
+/* ─── SVG flowchart: rect fill overrides (inline fill= attributes) ────────── */
+/* The class-based .fill-[...] rules don't reach inline SVG fill= attributes;
+   these attribute selectors do. */
+.dark svg rect[fill="#dcfce7"] { fill: rgba(74, 222, 128, 0.2) !important; }
+.dark svg rect[fill="#dbeafe"] { fill: rgba(96, 165, 250, 0.2) !important; }
+.dark svg rect[fill="#fef9c3"] { fill: rgba(251, 191, 36,  0.2) !important; }
+.dark svg rect[fill="#f8fafc"] { fill: rgba(148, 163, 184, 0.12) !important; }
+
+/* ─── SVG flowchart: text fill overrides ────────────────────────────────── */
+/* Node title text (dark colors designed for light pastel fills) */
+.dark svg text[fill="#065f46"] { fill: #4ade80 !important; }   /* completed title */
+.dark svg text[fill="#1e3a8a"] { fill: #93c5fd !important; }   /* in-progress title */
+.dark svg text[fill="#92400e"] { fill: #fbbf24 !important; }   /* available title */
+.dark svg text[fill="#1f2937"] { fill: #f1f5f9 !important; }   /* locked title */
+/* Subtitle / label text */
+.dark svg text[fill="#6b7280"] { fill: #94a3b8 !important; }   /* co/prereq caption */
+.dark svg text[fill="#374151"] { fill: #cbd5e1 !important; }   /* "Target course" label */
+
 /* ─── Scrollbar styling ─────────────────────────────────────────────────── */
 .dark ::-webkit-scrollbar {
   width: 8px;

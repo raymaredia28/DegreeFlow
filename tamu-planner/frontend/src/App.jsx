@@ -5452,7 +5452,7 @@ Now answer the student's question using only this context.`
                             <span className="text-gray-300 text-xs">|</span>
                             <span
                               className="text-xs font-bold px-2 py-0.5 rounded-md border"
-                              style={{ borderColor: cfg.color, color: cfg.text, backgroundColor: cfg.bg }}
+                              style={{ borderColor: cfg.color, color: theme === 'dark' ? cfg.color : cfg.text, backgroundColor: theme === 'dark' ? 'transparent' : cfg.bg }}
                             >
                               ⚡ {cfg.label} Load
                             </span>
@@ -5627,7 +5627,7 @@ Now answer the student's question using only this context.`
                         const active = lvl === diff;
                         return (
                           <div key={lvl} className={`flex-1 text-center py-1.5 rounded text-xs font-semibold border ${active ? 'ring-2 ring-offset-1' : 'opacity-40'}`}
-                            style={{ borderColor: c.color, color: active ? c.text : c.color, backgroundColor: active ? c.bg : 'transparent', ...(active ? { ringColor: c.color } : {}) }}>
+                            style={{ borderColor: c.color, color: active ? (theme === 'dark' ? c.color : c.text) : c.color, backgroundColor: active ? (theme === 'dark' ? 'transparent' : c.bg) : 'transparent', ...(active ? { ringColor: c.color } : {}) }}>
                             {c.label}
                           </div>
                         );
@@ -5668,7 +5668,7 @@ Now answer the student's question using only this context.`
             <div className="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] overflow-hidden">
               <div className="p-6 border-b">
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-xl font-bold">Add Course to {selectedSemester}</h3>
+                  <h3 className="text-xl font-bold text-gray-900">Add Course to {selectedSemester}</h3>
                   <button
                     onClick={() => {
                       setShowCourseModal(false);
@@ -5771,7 +5771,7 @@ Now answer the student's question using only this context.`
                         <div className="flex justify-between items-start">
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
-                              <h4 className="font-bold">{code}</h4>
+                              <h4 className="font-bold text-gray-900">{code}</h4>
                               <span className="text-xs bg-gray-200 px-2 py-1 rounded">
                                 {course.credits} cr
                               </span>
@@ -6012,7 +6012,7 @@ Now answer the student's question using only this context.`
     return (
       <div className="space-y-4">
         <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-bold mb-2">Course Prerequisite Flowchart</h3>
+          <h3 className="text-lg font-bold text-gray-900 mb-2">Course Prerequisite Flowchart</h3>
           <p className="text-sm text-gray-600 mb-6">
             Solid (full) lines indicate prerequisites; dashed blue lines indicate co-requisites.
           </p>
