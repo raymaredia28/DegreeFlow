@@ -83,4 +83,37 @@ describe('computeEvaluationSignature', () => {
 
     expect(sig1).not.toBe(sig2);
   });
+
+  it('changes when evaluation priority codes change', () => {
+    const transcriptTerms = [
+      {
+        label: 'Fall 2023',
+        status: 'Evaluated',
+        courses: [{ code: 'CSCE 120', grade: 'A', credits: 3, transfer: false, title: 'T1' }]
+      }
+    ];
+    const semesterPlans = {};
+
+    const sig1 = computeEvaluationSignature({
+      transcriptTerms,
+      semesterPlans,
+      selectedEmphasis: 'Undecided',
+      selectedMinor: 'None',
+      hasHsLanguage: false,
+      hasSabrCourse: false,
+      evaluationPriorityCodes: []
+    });
+
+    const sig2 = computeEvaluationSignature({
+      transcriptTerms,
+      semesterPlans,
+      selectedEmphasis: 'Undecided',
+      selectedMinor: 'None',
+      hasHsLanguage: false,
+      hasSabrCourse: false,
+      evaluationPriorityCodes: ['MATH 151']
+    });
+
+    expect(sig1).not.toBe(sig2);
+  });
 });

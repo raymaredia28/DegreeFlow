@@ -53,6 +53,8 @@ interface CourseEntry {
   grade?: string | null;
   status?: string;
   categories?: string[];
+  /** When true, this course is preferred when the evaluator breaks ties (e.g. anyOf). */
+  evaluationPriority?: boolean;
 }
 
 /** Normalize a raw course code string to "DEPT NNN" form. */
@@ -262,6 +264,7 @@ catalogRouter.post("/api/requirements/evaluate-local", async (req, res, next) =>
         },
         grade: entry.grade || null,
         status: entry.status || "completed",
+        evaluationPriority: entry.evaluationPriority === true,
       };
     });
 

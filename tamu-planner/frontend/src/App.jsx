@@ -1211,6 +1211,8 @@ function App() {
   // Set of transfer course codes excluded from degree evaluation (user-toggled)
   const [excludedTransferCourses, setExcludedTransferCourses] = useState(() => new Set());
   const [excludedFromEval, setExcludedFromEval] = useState(() => new Set());
+  /** Normalized course code -> prefer this course when the evaluator breaks ties (anyOf, ordering). */
+  const [evaluationPriorityByCode, setEvaluationPriorityByCode] = useState({});
   const [transcriptError, setTranscriptError] = useState('');
   const [transcriptLoading, setTranscriptLoading] = useState(false);
   const [transcriptLoadingMessage, setTranscriptLoadingMessage] = useState('');
@@ -1413,7 +1415,8 @@ function App() {
           selectedEmphasis,
           selectedMinor,
           hasHsLanguage,
-          hasSabrCourse
+          hasSabrCourse,
+          evaluationPriorityByCode
         })
       });
 
@@ -1434,6 +1437,7 @@ function App() {
     selectedMinor,
     hasHsLanguage,
     hasSabrCourse,
+    evaluationPriorityByCode,
     saveTranscriptToStorage,
     authHeaders
   ]);
@@ -1462,6 +1466,7 @@ function App() {
           selectedMinor,
           hasHsLanguage,
           hasSabrCourse,
+          evaluationPriorityByCode,
           savedEvaluation: {
             degreeResult,
             requirementsResult,
@@ -1500,6 +1505,7 @@ function App() {
     reqWarning,
     uploadedDocumentType,
     evaluationMode,
+    evaluationPriorityByCode,
     authHeaders,
     showToast
   ]);
@@ -1542,6 +1548,18 @@ function App() {
       }
 
       if (data.planner) {
+        let loadedEvalPriority = {};
+        if (
+          data.planner.evaluationPriorityByCode &&
+          typeof data.planner.evaluationPriorityByCode === 'object'
+        ) {
+          Object.entries(data.planner.evaluationPriorityByCode).forEach(([k, v]) => {
+            const c = normalizeCode(k);
+            if (c && v) loadedEvalPriority[c] = true;
+          });
+        }
+        setEvaluationPriorityByCode(loadedEvalPriority);
+
         if (data.planner.semesterPlans) {
           suppressDirtyRef.current = true;
           const loadedPlans = initSemesterPlans(data.planner.semesterPlans);
@@ -1584,7 +1602,6 @@ function App() {
           if (ev.reqWarning) setReqWarning(ev.reqWarning);
           if (ev.uploadedDocumentType) setUploadedDocumentType(ev.uploadedDocumentType);
           if (ev.evaluationMode) setEvaluationMode(ev.evaluationMode);
-
           // Saved evaluation is assumed to match the saved transcript/planner inputs.
           const sig = computeEvaluationSignature({
             transcriptTerms: loadedTranscriptTermsForEval || [],
@@ -1592,7 +1609,8 @@ function App() {
             selectedEmphasis: data.planner.selectedEmphasis,
             selectedMinor: data.planner.selectedMinor,
             hasHsLanguage: data.planner.hasHsLanguage,
-            hasSabrCourse: data.planner.hasSabrCourse
+            hasSabrCourse: data.planner.hasSabrCourse,
+            evaluationPriorityCodes: Object.keys(loadedEvalPriority).sort()
           });
           setLastEvaluationSignature(sig);
           lastEvaluationSnapshotRef.current = {
@@ -1630,6 +1648,7 @@ function App() {
     setRequirementsResult(null);
     setMinorResult(null);
     setSemesterPlans(initSemesterPlans({}));
+    setEvaluationPriorityByCode({});
     setSelectedTranscriptYear('');
     setActiveTab('login');
   };
@@ -1829,7 +1848,11 @@ function App() {
         selectedEmphasis,
         selectedMinor,
         hasHsLanguage,
-        hasSabrCourse
+        hasSabrCourse,
+        evaluationPriorityCodes: Object.keys(evaluationPriorityByCode)
+          .filter((k) => evaluationPriorityByCode[k])
+          .map((k) => normalizeCode(k))
+          .sort()
       });
       const transcriptTermsSnapshot = JSON.parse(JSON.stringify(transcriptTerms || []));
       const semesterPlansSnapshot = JSON.parse(JSON.stringify(semesterPlans || {}));
@@ -1850,7 +1873,8 @@ function App() {
           credits: Number(course.credits) || Number(meta.credits) || 0,
           categories: Array.from(new Set([...catalogCategories, ...userCategories])),
           grade: course.grade || null,
-          status: isCourseMarkedInProgress(course) ? 'in-progress' : 'completed'
+          status: isCourseMarkedInProgress(course) ? 'in-progress' : 'completed',
+          evaluationPriority: Boolean(evaluationPriorityByCode[code])
         });
       });
 
@@ -1868,7 +1892,8 @@ function App() {
             credits: Number(meta.credits) || 0,
             categories: Array.isArray(meta.categories) ? meta.categories : [],
             grade: null,
-            status: 'planned'
+            status: 'planned',
+            evaluationPriority: Boolean(evaluationPriorityByCode[code])
           });
         });
       });
@@ -1995,7 +2020,6 @@ function App() {
     }
   };
 
-
   // Ensure modal state and errors clear when leaving Planner tab
   useEffect(() => {
     if (activeTab !== 'planner') {
@@ -2051,6 +2075,26 @@ function App() {
     () => new Set(effectiveTranscriptCourseList.map((course) => course.code)),
     [effectiveTranscriptCourseList]
   );
+
+  const getCourseCreditsForRequirementBar = (rawCode) => {
+    const code = normalizeCode(rawCode);
+    if (!code) return 0;
+
+    const fromCatalogMap = Number(coursesIndex.get(code)?.credits);
+    if (Number.isFinite(fromCatalogMap) && fromCatalogMap > 0) return fromCatalogMap;
+
+    const fromCourses = Number(COURSES[code]?.credits);
+    if (Number.isFinite(fromCourses) && fromCourses > 0) return fromCourses;
+
+    const transcriptMatch = transcriptCourseList.find(
+      (course) => normalizeCode(course?.code) === code
+    );
+    const fromTranscript = Number(transcriptMatch?.credits);
+    if (Number.isFinite(fromTranscript) && fromTranscript > 0) return fromTranscript;
+
+    return 3;
+  };
+
   const transcriptCreditsSummary = useMemo(() => {
     let completedCredits = 0;
     let inProgressCredits = 0;
@@ -2075,16 +2119,16 @@ function App() {
 
     Object.values(semesterPlans).forEach((courses) => {
       (courses || []).forEach((code) => {
-        if (seen.has(code) || transcriptCourseCodes.has(code)) return;
-        const credits = Number(COURSES[code]?.credits) || 0;
-        plannedCredits += credits;
+        const norm = normalizeCode(code);
+        if (!norm || seen.has(norm) || transcriptCourseCodes.has(norm)) return;
+        plannedCredits += getCourseCreditsForRequirementBar(norm);
         plannedCourses += 1;
-        seen.add(code);
+        seen.add(norm);
       });
     });
 
     return { plannedCredits, plannedCourses };
-  }, [semesterPlans, transcriptCourseCodes]);
+  }, [semesterPlans, transcriptCourseCodes, coursesIndex, transcriptCourseList]);
 
   const transcriptGpa = useMemo(() => {
     if (transcriptTotals?.overall?.gpa) return transcriptTotals.overall.gpa;
@@ -2195,24 +2239,6 @@ function App() {
     isCoursePlanned(courseCode) &&
     !isCourseCompleted(courseCode) &&
     !isCourseInProgress(courseCode);
-  const getCourseCreditsForRequirementBar = (rawCode) => {
-    const code = normalizeCode(rawCode);
-    if (!code) return 0;
-
-    const fromCatalogMap = Number(coursesIndex.get(code)?.credits);
-    if (Number.isFinite(fromCatalogMap) && fromCatalogMap > 0) return fromCatalogMap;
-
-    const fromCourses = Number(COURSES[code]?.credits);
-    if (Number.isFinite(fromCourses) && fromCourses > 0) return fromCourses;
-
-    const transcriptMatch = transcriptCourseList.find(
-      (course) => normalizeCode(course?.code) === code
-    );
-    const fromTranscript = Number(transcriptMatch?.credits);
-    if (Number.isFinite(fromTranscript) && fromTranscript > 0) return fromTranscript;
-
-    return 3;
-  };
   const getRequirementProgressBreakdown = (group) => {
     const required = Number(group?.requiredCredits) || 0;
     const earned = Number(group?.earnedCredits) || 0;
@@ -2224,6 +2250,18 @@ function App() {
         greenPct: group?.satisfied ? 100 : 0,
         plannedPct: 0,
         combinedPct: group?.satisfied ? 100 : 0,
+        plannedLabelCredits: 0
+      };
+    }
+
+    if (group?.satisfied) {
+      const combinedCredits = Math.min(Math.max(earned, 0), required);
+      return {
+        greenCredits: combinedCredits,
+        plannedCredits: 0,
+        greenPct: Math.min((combinedCredits / required) * 100, 100),
+        plannedPct: 0,
+        combinedPct: Math.min(Math.round((combinedCredits / required) * 100), 100),
         plannedLabelCredits: 0
       };
     }
@@ -2807,18 +2845,7 @@ function App() {
         );
       };
 
-      const getCourseCreditsForGuidance = (code) => {
-        const normalized = normalizeCode(code);
-        if (!normalized) return 0;
-        const catalogCredits = Number(COURSES[normalized]?.credits);
-        if (Number.isFinite(catalogCredits) && catalogCredits > 0) return catalogCredits;
-        const transcriptCourse = transcriptCourseList.find(
-          (course) => normalizeCode(course?.code) === normalized
-        );
-        const transcriptCredits = Number(transcriptCourse?.credits);
-        if (Number.isFinite(transcriptCredits) && transcriptCredits > 0) return transcriptCredits;
-        return 3;
-      };
+      const getCourseCreditsForGuidance = (code) => getCourseCreditsForRequirementBar(code);
 
       const collectGuidanceTargetsFromEvaluation = (...results) => {
         const out = new Set();
@@ -3710,6 +3737,13 @@ Now answer the student's question using only this context.`
   };
 
   const removeCourseFromSemester = (courseCode, semester) => {
+    const nk = normalizeCode(courseCode);
+    setEvaluationPriorityByCode((prev) => {
+      if (!nk || !prev[nk]) return prev;
+      const next = { ...prev };
+      delete next[nk];
+      return next;
+    });
     setSemesterPlans((prev) => ({
       ...prev,
       [semester]: (prev[semester] || []).filter((c) => c !== courseCode)
@@ -3834,13 +3868,14 @@ Now answer the student's question using only this context.`
     let totalDifficulty = 0;
 
     courses.forEach((code) => {
-      const course = COURSES[code];
+      const norm = normalizeCode(code);
+      totalCredits += getCourseCreditsForRequirementBar(norm);
+      const course = COURSES[norm];
+      totalDifficulty += typeof course?.difficulty === 'number' ? course.difficulty : 0;
       if (!course) return;
-      totalCredits += course.credits ?? 0;
-      totalDifficulty += course.difficulty ?? 0;
 
-      if (isCourseCompleted(code) || isCourseInProgress(code) || isCoursePlannedInEarlierSemester(code, semester)) {
-        errors.push(`${code} has already been taken or planned in a prior semester`);
+      if (isCourseCompleted(norm) || isCourseInProgress(norm) || isCoursePlannedInEarlierSemester(norm, semester)) {
+        errors.push(`${norm} has already been taken or planned in a prior semester`);
       }
 
       const prereqGroups = getCoursePrereqGroups(course);
@@ -3857,7 +3892,7 @@ Now answer the student's question using only this context.`
         );
         if (strictPlanned) {
           warnings.push(
-            `${code}: prerequisite ${strictPlanned.option.code} is planned but not in an earlier semester`
+            `${norm}: prerequisite ${strictPlanned.option.code} is planned but not in an earlier semester`
           );
           return;
         }
@@ -3871,7 +3906,7 @@ Now answer the student's question using only this context.`
         );
         if (coreqPlannedLater) {
           warnings.push(
-            `${code}: co-requisite ${coreqPlannedLater.option.code} is planned in a later semester`
+            `${norm}: co-requisite ${coreqPlannedLater.option.code} is planned in a later semester`
           );
           return;
         }
@@ -3881,16 +3916,16 @@ Now answer the student's question using only this context.`
             option.concurrentOk ? `${option.code} (or concurrent enrollment)` : option.code
           )
           .join(' or ');
-        errors.push(`${code} requires ${requiredLabel} (not completed or planned)`);
+        errors.push(`${norm} requires ${requiredLabel} (not completed or planned)`);
       });
 
       // Warn about equivalent courses already completed/planned
-      const equivalents = getEquivalents(code);
+      const equivalents = getEquivalents(norm);
       equivalents.forEach((eq) => {
         if (isCourseCompleted(eq) || isCourseInProgress(eq)) {
-          warnings.push(`${code} is equivalent to ${eq} (already on transcript) — will not count separately`);
-        } else if (isCoursePlanned(eq) && eq !== code) {
-          warnings.push(`${code} is equivalent to ${eq} (also planned) — only one will count`);
+          warnings.push(`${norm} is equivalent to ${eq} (already on transcript) — will not count separately`);
+        } else if (isCoursePlanned(eq) && eq !== norm) {
+          warnings.push(`${norm} is equivalent to ${eq} (also planned) — only one will count`);
         }
       });
     });
@@ -3936,8 +3971,8 @@ Now answer the student's question using only this context.`
     const takenOrRegistered = useMemo(() => {
       const set = new Set();
       transcriptCourseList.forEach((c) => {
-        if (!c?.code) return;
-        set.add(c.code);
+        const n = normalizeCode(c?.code);
+        if (n) set.add(n);
       });
       return set;
     }, [transcriptCourseList]);
@@ -3947,34 +3982,29 @@ Now answer the student's question using only this context.`
       const set = new Set();
       Object.values(semesterPlans || {}).forEach((list) => {
         (list || []).forEach((code) => {
-          if (!code) return;
-          if (takenOrRegistered.has(code)) return;
-          set.add(code);
+          const n = normalizeCode(code);
+          if (!n) return;
+          if (takenOrRegistered.has(n)) return;
+          set.add(n);
         });
       });
       return set;
     }, [semesterPlans, takenOrRegistered]);
 
-    const getCreditsFor = (code) => {
-      const fromCatalog = Number(COURSES[code]?.credits);
-      if (!Number.isNaN(fromCatalog) && fromCatalog > 0) return fromCatalog;
+    const getCreditsFor = (code) => getCourseCreditsForRequirementBar(code);
 
-      const fromTranscript = transcriptCourseList.find((c) => c.code === code);
-      const tc = Number(fromTranscript?.credits);
-      if (!Number.isNaN(tc) && tc > 0) return tc;
-
-      return 0;
+    const getTitleFor = (code) => {
+      const n = normalizeCode(code);
+      return (n && COURSES[n]?.title) || COURSES[code]?.title || 'Course';
     };
-
-    const getTitleFor = (code) => COURSES[code]?.title || 'Course';
 
     const areaSummaries = useMemo(() => {
       return areas.map((area) => {
         const required = Number(area.requiredCredits) || 0;
         const eligible = Array.isArray(area.courses) ? area.courses : [];
 
-        const takenCourses = eligible.filter((c) => takenOrRegistered.has(c));
-        const plannedCourses = eligible.filter((c) => plannedSet.has(c));
+        const takenCourses = eligible.filter((c) => takenOrRegistered.has(normalizeCode(c)));
+        const plannedCourses = eligible.filter((c) => plannedSet.has(normalizeCode(c)));
 
         const takenCredits = takenCourses.reduce((sum, c) => sum + getCreditsFor(c), 0);
         const plannedCredits = plannedCourses.reduce((sum, c) => sum + getCreditsFor(c), 0);
@@ -3986,9 +4016,10 @@ Now answer the student's question using only this context.`
         const displayRed = Math.max(required - displayGreen - displayYellow, 0);
 
         // Pick a small set of missing courses to show (until it covers missing credits)
-        const missingCoursesAll = eligible.filter(
-          (c) => !takenOrRegistered.has(c) && !plannedSet.has(c)
-        );
+        const missingCoursesAll = eligible.filter((c) => {
+          const n = normalizeCode(c);
+          return !takenOrRegistered.has(n) && !plannedSet.has(n);
+        });
         const missingPick = [];
         let picked = 0;
         for (const c of missingCoursesAll) {
@@ -4011,7 +4042,7 @@ Now answer the student's question using only this context.`
           isMet: displayRed <= 0.00001
         };
       });
-    }, [areas, takenOrRegistered, plannedSet, transcriptCourseList]);
+    }, [areas, takenOrRegistered, plannedSet, transcriptCourseList, COURSES, coursesIndex]);
 
     const toggleArea = (id) => {
       setExpandedAreas((prev) => {
@@ -4283,7 +4314,7 @@ Now answer the student's question using only this context.`
             </div>
             <div className="flex gap-2">
               <button
-                onClick={evaluateRequirementsLocal}
+                onClick={() => void evaluateRequirementsLocal()}
                 disabled={reqLoading || coursesIndex.size === 0}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded border border-[#500000] text-[#500000] bg-white hover:bg-[#500000]/5 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
@@ -4342,8 +4373,10 @@ Now answer the student's question using only this context.`
               const ariaLabel = required > 0
                 ? `${earned} of ${required} credits counted${plannedCredits > 0 ? `, ${plannedCredits} planned` : ''}${exceeded ? `, ${extraCredits} extra` : ''}`
                 : (group.satisfied ? 'Satisfied' : 'Not satisfied');
-              const hasOverflow = group.overflowCourses?.length > 0;
-              const hasDetails = (group.missing?.length > 0) || (group.usedCourses?.length > 0) || hasOverflow;
+              const hasDetails =
+                (group.missing?.length > 0) ||
+                (group.usedCourses?.length > 0) ||
+                (group.warnings?.length > 0);
 
               return (
                 <details key={group.name} className="rounded border border-gray-200 group">
@@ -4437,9 +4470,6 @@ Now answer the student's question using only this context.`
                             ))}
                           </ul>
                         </div>
-                      )}
-                      {hasOverflow && (
-                        <p className="text-xs text-blue-600">Overflow: {group.overflowCourses.join(', ')}</p>
                       )}
                       {group.missing?.length > 0 && (
                         <p className="text-xs text-red-600">Missing: {group.missing.join(', ')}</p>
@@ -4567,8 +4597,10 @@ Now answer the student's question using only this context.`
               const ariaLabel = required > 0
                 ? `${earned} of ${required} credits counted${plannedCredits > 0 ? `, ${plannedCredits} planned` : ''}${exceeded ? `, ${extraCredits} extra` : ''}`
                 : (group.satisfied ? 'Satisfied' : 'Not satisfied');
-              const hasOverflow = group.overflowCourses?.length > 0;
-              const hasDetails = (group.missing?.length > 0) || (group.usedCourses?.length > 0) || hasOverflow;
+              const hasDetails =
+                (group.missing?.length > 0) ||
+                (group.usedCourses?.length > 0) ||
+                (group.warnings?.length > 0);
 
               return (
                 <details key={group.name} className="rounded border border-gray-200 group">
@@ -4662,9 +4694,6 @@ Now answer the student's question using only this context.`
                             ))}
                           </ul>
                         </div>
-                      )}
-                      {hasOverflow && (
-                        <p className="text-xs text-blue-600">Overflow: {group.overflowCourses.join(', ')}</p>
                       )}
                       {group.missing?.length > 0 && (
                         <p className="text-xs text-red-600">Missing: {group.missing.join(', ')}</p>
@@ -4771,8 +4800,10 @@ Now answer the student's question using only this context.`
                 const ariaLabel = required > 0
                   ? `${earned} of ${required} credits counted${plannedCredits > 0 ? `, ${plannedCredits} planned` : ''}${exceeded ? `, ${extraCredits} extra` : ''}`
                   : (group.satisfied ? 'Satisfied' : 'Not satisfied');
-                const hasOverflow = group.overflowCourses?.length > 0;
-                const hasDetails = (group.missing?.length > 0) || (group.usedCourses?.length > 0) || hasOverflow;
+                const hasDetails =
+                  (group.missing?.length > 0) ||
+                  (group.usedCourses?.length > 0) ||
+                  (group.warnings?.length > 0);
 
                 return (
                   <details
@@ -4852,9 +4883,6 @@ Now answer the student's question using only this context.`
                               ))}
                             </ul>
                           </div>
-                        )}
-                        {hasOverflow && (
-                          <p className="text-xs text-blue-600">Overflow: {group.overflowCourses.join(', ')}</p>
                         )}
                         {group.missing?.length > 0 && (
                           <p className="text-xs text-red-600">Missing: {group.missing.join(', ')}</p>
@@ -5312,31 +5340,33 @@ Now answer the student's question using only this context.`
                               </div>
                             </div>
                             {(course.transfer || course.honors || isPassFailGrade(course.grade) || isCourseMarkedInProgress({ ...course, termStatus: term.status })) && (
-                              <div className="mt-2 flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  {course.honors && (
-                                    <span className="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-700">
-                                      Honors
-                                    </span>
-                                  )}
-                                  {course.transfer && (
-                                    <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 flex items-center gap-1">
-                                      <CheckCircle className="w-3 h-3" />
-                                      Transfer
-                                    </span>
-                                  )}
-                                  {!course.transfer && isPassFailGrade(course.grade) && (
-                                    <span className="text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-700">
-                                      {course.grade === 'S' ? 'Satisfactory' : course.grade === 'U' ? 'Unsatisfactory' : 'Pass'}
-                                    </span>
-                                  )}
-                                  {isCourseMarkedInProgress({ ...course, termStatus: term.status }) && (
-                                    <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700">
-                                      In Progress
-                                    </span>
-                                  )}
-                                </div>
+                              <div className="mt-2 flex items-center gap-2 flex-wrap">
+                                {course.honors && (
+                                  <span className="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-700">
+                                    Honors
+                                  </span>
+                                )}
                                 {course.transfer && (
+                                  <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 flex items-center gap-1">
+                                    <CheckCircle className="w-3 h-3" />
+                                    Transfer
+                                  </span>
+                                )}
+                                {!course.transfer && isPassFailGrade(course.grade) && (
+                                  <span className="text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-700">
+                                    {course.grade === 'S' ? 'Satisfactory' : course.grade === 'U' ? 'Unsatisfactory' : 'Pass'}
+                                  </span>
+                                )}
+                                {isCourseMarkedInProgress({ ...course, termStatus: term.status }) && (
+                                  <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700">
+                                    In Progress
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            <div className="mt-2 flex flex-col gap-1.5">
+                              {course.transfer ? (
+                                <>
                                   <label
                                     className="flex items-center gap-1.5 cursor-pointer select-none"
                                     onClick={(e) => e.stopPropagation()}
@@ -5347,6 +5377,7 @@ Now answer the student's question using only this context.`
                                       onChange={(e) => {
                                         e.stopPropagation();
                                         const adding = !excludedTransferCourses.has(course.code);
+                                        const nk = normalizeCode(course.code);
                                         setExcludedTransferCourses((prev) => {
                                           const next = new Set(prev);
                                           if (next.has(course.code)) {
@@ -5356,16 +5387,23 @@ Now answer the student's question using only this context.`
                                           }
                                           return next;
                                         });
-                                        // keep eval exclusion in sync: excluding from degree also excludes from eval
                                         setExcludedFromEval((prev) => {
                                           const next = new Set(prev);
                                           if (adding) {
-                                            next.add(course.code);
+                                            next.add(nk);
                                           } else {
-                                            next.delete(course.code);
+                                            next.delete(nk);
                                           }
                                           return next;
                                         });
+                                        if (adding) {
+                                          setEvaluationPriorityByCode((prev) => {
+                                            if (!nk || !prev[nk]) return prev;
+                                            const next = { ...prev };
+                                            delete next[nk];
+                                            return next;
+                                          });
+                                        }
                                         setIsTranscriptDirty(true);
                                       }}
                                       className="w-3.5 h-3.5 rounded border-gray-300 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
@@ -5374,36 +5412,100 @@ Now answer the student's question using only this context.`
                                       Count toward degree
                                     </span>
                                   </label>
-                                )}
-                                {!course.transfer && (
                                   <label
                                     className="flex items-center gap-1.5 cursor-pointer select-none"
                                     onClick={(e) => e.stopPropagation()}
                                   >
                                     <input
                                       type="checkbox"
-                                      checked={!excludedFromEval.has(course.code)}
+                                      disabled={excludedTransferCourses.has(course.code)}
+                                      checked={Boolean(evaluationPriorityByCode[normalizeCode(course.code)])}
                                       onChange={(e) => {
                                         e.stopPropagation();
+                                        const nk = normalizeCode(course.code);
+                                        const on = e.target.checked;
+                                        setEvaluationPriorityByCode((prev) => {
+                                          if (!on) {
+                                            if (!prev[nk]) return prev;
+                                            const next = { ...prev };
+                                            delete next[nk];
+                                            return next;
+                                          }
+                                          return { ...prev, [nk]: true };
+                                        });
+                                      }}
+                                      className="w-3.5 h-3.5 rounded border-gray-300 text-[#500000] focus:ring-[#500000]/30 cursor-pointer disabled:opacity-40"
+                                    />
+                                    <span className={`text-xs ${excludedTransferCourses.has(course.code) ? 'text-gray-400' : 'text-gray-600'}`}>
+                                      Prefer in requirements evaluation
+                                    </span>
+                                  </label>
+                                </>
+                              ) : (
+                                <>
+                                  <label
+                                    className="flex items-center gap-1.5 cursor-pointer select-none"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={!excludedFromEval.has(normalizeCode(course.code))}
+                                      onChange={(e) => {
+                                        e.stopPropagation();
+                                        const useInEval = e.target.checked;
+                                        const nk = normalizeCode(course.code);
                                         setExcludedFromEval((prev) => {
                                           const next = new Set(prev);
-                                          if (next.has(course.code)) {
-                                            next.delete(course.code);
-                                          } else {
-                                            next.add(course.code);
-                                          }
+                                          if (useInEval) next.delete(nk);
+                                          else next.add(nk);
                                           return next;
                                         });
+                                        if (!useInEval) {
+                                          setEvaluationPriorityByCode((prev) => {
+                                            if (!nk || !prev[nk]) return prev;
+                                            const next = { ...prev };
+                                            delete next[nk];
+                                            return next;
+                                          });
+                                        }
                                       }}
                                       className="w-3.5 h-3.5 rounded border-gray-300 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
                                     />
-                                    <span className={`text-xs ${excludedFromEval.has(course.code) ? 'text-gray-400 line-through' : 'text-gray-600'}`}>
+                                    <span className={`text-xs ${excludedFromEval.has(normalizeCode(course.code)) ? 'text-gray-400 line-through' : 'text-gray-600'}`}>
                                       Use in evaluation
                                     </span>
                                   </label>
-                                )}
-                              </div>
-                            )}
+                                  <label
+                                    className="flex items-center gap-1.5 cursor-pointer select-none"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      disabled={excludedFromEval.has(normalizeCode(course.code))}
+                                      checked={Boolean(evaluationPriorityByCode[normalizeCode(course.code)])}
+                                      onChange={(e) => {
+                                        e.stopPropagation();
+                                        const nk = normalizeCode(course.code);
+                                        const on = e.target.checked;
+                                        setEvaluationPriorityByCode((prev) => {
+                                          if (!on) {
+                                            if (!prev[nk]) return prev;
+                                            const next = { ...prev };
+                                            delete next[nk];
+                                            return next;
+                                          }
+                                          return { ...prev, [nk]: true };
+                                        });
+                                      }}
+                                      className="w-3.5 h-3.5 rounded border-gray-300 text-[#500000] focus:ring-[#500000]/30 cursor-pointer disabled:opacity-40"
+                                    />
+                                    <span className={`text-xs ${excludedFromEval.has(normalizeCode(course.code)) ? 'text-gray-400' : 'text-gray-600'}`}>
+                                      Prefer in requirements evaluation
+                                    </span>
+                                  </label>
+                                </>
+                              )}
+                            </div>
                             <div className="mt-2 flex items-center">
                               <label
                                 className="flex items-center gap-1.5 cursor-pointer select-none"
@@ -5528,6 +5630,17 @@ Now answer the student's question using only this context.`
                 onClick={() => {
                   if (window.confirm('Are you sure you want to clear all planned courses? This cannot be undone.')) {
                     setSemesterPlans(initSemesterPlans({}));
+                    setEvaluationPriorityByCode((prev) => {
+                      const transcriptCodes = new Set(
+                        transcriptCourseList.map((c) => normalizeCode(c?.code)).filter(Boolean)
+                      );
+                      const next = {};
+                      Object.entries(prev).forEach(([code, v]) => {
+                        const nk = normalizeCode(code);
+                        if (v && transcriptCodes.has(nk)) next[nk] = true;
+                      });
+                      return next;
+                    });
                     setPlanError('');
                     setSelectedCourses([]);
                     if (filteredPlanYears.length > 0) {
@@ -5626,24 +5739,39 @@ Now answer the student's question using only this context.`
                     : course.transfer || isTransferGrade(course.grade)
                       ? 'Transfer'
                       : 'Evaluated';
+                  const tc = sanitizeCredits(course.credits);
+                  const fallbackCr = getCourseCreditsForRequirementBar(course.code);
+                  const credits = tc > 0 ? tc : fallbackCr;
                   return {
                     type: 'transcript',
                     code: course.code,
                     title: course.title,
-                    credits: course.credits,
+                    credits,
                     grade: course.grade,
                     status: courseStatus
                   };
                 }),
                 ...plannedCourses
-                  .filter((code) => !transcriptCourses.some((c) => c.code === code))
-                  .map((code) => ({
-                    type: 'planned',
-                    code,
-                    title: COURSES[code]?.title,
-                    credits: COURSES[code]?.credits ?? 0
-                  }))
+                  .filter(
+                    (rawCode) =>
+                      !transcriptCourses.some(
+                        (c) => normalizeCode(c.code) === normalizeCode(rawCode)
+                      )
+                  )
+                  .map((rawCode) => {
+                    const norm = normalizeCode(rawCode);
+                    return {
+                      type: 'planned',
+                      code: norm || rawCode,
+                      title: (norm && COURSES[norm]?.title) || COURSES[rawCode]?.title,
+                      credits: getCourseCreditsForRequirementBar(norm || rawCode)
+                    };
+                  })
               ];
+              const termCreditsTotal = displayCourses.reduce(
+                (sum, c) => sum + (Number.isFinite(Number(c.credits)) ? Number(c.credits) : 0),
+                0
+              );
               const termValidation = validateSemester(term);
               const termState = getTermState(term);
               const isEditable = true;
@@ -5687,7 +5815,7 @@ Now answer the student's question using only this context.`
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-semibold text-gray-700">
-                        {termValidation.totalCredits} credits
+                        {termCreditsTotal} credits
                       </span>
                       {(() => {
                         const planned = (semesterPlans[term] || []);
@@ -5729,7 +5857,8 @@ Now answer the student's question using only this context.`
                       </div>
                     ) : (
                       displayCourses.map((course) => {
-                        const courseMeta = COURSES[course.code];
+                        const nk = normalizeCode(course.code);
+                        const courseMeta = COURSES[nk] || COURSES[course.code];
                         const plannedLaterPrereqs = [];
                         const trulyMissing = [];
                         if (course.type === 'planned') {
@@ -5837,23 +5966,58 @@ Now answer the student's question using only this context.`
                                 >
                                   <input
                                     type="checkbox"
-                                    checked={!excludedFromEval.has(course.code)}
+                                    checked={!excludedFromEval.has(normalizeCode(course.code))}
                                     onChange={(e) => {
                                       e.stopPropagation();
+                                      const useInEval = e.target.checked;
+                                      const nk = normalizeCode(course.code);
                                       setExcludedFromEval((prev) => {
                                         const next = new Set(prev);
-                                        if (next.has(course.code)) {
-                                          next.delete(course.code);
-                                        } else {
-                                          next.add(course.code);
-                                        }
+                                        if (useInEval) next.delete(nk);
+                                        else next.add(nk);
                                         return next;
                                       });
+                                      if (!useInEval) {
+                                        setEvaluationPriorityByCode((prev) => {
+                                          if (!nk || !prev[nk]) return prev;
+                                          const next = { ...prev };
+                                          delete next[nk];
+                                          return next;
+                                        });
+                                      }
                                     }}
                                     className="w-3.5 h-3.5 rounded border-gray-300 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
                                   />
-                                  <span className={`text-xs ${excludedFromEval.has(course.code) ? 'text-gray-400 line-through' : 'text-gray-600'}`}>
+                                  <span className={`text-xs ${excludedFromEval.has(normalizeCode(course.code)) ? 'text-gray-400 line-through' : 'text-gray-600'}`}>
                                     Use in evaluation
+                                  </span>
+                                </label>
+                                <label
+                                  className="flex items-center gap-1.5 mt-1 cursor-pointer select-none"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    disabled={excludedFromEval.has(normalizeCode(course.code))}
+                                    checked={Boolean(evaluationPriorityByCode[normalizeCode(course.code)])}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      const nk = normalizeCode(course.code);
+                                      const on = e.target.checked;
+                                      setEvaluationPriorityByCode((prev) => {
+                                        if (!on) {
+                                          if (!prev[nk]) return prev;
+                                          const next = { ...prev };
+                                          delete next[nk];
+                                          return next;
+                                        }
+                                        return { ...prev, [nk]: true };
+                                      });
+                                    }}
+                                    className="w-3.5 h-3.5 rounded border-gray-300 text-[#500000] focus:ring-[#500000]/30 cursor-pointer disabled:opacity-40"
+                                  />
+                                  <span className={`text-xs ${excludedFromEval.has(normalizeCode(course.code)) ? 'text-gray-400' : 'text-gray-600'}`}>
+                                    Prefer in requirements evaluation
                                   </span>
                                 </label>
                               </div>
@@ -6065,7 +6229,7 @@ Now answer the student's question using only this context.`
                             <div className="flex items-center gap-2">
                               <h4 className="font-bold">{code}</h4>
                               <span className="text-xs bg-gray-200 px-2 py-1 rounded">
-                                {course.credits} cr
+                                {getCourseCreditsForRequirementBar(code)} cr
                               </span>
                             </div>
                             <p className="text-sm text-gray-600">{course.title}</p>
@@ -6889,7 +7053,11 @@ Now answer the student's question using only this context.`
       selectedEmphasis,
       selectedMinor,
       hasHsLanguage,
-      hasSabrCourse
+      hasSabrCourse,
+      evaluationPriorityCodes: Object.keys(evaluationPriorityByCode)
+        .filter((k) => evaluationPriorityByCode[k])
+        .map((k) => normalizeCode(k))
+        .sort()
     });
 
     const stale = !lastEvaluationSignature || currentSig !== lastEvaluationSignature;

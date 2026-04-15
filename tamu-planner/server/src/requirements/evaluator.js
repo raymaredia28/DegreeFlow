@@ -136,7 +136,8 @@ const buildCourseIndex = (studentCourses) => {
       categories: entry.course.categories || [],
       department: normalizeDepartment(entry.course.department),
       course_number: entry.course.course_number,
-      course_id: entry.course.course_id
+      course_id: entry.course.course_id,
+      evaluationPriority: Boolean(entry.evaluationPriority)
     };
 
     map.set(code, record);
@@ -163,7 +164,7 @@ const creditValue = (course) => {
   return Number.isFinite(n) ? n : 0;
 };
 
-const isCompleted = (course, minGrade) => {
+const isCompleted = (course, minGrade, evalContext) => {
   if (!course) return false;
   if (course.status === 'planned' || course.status === 'in-progress') return true;
   if (!course.grade || course.grade.toUpperCase() === 'IP') return false;
@@ -180,6 +181,37 @@ const matchesTag = (course, tag) => {
   return (course.categories || []).includes(tag);
 };
 
+const anyOfPickScore = (used, credits, context) => {
+  const pri = context?.priorityCodes;
+  let priorityHits = 0;
+  (used || []).forEach((c) => {
+    const n = normalizeCode(c);
+    if (pri?.has(n)) priorityHits += 1;
+  });
+  return { priorityHits, credits: credits || 0 };
+};
+
+const anyOfPickIsBetter = (next, prev, context) => {
+  if (!prev.satisfied) return true;
+  if (!next.satisfied) return false;
+  const a = anyOfPickScore(next.used, next.credits, context);
+  const b = anyOfPickScore(prev.used, prev.credits, context);
+  if (a.priorityHits !== b.priorityHits) return a.priorityHits > b.priorityHits;
+  return a.credits > b.credits;
+};
+
+const sortCoursesByEvaluationPriority = (courses, context) => {
+  if (!Array.isArray(courses) || courses.length < 2) return courses || [];
+  const pri = context?.priorityCodes;
+  if (!pri || pri.size === 0) return courses;
+  return [...courses].sort((a, b) => {
+    const pa = pri.has(a.code) ? 1 : 0;
+    const pb = pri.has(b.code) ? 1 : 0;
+    if (pb !== pa) return pb - pa;
+    return 0;
+  });
+};
+
 const evaluateAnyOf = (anyOf, context, minGrade) => {
   let best = { satisfied: false, credits: 0, used: [] };
   const missingOptions = [];
@@ -188,10 +220,11 @@ const evaluateAnyOf = (anyOf, context, minGrade) => {
     if (typeof option === 'string') {
       const code = normalizeCode(option);
       const course = context.courseIndex.get(code);
-      if (isCompleted(course, minGrade)) {
+      if (isCompleted(course, minGrade, context)) {
         const credits = Number(course.credits) || 0;
-        if (!best.satisfied || credits > best.credits) {
-          best = { satisfied: true, credits, used: [code] };
+        const candidate = { satisfied: true, credits, used: [code] };
+        if (anyOfPickIsBetter(candidate, best, context)) {
+          best = candidate;
         }
       } else {
         missingOptions.push(code);
@@ -205,15 +238,20 @@ const evaluateAnyOf = (anyOf, context, minGrade) => {
       option.allOf.forEach((codeRaw) => {
         const code = normalizeCode(codeRaw);
         const course = context.courseIndex.get(code);
-        if (!isCompleted(course, minGrade)) {
+        if (!isCompleted(course, minGrade, context)) {
           missing.push(code);
         } else {
           credits += Number(course.credits) || 0;
         }
       });
       if (missing.length === 0) {
-        if (!best.satisfied || credits > best.credits) {
-          best = { satisfied: true, credits, used: option.allOf.map(normalizeCode) };
+        const candidate = {
+          satisfied: true,
+          credits,
+          used: option.allOf.map(normalizeCode)
+        };
+        if (anyOfPickIsBetter(candidate, best, context)) {
+          best = candidate;
         }
       } else {
         missingOptions.push(option.allOf.map(normalizeCode).join(' + '));
@@ -224,8 +262,13 @@ const evaluateAnyOf = (anyOf, context, minGrade) => {
     if (option?.tag) {
       const result = evaluateTag(option, context, minGrade);
       if (result.satisfied) {
-        if (!best.satisfied || result.credits > best.credits) {
-          best = { satisfied: true, credits: result.credits, used: result.used || [] };
+        const candidate = {
+          satisfied: true,
+          credits: result.credits,
+          used: result.used || []
+        };
+        if (anyOfPickIsBetter(candidate, best, context)) {
+          best = candidate;
         }
       } else {
         missingOptions.push(`tag:${option.tag}`);
@@ -252,10 +295,11 @@ const evaluateTag = (tagRule, context, minGrade) => {
   }
 
   const excludeSet = new Set((tagRule.exclude || []).map(normalizeCode));
-  const eligible = Array.from(context.courseIndex.values()).filter(
+  let eligible = Array.from(context.courseIndex.values()).filter(
     (course) =>
-      isCompleted(course, minGrade) && matchesTag(course, tag) && !excludeSet.has(course.code)
+      isCompleted(course, minGrade, context) && matchesTag(course, tag) && !excludeSet.has(course.code)
   );
+  eligible = sortCoursesByEvaluationPriority(eligible, context);
   const credits = sumCredits(eligible);
   const minCredits = tagRule.minCredits ?? null;
   const minCount = tagRule.minCount ?? null;
@@ -284,7 +328,7 @@ const evaluateTag = (tagRule, context, minGrade) => {
 const evaluateCourseRule = (courseCode, context, minGrade) => {
   const code = normalizeCode(courseCode);
   const course = context.courseIndex.get(code);
-  if (!isCompleted(course, minGrade)) {
+  if (!isCompleted(course, minGrade, context)) {
     return { satisfied: false, credits: 0, missing: [code] };
   }
   return { satisfied: true, credits: creditValue(course), used: [code] };
@@ -299,12 +343,14 @@ const evaluatePool = (poolRule, context, minGrade) => {
   const maxCount = poolRule.maxCount ?? null;
   const countOnly = poolRule.countOnly === true;
 
-  const eligible = Array.from(context.courseIndex.values()).filter((course) => {
+  let eligible = Array.from(context.courseIndex.values()).filter((course) => {
     const code = normalizeCode(`${course.department} ${course.course_number}`);
     if (!poolSet.has(code)) return false;
     if (excludeSet.has(code)) return false;
-    return isCompleted(course, minGrade);
+    return isCompleted(course, minGrade, context);
   });
+
+  eligible = sortCoursesByEvaluationPriority(eligible, context);
 
   const credits = sumCredits(eligible);
   const count = eligible.length;
@@ -344,7 +390,7 @@ const evaluateEmphasis = (rule, context, minGrade) => {
   // Match courses from the predefined emphasis pool
   if (context.emphasisCourseIds && context.emphasisCourseIds.size > 0) {
     Array.from(context.courseIndex.values()).forEach((course) => {
-      if (isCompleted(course, minGrade) && context.emphasisCourseIds.has(course.course_id)) {
+      if (isCompleted(course, minGrade, context) && context.emphasisCourseIds.has(course.course_id)) {
         const code = normalizeCode(`${course.department} ${course.course_number}`);
         if (!usedCodes.has(code)) {
           usedCodes.add(code);
@@ -357,7 +403,7 @@ const evaluateEmphasis = (rule, context, minGrade) => {
   // Also match courses the student manually tagged as custom-emphasis
   Array.from(context.courseIndex.values()).forEach((course) => {
     if (
-      isCompleted(course, minGrade) &&
+      isCompleted(course, minGrade, context) &&
       (course.categories || []).includes('custom-emphasis')
     ) {
       const code = normalizeCode(`${course.department} ${course.course_number}`);
@@ -377,8 +423,10 @@ const evaluateEmphasis = (rule, context, minGrade) => {
     };
   }
 
-  const credits = sumCredits(matched);
-  const used = matched.map((c) => normalizeCode(`${c.department} ${c.course_number}`));
+  const matchedSorted = sortCoursesByEvaluationPriority(matched, context);
+
+  const credits = sumCredits(matchedSorted);
+  const used = matchedSorted.map((c) => normalizeCode(`${c.department} ${c.course_number}`));
   const satisfied = credits >= requiredCredits;
   return {
     satisfied,
@@ -565,10 +613,60 @@ const buildRecommendationBuckets = (rules = {}) => {
   return buckets;
 };
 
+/**
+ * For a satisfied pool sub-rule, pick a minimal set of used codes that must
+ * "count" toward that pool (minCredits / minCount). These are treated like
+ * mandatory for group-level overflow so we do not strip a course that is
+ * still required to satisfy its directed-elective slot when trimming surplus
+ * flex toward the group's total minCredits.
+ */
+const pickPoolCoverCodes = (usedCodes, poolRule, context) => {
+  const minCredits =
+    poolRule.minCredits != null && poolRule.minCredits > 0 ? poolRule.minCredits : null;
+  const minCount =
+    poolRule.minCount != null && poolRule.minCount > 0 ? poolRule.minCount : null;
+  if (minCredits === null && minCount === null) return [];
+
+  const unique = [...new Set((usedCodes || []).map(normalizeCode).filter(Boolean))];
+  if (unique.length === 0) return [];
+
+  const ordered = unique.map((code) => {
+    const course = context.courseIndex.get(code);
+    const priority = Boolean(course?.evaluationPriority);
+    return {
+      code,
+      norm: normalizeCode(code),
+      credits: creditValue(course),
+      priority
+    };
+  });
+  ordered.sort((a, b) => {
+    if (a.priority !== b.priority) return (b.priority ? 1 : 0) - (a.priority ? 1 : 0);
+    if (a.credits !== b.credits) return b.credits - a.credits;
+    return String(b.norm).localeCompare(String(a.norm));
+  });
+
+  const picked = [];
+  let sum = 0;
+  let count = 0;
+  for (const row of ordered) {
+    const creditsOk = minCredits === null || sum >= minCredits;
+    const countOk = minCount === null || count >= minCount;
+    if (creditsOk && countOk) break;
+    picked.push(row.code);
+    sum += row.credits;
+    count += 1;
+  }
+  return picked;
+};
+
 const computeOverflowCourses = (usedCourses, mandatoryCourses, earnedCredits, requiredCredits, context) => {
   if (requiredCredits === null || earnedCredits <= requiredCredits) return [];
 
-  const flexCodes = Array.from(usedCourses).filter(code => !mandatoryCourses.has(code));
+  const flexCodes = Array.from(usedCourses).filter((code) => {
+    const n = normalizeCode(code);
+    return !mandatoryCourses.has(code) && !mandatoryCourses.has(n);
+  });
   if (flexCodes.length === 0) return [];
 
   const mandatoryCredits = Array.from(mandatoryCourses).reduce((sum, code) => {
@@ -578,9 +676,30 @@ const computeOverflowCourses = (usedCourses, mandatoryCourses, earnedCredits, re
 
   const neededFlexCredits = Math.max(0, requiredCredits - mandatoryCredits);
 
-  const flexWithCredits = flexCodes
-    .map(code => ({ code, credits: creditValue(context.courseIndex.get(code)) }))
-    .sort((a, b) => b.credits - a.credits);
+  /**
+   * Order flex courses for "applied toward minimum" vs overflow:
+   * - Prefer keeping evaluationPriority courses in the applied bucket (they sort first).
+   * - Then larger credit hours first (so same-credit electives tie-break consistently).
+   * - Among same credits without priority, higher course code sorts first so lower numbers
+   *   (e.g. CSCE 410) are more likely to overflow when the bucket is already filled.
+   */
+  const flexWithCredits = flexCodes.map((code) => {
+    const norm = normalizeCode(code);
+    const course = context.courseIndex.get(code) || context.courseIndex.get(norm);
+    const priority = Boolean(course?.evaluationPriority);
+    return {
+      code,
+      norm: norm || code,
+      credits: creditValue(course),
+      priority
+    };
+  });
+
+  flexWithCredits.sort((a, b) => {
+    if (a.priority !== b.priority) return (b.priority ? 1 : 0) - (a.priority ? 1 : 0);
+    if (a.credits !== b.credits) return b.credits - a.credits;
+    return String(b.norm).localeCompare(String(a.norm));
+  });
 
   const overflow = [];
   let accumulated = 0;
@@ -640,18 +759,36 @@ const summarizeGroup = (name, rules, context, { deriveCredits = false } = {}) =>
     const result = evaluatePool(rules, context, minGrade);
     if (!result.satisfied) missing.push(...(result.missing || []));
     (result.used || []).forEach((c) => usedCourses.add(c));
+    if (result.satisfied) {
+      pickPoolCoverCodes(result.used, rules, context).forEach((c) => mandatoryCourses.add(c));
+    }
   }
 
   if (rules.items) {
     const results = evaluateItems(rules.items, context, minGrade);
-    results.forEach((result) => {
+    results.forEach((result, idx) => {
       if (!result.satisfied && result.missing) missing.push(...result.missing);
-      (result.used || []).forEach((c) => {
-        usedCourses.add(c);
-        if (result._type === 'course' || result._type === 'anyOf') {
-          mandatoryCourses.add(c);
+      (result.used || []).forEach((c) => usedCourses.add(c));
+      if (result._type === 'course' || result._type === 'anyOf') {
+        (result.used || []).forEach((c) => mandatoryCourses.add(c));
+      } else if (result._type === 'pool' && result.satisfied) {
+        const item = rules.items[idx];
+        if (item?.pool) {
+          pickPoolCoverCodes(result.used, item, context).forEach((c) => mandatoryCourses.add(c));
         }
-      });
+      } else if (result._type === 'tag' && result.satisfied) {
+        const item = rules.items[idx];
+        if (item?.tag) {
+          pickPoolCoverCodes(result.used, item, context).forEach((c) => mandatoryCourses.add(c));
+        }
+      } else if (result._type === 'emphasis' && result.satisfied) {
+        const item = rules.items[idx];
+        if (item?.emphasisCredits) {
+          pickPoolCoverCodes(result.used, { minCredits: item.emphasisCredits, minCount: null }, context).forEach(
+            (c) => mandatoryCourses.add(c)
+          );
+        }
+      }
     });
   }
 
@@ -669,7 +806,7 @@ const summarizeGroup = (name, rules, context, { deriveCredits = false } = {}) =>
     const codes = rules.maxFrom.map(normalizeCode);
     const taken = codes.filter((code) => {
       const course = context.courseIndex.get(code);
-      return isCompleted(course, minGrade);
+      return isCompleted(course, minGrade, context);
     });
     if (taken.length > rules.maxCount) {
       warnings.push(
@@ -704,14 +841,22 @@ const summarizeGroup = (name, rules, context, { deriveCredits = false } = {}) =>
   }
 
   const overflowCourses = computeOverflowCourses(usedCourses, mandatoryCourses, credits, minCredits, context);
+  const overflowNorm = new Set(overflowCourses.map((c) => normalizeCode(c)).filter(Boolean));
+  const usedCoursesApplied = Array.from(usedCourses).filter((c) => !overflowNorm.has(normalizeCode(c)));
+
+  const creditCap = minCredits;
+  const reportedEarned =
+    satisfied && overflowCourses.length > 0 && creditCap != null
+      ? Math.min(credits, creditCap)
+      : credits;
 
   return {
     name,
     requiredCredits: derivedRequired,
-    earnedCredits: credits,
+    earnedCredits: reportedEarned,
     satisfied,
     missing,
-    usedCourses: Array.from(usedCourses),
+    usedCourses: usedCoursesApplied,
     overflowCourses,
     warnings,
     recommendationBuckets: buildRecommendationBuckets(rules)
@@ -720,12 +865,25 @@ const summarizeGroup = (name, rules, context, { deriveCredits = false } = {}) =>
 
 const computeWorkNotApplied = (groups, courseIndex, externallyAppliedCodes = []) => {
   const allUsed = new Set();
-  groups.forEach(group => {
-    (group.usedCourses || []).forEach(code => allUsed.add(code));
+  groups.forEach((group) => {
+    (group.usedCourses || []).forEach((code) => allUsed.add(code));
   });
   externallyAppliedCodes.forEach((code) => {
     const normalized = normalizeCode(code);
     if (normalized) allUsed.add(normalized);
+  });
+
+  /** normalized code -> surplus messages (pool overflow for a named group) */
+  const overflowReasonsByNorm = new Map();
+  groups.forEach((group) => {
+    (group.overflowCourses || []).forEach((raw) => {
+      const n = normalizeCode(raw);
+      if (!n) return;
+      const label = group.requiredCredits != null ? `${group.requiredCredits} cr minimum` : 'credit minimum';
+      const line = `Surplus toward ${group.name} (${label})`;
+      if (!overflowReasonsByNorm.has(n)) overflowReasonsByNorm.set(n, []);
+      overflowReasonsByNorm.get(n).push(line);
+    });
   });
 
   const seenRecords = new Set();
@@ -736,14 +894,19 @@ const computeWorkNotApplied = (groups, courseIndex, externallyAppliedCodes = [])
     seenRecords.add(course);
 
     if (allUsed.has(course.code)) continue;
-    if (getEquivalentCodes(course.code).some(eq => allUsed.has(eq))) continue;
+    if (getEquivalentCodes(course.code).some((eq) => allUsed.has(eq))) continue;
     if (!isCompleted(course, null)) continue;
+
+    const norm = normalizeCode(course.code);
+    const surplusLines = norm ? overflowReasonsByNorm.get(norm) : null;
 
     unapplied.push({
       code: course.code,
       credits: creditValue(course),
       status: course.status || 'completed',
-      reason: 'Not matched by any requirement group',
+      reason: surplusLines?.length
+        ? surplusLines.join('; ')
+        : 'Not matched by any requirement group',
       potentialGroups: []
     });
   }
@@ -830,12 +993,21 @@ const evaluateRequirements = ({
     isCompleted(course, null)
   );
 
+  const priorityCodes = new Set();
+  const seenPriorityRecord = new Set();
+  for (const course of courseIndex.values()) {
+    if (seenPriorityRecord.has(course)) continue;
+    seenPriorityRecord.add(course);
+    if (course.evaluationPriority) priorityCodes.add(course.code);
+  }
+
   const context = {
     courseIndex,
     completedCourses,
     emphasisCourseIds,
     hasHsLanguage: Boolean(hasHsLanguage),
-    hasSabrCourse: Boolean(hasSabrCourse)
+    hasSabrCourse: Boolean(hasSabrCourse),
+    priorityCodes
   };
 
   const isMinor = (requirementSet.name || '').startsWith('Minor -');

@@ -8,7 +8,8 @@ export const computeEvaluationSignature = ({
   selectedEmphasis = '',
   selectedMinor = '',
   hasHsLanguage = false,
-  hasSabrCourse = false
+  hasSabrCourse = false,
+  evaluationPriorityCodes = []
 } = {}) => {
   const normTranscript = (Array.isArray(transcriptTerms) ? transcriptTerms : [])
     .map((t) => ({
@@ -40,13 +41,19 @@ export const computeEvaluationSignature = ({
     .filter((x) => x.termLabel)
     .sort((a, b) => a.termLabel.localeCompare(b.termLabel));
 
+  const priority = (Array.isArray(evaluationPriorityCodes) ? evaluationPriorityCodes : [])
+    .map((c) => String(c ?? '').replace(/\s+/g, ' ').trim().toUpperCase())
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+
   const payload = {
     transcript: normTranscript,
     plans: normPlans,
     selectedEmphasis: String(selectedEmphasis ?? ''),
     selectedMinor: String(selectedMinor ?? ''),
     hasHsLanguage: Boolean(hasHsLanguage),
-    hasSabrCourse: Boolean(hasSabrCourse)
+    hasSabrCourse: Boolean(hasSabrCourse),
+    evaluationPriorityCodes: priority
   };
 
   return JSON.stringify(payload);
