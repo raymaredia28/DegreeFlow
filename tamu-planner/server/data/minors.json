@@ -11,9 +11,9 @@
     "minor_id": 2,
     "name": "Statistics",
     "catalog_year": "2025-2026",
-    "required_credits": null,
-    "description": "Statistics minor: STAT 211 and STAT 212 required, plus three additional STAT electives from the approved list.",
-    "notes": "Pick 3 STAT electives from the approved upper-level list after completing STAT 211 and STAT 212."
+    "required_credits": 15,
+    "description": "Statistics minor: STAT 211 and STAT 212 required (6 credits), plus 3 electives from the approved upper-division list (9 credits).",
+    "notes": "Select 3 courses from approved upper-level STAT electives after completing STAT 211 and STAT 212. Grade of C or better required in all courses."
   },
   {
     "minor_id": 3,
@@ -27,8 +27,8 @@
     "minor_id": 4,
     "name": "Game Design and Development",
     "catalog_year": "2025-2026",
-    "required_credits": null,
-    "description": "Game Design minor: CS foundations plus graphics/interactive systems and game design courses.",
-    "notes": "Requires CSCE 110 and CSCE 111 or CSCE 120; CSCE 441 or VIST 386; CSCE 443 or VIST 487; plus 3 electives from COMM 230/JOUR 230, COMM 453, CSCE 436, VIST 370, VIST 374."
+    "required_credits": 15,
+    "description": "Game Design and Development minor: one intro programming course, CSCE 441 or VIST 386, CSCE 443/VIST 487, plus 2 electives from the approved list.",
+    "notes": "CSCE majors must take CSCE 120. Select 2 electives from: ARTS 345, COMM 230/JOUR 230, COMM 453, CSCE 436, MSTC 221, VIST 357, VIST 370, VIST 374, VIST 477/CSCE 446, VIST 480. Minimum 3.2 GPA required for admission. Grade of C or better in all courses."
   }
 ]

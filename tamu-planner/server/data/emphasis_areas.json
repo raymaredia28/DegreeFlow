@@ -1,7 +1,7 @@
 [
   {
     "emphasis_id": 1,
-    "name": "Math",
+    "name": "Mathematics",
     "catalog_year": "2025-2026",
     "min_credits": 12,
     "description": "12 credits of math beyond what is already used elsewhere in the CSCE degree plan.",
@@ -79,7 +79,7 @@
   },
   {
     "emphasis_id": 6,
-    "name": "Game",
+    "name": "Game Design and Development",
     "catalog_year": "2025-2026",
     "min_credits": 12,
     "description": "12 hours from the approved non-CSCE Game minor course list.",

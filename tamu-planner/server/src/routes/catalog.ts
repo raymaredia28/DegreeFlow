@@ -174,6 +174,7 @@ catalogRouter.post("/api/requirements/evaluate-local", async (req, res, next) =>
       minorId = null,
       hasHsLanguage = false,
       hasSabrCourse = false,
+      isTransferStudent = false,
     } = req.body || {};
 
     const requirementSets = await loadJson("requirements.json");
@@ -324,6 +325,7 @@ catalogRouter.post("/api/requirements/evaluate-local", async (req, res, next) =>
               emphasisCourseIds: new Set<number>(),
               hasHsLanguage: Boolean(hasHsLanguage),
               hasSabrCourse: Boolean(hasSabrCourse),
+              isTransferStudent: Boolean(isTransferStudent),
             });
             collectUsedCodes(minorEval).forEach((code) => externallyAppliedCodes.add(code));
           }
@@ -342,6 +344,7 @@ catalogRouter.post("/api/requirements/evaluate-local", async (req, res, next) =>
               emphasisCourseIds,
               hasHsLanguage: Boolean(hasHsLanguage),
               hasSabrCourse: Boolean(hasSabrCourse),
+              isTransferStudent: Boolean(isTransferStudent),
             });
             collectUsedCodes(emphasisEval).forEach((code) => externallyAppliedCodes.add(code));
           }
@@ -357,6 +360,7 @@ catalogRouter.post("/api/requirements/evaluate-local", async (req, res, next) =>
       emphasisCourseIds,
       hasHsLanguage: Boolean(hasHsLanguage),
       hasSabrCourse: Boolean(hasSabrCourse),
+      isTransferStudent: Boolean(isTransferStudent),
       externallyAppliedCodes: externallyAppliedCodeList as any,
     });
 

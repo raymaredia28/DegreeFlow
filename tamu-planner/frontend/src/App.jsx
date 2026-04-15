@@ -1137,6 +1137,7 @@ function App() {
   const [selectedMinor, setSelectedMinor] = useState('None');
   const [hasHsLanguage, setHasHsLanguage] = useState(false);
   const [hasSabrCourse, setHasSabrCourse] = useState(false);
+  const [fyexOverride, setFyexOverride] = useState(false);
   const [studentId, setStudentId] = useState(() => localStorage.getItem('studentId') || '');
   const AUTH_STORAGE_KEY = 'tamuPlannerAuthUser';
   const AUTH_TOKEN_STORAGE_KEY = 'tamuPlannerAuthToken';
@@ -1413,7 +1414,8 @@ function App() {
           selectedEmphasis,
           selectedMinor,
           hasHsLanguage,
-          hasSabrCourse
+          hasSabrCourse,
+          fyexOverride
         })
       });
 
@@ -1434,6 +1436,7 @@ function App() {
     selectedMinor,
     hasHsLanguage,
     hasSabrCourse,
+    fyexOverride,
     saveTranscriptToStorage,
     authHeaders
   ]);
@@ -1462,6 +1465,7 @@ function App() {
           selectedMinor,
           hasHsLanguage,
           hasSabrCourse,
+          fyexOverride,
           savedEvaluation: {
             degreeResult,
             requirementsResult,
@@ -1494,6 +1498,7 @@ function App() {
     selectedMinor,
     hasHsLanguage,
     hasSabrCourse,
+    fyexOverride,
     degreeResult,
     requirementsResult,
     minorResult,
@@ -1568,6 +1573,9 @@ function App() {
         }
         if (data.planner.hasSabrCourse != null) {
           setHasSabrCourse(data.planner.hasSabrCourse);
+        }
+        if (data.planner.fyexOverride != null) {
+          setFyexOverride(data.planner.fyexOverride);
         }
         if (data.planner.savedEvaluation) {
           const ev = data.planner.savedEvaluation;
@@ -1889,6 +1897,9 @@ function App() {
           )?.minor_id || null
           : null;
 
+      // Auto-detect transfer student: any course flagged as transfer credit
+      const isTransferStudent = Array.from(combined.values()).some((c) => c.transfer === true);
+
       // Degree-level evaluation — pass degreeEmphasisId so the backend can
       // populate emphasisCourseIds for the emphasisCredits sub-rule in
       // Supporting Coursework without switching to the emphasis requirement set.
@@ -1900,7 +1911,8 @@ function App() {
         minorId: null,
         courses: Array.from(combined.values()),
         hasHsLanguage,
-        hasSabrCourse
+        hasSabrCourse,
+        isTransferStudent
       };
 
       //console.log('Sending degree evaluation payload', degreePayload);
@@ -1938,7 +1950,8 @@ function App() {
         minorId: selectedMinorId,
         courses: Array.from(combined.values()),
         hasHsLanguage,
-        hasSabrCourse
+        hasSabrCourse,
+        isTransferStudent
       };
 
       const res = await fetch(`${API_BASE}/api/requirements/evaluate-local`, {
@@ -4324,7 +4337,10 @@ Now answer the student's question using only this context.`
           {reqError && <p className="text-sm text-red-600 mb-2">{reqError}</p>}
           {reqWarning && !reqError && <p className="text-sm text-amber-700 mb-2">{reqWarning}</p>}
           {degreeResult ? (() => {
-            const allGroups = degreeResult.groups || [];
+            const isFyexGroup = (g) => g.name?.startsWith('First Year Experience');
+            const allGroups = (degreeResult.groups || []).map((g) =>
+              isFyexGroup(g) && fyexOverride ? { ...g, satisfied: true, missing: [] } : g
+            );
             const satisfiedGroups = allGroups.filter((g) => g.satisfied);
             const unsatisfiedGroups = allGroups.filter((g) => !g.satisfied);
             const totalSatisfied = satisfiedGroups.length;
@@ -4343,7 +4359,8 @@ Now answer the student's question using only this context.`
                 ? `${earned} of ${required} credits counted${plannedCredits > 0 ? `, ${plannedCredits} planned` : ''}${exceeded ? `, ${extraCredits} extra` : ''}`
                 : (group.satisfied ? 'Satisfied' : 'Not satisfied');
               const hasOverflow = group.overflowCourses?.length > 0;
-              const hasDetails = (group.missing?.length > 0) || (group.usedCourses?.length > 0) || hasOverflow;
+              const isFyex = isFyexGroup(group);
+              const hasDetails = (group.missing?.length > 0) || (group.usedCourses?.length > 0) || hasOverflow || isFyex;
 
               return (
                 <details key={group.name} className="rounded border border-gray-200 group">
@@ -4442,11 +4459,27 @@ Now answer the student's question using only this context.`
                         <p className="text-xs text-blue-600">Overflow: {group.overflowCourses.join(', ')}</p>
                       )}
                       {group.missing?.length > 0 && (
-                        <p className="text-xs text-red-600">Missing: {group.missing.join(', ')}</p>
+                        <div>
+                          <p className="text-xs font-medium text-red-600">Still needed:</p>
+                          <ul className="text-xs text-red-600 list-disc ml-4 mt-0.5 space-y-0.5">
+                            {group.missing.map((m, i) => <li key={i}>{m}</li>)}
+                          </ul>
+                        </div>
                       )}
                       {group.warnings?.length > 0 && group.warnings.map((w, i) => (
                         <p key={i} className="text-xs text-amber-600">{w}</p>
                       ))}
+                      {isFyex && (
+                        <label className="flex items-center gap-2 mt-1 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={fyexOverride}
+                            onChange={(e) => setFyexOverride(e.target.checked)}
+                            className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                          />
+                          <span className="text-xs text-gray-600">Mark as completed (manual override)</span>
+                        </label>
+                      )}
                     </div>
                   )}
                 </details>
@@ -4667,7 +4700,12 @@ Now answer the student's question using only this context.`
                         <p className="text-xs text-blue-600">Overflow: {group.overflowCourses.join(', ')}</p>
                       )}
                       {group.missing?.length > 0 && (
-                        <p className="text-xs text-red-600">Missing: {group.missing.join(', ')}</p>
+                        <div>
+                          <p className="text-xs font-medium text-red-600">Still needed:</p>
+                          <ul className="text-xs text-red-600 list-disc ml-4 mt-0.5 space-y-0.5">
+                            {group.missing.map((m, i) => <li key={i}>{m}</li>)}
+                          </ul>
+                        </div>
                       )}
                       {group.warnings?.length > 0 && group.warnings.map((w, i) => (
                         <p key={i} className="text-xs text-amber-600">{w}</p>

@@ -432,6 +432,18 @@ details[open] > summary .details-chevron {
 .dark .hover\:text-\[\#500000\]:hover {
   color: #f1a0a0 !important;
 }
+/* Separator pipe in difficulty badge row */
+.dark .text-gray-300 {
+  color: #475569 !important;
+}
+/* Typing-dots and other small gray indicators */
+.dark .bg-gray-400 {
+  background-color: #64748b !important;
+}
+/* Toast notification default background */
+.dark .bg-gray-800 {
+  background-color: #1e293b !important;
+}
 
 /* ─── SVG flowchart: rect fill overrides (inline fill= attributes) ────────── */
 /* The class-based .fill-[...] rules don't reach inline SVG fill= attributes;
@@ -450,6 +462,20 @@ details[open] > summary .details-chevron {
 /* Subtitle / label text */
 .dark svg text[fill="#6b7280"] { fill: #94a3b8 !important; }   /* co/prereq caption */
 .dark svg text[fill="#374151"] { fill: #cbd5e1 !important; }   /* "Target course" label */
+
+/* ─── Prerequisite flowchart: SVG element dark mode additions ───────────── */
+/* Locked node rects (white fill → dark slate) */
+.dark svg rect[fill="#ffffff"] { fill: #334155 !important; }
+/* Group label background rects (light gray → dark surface) */
+.dark svg rect[fill="#d1d5db"] { fill: #3b4a63 !important; }
+/* Node outline strokes (near-black → visible mid-tone) */
+.dark svg rect[stroke="#111827"] { stroke: #64748b !important; }
+/* Edge lines (near-black → visible mid-tone) */
+.dark svg line[stroke="#111827"] { stroke: #64748b !important; }
+/* Arrow marker paths (near-black → visible mid-tone) */
+.dark svg path[fill="#111827"] { fill: #94a3b8 !important; }
+/* tspan text inside group label <text> elements */
+.dark svg tspan[fill="#111827"] { fill: #e2e8f0 !important; }
 
 /* ─── Scrollbar styling ─────────────────────────────────────────────────── */
 .dark ::-webkit-scrollbar {
