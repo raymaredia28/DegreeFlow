@@ -80,13 +80,12 @@ const run = async () => {
     assert.ok(!result.groups[0].satisfied, 'Math emphasis should fail with insufficient 400-level/credits');
   });
 
-  // Math Minor example should fail (only 13 credits)
+  // Math Minor should fail when pool credits < 9 (only MATH 251 + MATH 412 = 6 credits in pool)
   tests.push(async () => {
     const req = await loadReqSet('Minor - Mathematics');
     const studentCourses = [
       makeCourse('MATH 148', 4),
       makeCourse('MATH 251', 3),
-      makeCourse('MATH 308', 3),
       makeCourse('MATH 412', 3)
     ];
     const result = evaluateRequirements({
@@ -94,7 +93,7 @@ const run = async () => {
       studentCourses,
       emphasisCourseIds: new Set()
     });
-    assert.ok(!result.groups[0].satisfied, 'Math minor should fail when under 16 credits');
+    assert.ok(!result.groups[0].satisfied, 'Math minor should fail when pool has insufficient credits (6 < 9)');
   });
 
   // Math Minor should pass with 16 credits and 1+ 400-level

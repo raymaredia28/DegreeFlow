@@ -1630,8 +1630,12 @@
       {
         "name": "STEM Emphasis (12 credits)",
         "rules": {
-          "manual": true,
-          "note": "12 upper-level credits from a STEM department (service courses excluded, no double counting). Add explicit course list or tags to enforce."
+          "items": [
+            {
+              "emphasisCredits": 12,
+              "note": "Mark upper-level STEM courses as 'Count toward emphasis' in your Academic Record"
+            }
+          ]
         }
       }
     ]
@@ -1643,8 +1647,12 @@
       {
         "name": "Liberal Arts/Social Sciences Emphasis (12 credits)",
         "rules": {
-          "manual": true,
-          "note": "12 upper-level credits with clear computing alignment (e.g., digital humanities, technical writing, computer music). Add allowed course list to enforce."
+          "items": [
+            {
+              "emphasisCredits": 12,
+              "note": "Mark Liberal Arts or Social Sciences courses as 'Count toward emphasis' in your Academic Record"
+            }
+          ]
         }
       }
     ]
@@ -1686,6 +1694,9 @@
                 "MATH 221",
                 "MATH 251",
                 "MATH 253",
+                "MATH 302",
+                "MATH 304",
+                "MATH 308",
                 "MATH 401",
                 "MATH 407",
                 "MATH 409",

@@ -4459,10 +4459,40 @@ Now answer the student's question using only this context.`
                         <p className="text-xs text-blue-600">Overflow: {group.overflowCourses.join(', ')}</p>
                       )}
                       {group.missing?.length > 0 && (
-                        <div>
-                          <p className="text-xs font-medium text-red-600">Still needed:</p>
-                          <ul className="text-xs text-red-600 list-disc ml-4 mt-0.5 space-y-0.5">
-                            {group.missing.map((m, i) => <li key={i}>{m}</li>)}
+                        <div className="text-xs text-red-600 mt-1">
+                          <p className="font-medium mb-0.5">Still needed:</p>
+                          <ul className="space-y-0.5">
+                            {group.missing.map((item, i) => {
+                              const codeMatch = String(item).trim().match(/^([A-Z]{2,6}\s+\d{3,4}[A-Z]?)$/);
+                              if (codeMatch) {
+                                const code = codeMatch[1];
+                                const meta = COURSES[code];
+                                return (
+                                  <li key={i}>
+                                    • <span className="font-semibold">{code}</span>
+                                    {meta?.title ? ` — ${meta.title}` : ''}
+                                    {meta?.credits != null ? ` (${meta.credits} credits)` : ''}
+                                  </li>
+                                );
+                              }
+                              if (/^Need \d+ (credits?|courses?) from (pool|tag )/.test(String(item))) {
+                                const usedSet = new Set(group.usedCourses || []);
+                                const examples = (group.recommendationBuckets || [])
+                                  .filter(b => b.type === 'pool' || b.type === 'anyOf')
+                                  .flatMap(b => (b.codes || []).filter(c => !usedSet.has(c)))
+                                  .filter((c, idx, arr) => arr.indexOf(c) === idx)
+                                  .slice(0, 4);
+                                return (
+                                  <li key={i}>
+                                    • {item}
+                                    {examples.length > 0 && (
+                                      <span className="text-red-400"> (e.g., {examples.join(', ')})</span>
+                                    )}
+                                  </li>
+                                );
+                              }
+                              return <li key={i}>• {item}</li>;
+                            })}
                           </ul>
                         </div>
                       )}
@@ -4700,10 +4730,40 @@ Now answer the student's question using only this context.`
                         <p className="text-xs text-blue-600">Overflow: {group.overflowCourses.join(', ')}</p>
                       )}
                       {group.missing?.length > 0 && (
-                        <div>
-                          <p className="text-xs font-medium text-red-600">Still needed:</p>
-                          <ul className="text-xs text-red-600 list-disc ml-4 mt-0.5 space-y-0.5">
-                            {group.missing.map((m, i) => <li key={i}>{m}</li>)}
+                        <div className="text-xs text-red-600 mt-1">
+                          <p className="font-medium mb-0.5">Still needed:</p>
+                          <ul className="space-y-0.5">
+                            {group.missing.map((item, i) => {
+                              const codeMatch = String(item).trim().match(/^([A-Z]{2,6}\s+\d{3,4}[A-Z]?)$/);
+                              if (codeMatch) {
+                                const code = codeMatch[1];
+                                const meta = COURSES[code];
+                                return (
+                                  <li key={i}>
+                                    • <span className="font-semibold">{code}</span>
+                                    {meta?.title ? ` — ${meta.title}` : ''}
+                                    {meta?.credits != null ? ` (${meta.credits} credits)` : ''}
+                                  </li>
+                                );
+                              }
+                              if (/^Need \d+ (credits?|courses?) from (pool|tag )/.test(String(item))) {
+                                const usedSet = new Set(group.usedCourses || []);
+                                const examples = (group.recommendationBuckets || [])
+                                  .filter(b => b.type === 'pool' || b.type === 'anyOf')
+                                  .flatMap(b => (b.codes || []).filter(c => !usedSet.has(c)))
+                                  .filter((c, idx, arr) => arr.indexOf(c) === idx)
+                                  .slice(0, 4);
+                                return (
+                                  <li key={i}>
+                                    • {item}
+                                    {examples.length > 0 && (
+                                      <span className="text-red-400"> (e.g., {examples.join(', ')})</span>
+                                    )}
+                                  </li>
+                                );
+                              }
+                              return <li key={i}>• {item}</li>;
+                            })}
                           </ul>
                         </div>
                       )}
@@ -4895,7 +4955,42 @@ Now answer the student's question using only this context.`
                           <p className="text-xs text-blue-600">Overflow: {group.overflowCourses.join(', ')}</p>
                         )}
                         {group.missing?.length > 0 && (
-                          <p className="text-xs text-red-600">Missing: {group.missing.join(', ')}</p>
+                          <div className="text-xs text-red-600 mt-1">
+                            <p className="font-medium mb-0.5">Still needed:</p>
+                            <ul className="space-y-0.5">
+                              {group.missing.map((item, i) => {
+                                const codeMatch = String(item).trim().match(/^([A-Z]{2,6}\s+\d{3,4}[A-Z]?)$/);
+                                if (codeMatch) {
+                                  const code = codeMatch[1];
+                                  const meta = COURSES[code];
+                                  return (
+                                    <li key={i}>
+                                      • <span className="font-semibold">{code}</span>
+                                      {meta?.title ? ` — ${meta.title}` : ''}
+                                      {meta?.credits != null ? ` (${meta.credits} credits)` : ''}
+                                    </li>
+                                  );
+                                }
+                                if (/^Need \d+ (credits?|courses?) from (pool|tag )/.test(String(item))) {
+                                  const usedSet = new Set(group.usedCourses || []);
+                                  const examples = (group.recommendationBuckets || [])
+                                    .filter(b => b.type === 'pool' || b.type === 'anyOf')
+                                    .flatMap(b => (b.codes || []).filter(c => !usedSet.has(c)))
+                                    .filter((c, idx, arr) => arr.indexOf(c) === idx)
+                                    .slice(0, 4);
+                                  return (
+                                    <li key={i}>
+                                      • {item}
+                                      {examples.length > 0 && (
+                                        <span className="text-red-400"> (e.g., {examples.join(', ')})</span>
+                                      )}
+                                    </li>
+                                  );
+                                }
+                                return <li key={i}>• {item}</li>;
+                              })}
+                            </ul>
+                          </div>
                         )}
                       </div>
                     )}
