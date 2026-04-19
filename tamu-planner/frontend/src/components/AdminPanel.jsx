@@ -44,13 +44,13 @@ function CourseFormModal({ course, onSave, onClose, saving }) {
     });
   };
 
-  const inputCls = 'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#500000] focus:border-transparent outline-none text-sm';
-  const labelCls = 'block text-sm font-medium text-gray-700 mb-1';
+  const inputCls = 'w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#500000] focus:border-transparent outline-none text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100';
+  const labelCls = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b dark:border-gray-700">
           <h3 className="text-lg font-semibold text-gray-900">{isEdit ? 'Edit Course' : 'Add Course'}</h3>
           <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X size={20} /></button>
         </div>
@@ -111,18 +111,18 @@ function DeleteConfirmModal({ course, onConfirm, onClose, deleting }) {
   const code = `${course.primary_subject} ${course.primary_number}`;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
         <div className="px-6 py-5">
           <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 bg-red-100 rounded-full"><AlertTriangle size={20} className="text-red-600" /></div>
-            <h3 className="text-lg font-semibold text-gray-900">Delete Course</h3>
+            <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-full"><AlertTriangle size={20} className="text-red-600 dark:text-red-400" /></div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Delete Course</h3>
           </div>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-gray-600 dark:text-gray-300">
             Are you sure you want to delete <span className="font-semibold">{code} &mdash; {course.title}</span>? This action cannot be undone.
           </p>
         </div>
-        <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50 rounded-b-xl">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+        <div className="flex justify-end gap-3 px-6 py-4 border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 rounded-b-xl">
+          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600">
             Cancel
           </button>
           <button
@@ -276,12 +276,12 @@ export function AdminPanel({ apiBase, authHeaders, onCatalogChange }) {
           placeholder="Search by course code or title..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#500000] focus:border-transparent outline-none text-sm"
+          className="w-full pl-10 pr-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#500000] focus:border-transparent outline-none text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500"
         />
       </div>
 
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-400">
           {error}
         </div>
       )}
@@ -292,15 +292,15 @@ export function AdminPanel({ apiBase, authHeaders, onCatalogChange }) {
         </div>
       ) : (
         <>
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b bg-gray-50">
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Code</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Title</th>
-                    <th className="text-center px-4 py-3 font-medium text-gray-600">Credits</th>
-                    <th className="text-right px-4 py-3 font-medium text-gray-600">Actions</th>
+                  <tr className="border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40">
+                    <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Code</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Title</th>
+                    <th className="text-center px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Credits</th>
+                    <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -312,12 +312,12 @@ export function AdminPanel({ apiBase, authHeaders, onCatalogChange }) {
                     </tr>
                   ) : (
                     paged.map((course) => (
-                      <tr key={course.course_id} className="border-b last:border-b-0 hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">
+                      <tr key={course.course_id} className="border-b dark:border-gray-700 last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                        <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">
                           {course.primary_subject} {course.primary_number}
                         </td>
-                        <td className="px-4 py-3 text-gray-700">{course.title}</td>
-                        <td className="px-4 py-3 text-center text-gray-600">{formatCredits(course.credits)}</td>
+                        <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{course.title}</td>
+                        <td className="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{formatCredits(course.credits)}</td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
                             <button
@@ -353,14 +353,14 @@ export function AdminPanel({ apiBase, authHeaders, onCatalogChange }) {
                 <button
                   onClick={() => setPage((p) => Math.max(0, p - 1))}
                   disabled={page === 0}
-                  className="px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed dark:text-gray-300"
                 >
                   Previous
                 </button>
                 <button
                   onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                   disabled={page >= totalPages - 1}
-                  className="px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed dark:text-gray-300"
                 >
                   Next
                 </button>
