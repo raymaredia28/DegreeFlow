@@ -22,7 +22,8 @@ import {
   Loader2,
   RefreshCw,
   Info,
-  Settings
+  Settings,
+  Trash2
 } from 'lucide-react';
 
 import { computeEvaluationSignature } from './utils/evaluationFreshness.mjs';
@@ -3744,10 +3745,53 @@ Now answer the student's question using only this context.`
       delete next[nk];
       return next;
     });
+    setExcludedFromEval((prev) => {
+      const next = new Set(prev);
+      next.delete(nk);
+      return next;
+    });
     setSemesterPlans((prev) => ({
       ...prev,
-      [semester]: (prev[semester] || []).filter((c) => c !== courseCode)
+      [semester]: (prev[semester] || []).filter((c) => normalizeCode(c) !== nk)
     }));
+    setPlannerDirty(true);
+  };
+
+  /** Remove a course from the transcript for a given term (planner + academic record). */
+  const removeCourseFromTranscriptRecord = (termLabel, courseCode) => {
+    const nk = normalizeCode(courseCode);
+    if (!termLabel || !nk) return;
+    const filterCourses = (courses) =>
+      (courses || []).filter((c) => normalizeCode(c?.code) !== nk);
+    const updater = (prevTerms) =>
+      (prevTerms || []).map((term) => {
+        if (term.label !== termLabel) return term;
+        return { ...term, courses: filterCourses(term.courses) };
+      });
+    setTranscriptTerms((prevT) => {
+      const nextT = updater(prevT);
+      setReviewTerms((prevR) => updater(prevR && prevR.length > 0 ? prevR : prevT));
+      return nextT;
+    });
+    setExcludedFromEval((prev) => {
+      const next = new Set(prev);
+      next.delete(nk);
+      return next;
+    });
+    setEvaluationPriorityByCode((prev) => {
+      if (!nk || !prev[nk]) return prev;
+      const next = { ...prev };
+      delete next[nk];
+      return next;
+    });
+    setExcludedTransferCourses((prev) => {
+      const next = new Set(prev);
+      next.delete(courseCode);
+      next.delete(nk);
+      return next;
+    });
+    setIsTranscriptDirty(true);
+    setPlannerDirty(true);
   };
 
   const confirmPendingChatActions = () => {
@@ -5277,6 +5321,25 @@ Now answer the student's question using only this context.`
                                     >
                                       <Edit2 className="w-3 h-3" />
                                     </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (
+                                          !window.confirm(
+                                            `Remove ${course.code} from ${term.label}? Click "Update Record" to save.`
+                                          )
+                                        ) {
+                                          return;
+                                        }
+                                        removeCourseFromTranscriptRecord(term.label, course.code);
+                                        setMoveMenuCourseKey(null);
+                                      }}
+                                      className="text-gray-400 hover:text-red-600 transition-colors"
+                                      title="Remove course from record"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
                                     <div className="relative">
                                       <button
                                         onClick={(e) => {
@@ -6023,6 +6086,8 @@ Now answer the student's question using only this context.`
                               </div>
                               {course.type === 'planned' && (
                                 <button
+                                  type="button"
+                                  title="Remove from plan"
                                   onClick={() => {
                                     if (!isEditable) return;
                                     removeCourseFromSemester(course.code, term);
@@ -6035,6 +6100,26 @@ Now answer the student's question using only this context.`
                                   disabled={!isEditable}
                                 >
                                   <X className="w-4 h-4" />
+                                </button>
+                              )}
+                              {course.type === 'transcript' && (
+                                <button
+                                  type="button"
+                                  title="Remove from academic record"
+                                  onClick={() => {
+                                    const nk = normalizeCode(course.code);
+                                    if (
+                                      !window.confirm(
+                                        `Remove ${nk} from ${term} on your academic record? Click "Update Record" in Academic Record to save.`
+                                      )
+                                    ) {
+                                      return;
+                                    }
+                                    removeCourseFromTranscriptRecord(term, course.code);
+                                  }}
+                                  className="shrink-0 p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50"
+                                >
+                                  <Trash2 className="w-4 h-4" />
                                 </button>
                               )}
                             </div>

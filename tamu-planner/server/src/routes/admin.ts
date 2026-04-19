@@ -7,12 +7,20 @@ export const adminRouter = Router();
 
 adminRouter.use("/admin", authenticate, requireAdmin);
 
+const ADMIN_SUBJECTS = ["CSCE", "CPEN", "ECEN"] as const;
+
 const courseCreateSchema = z.object({
   department: z.union([
     z.object({ code: z.string(), name: z.string() }),
     z.string(),
   ]),
-  primary_subject: z.string().min(1),
+  primary_subject: z
+    .string()
+    .min(1)
+    .transform((s) => s.toUpperCase())
+    .refine((s) => (ADMIN_SUBJECTS as readonly string[]).includes(s), {
+      message: `primary_subject must be one of ${ADMIN_SUBJECTS.join(", ")}`,
+    }),
   primary_number: z.string().min(1),
   title: z.string().min(1),
   credits: z.union([
