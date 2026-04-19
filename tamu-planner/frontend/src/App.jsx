@@ -10,6 +10,7 @@ import {
   Calendar,
   AlertTriangle,
   CheckCircle,
+  MessageCircle,
   Book,
   Plus,
   X,
@@ -2564,53 +2565,122 @@ function App() {
     setTranscriptError('');
     setTranscriptLoading(true);
 
-    setTranscriptLoadingMessage('Reading PDF text…');
-
     try {
-      let rawLines = await extractPdfLines(file);
-      if (shouldForceOcr(rawLines) || !hasTermInLines(rawLines)) {
-        rawLines = await extractPdfOcrLines(file, setTranscriptLoadingMessage);
-      }
-      const lines = preprocessTranscriptLines(rawLines);
+      let linesCache = null;
+      let dataBase64Cache = null;
 
-      setTranscriptLoadingMessage('Detecting document type…');
-      const detectResp = await fetch(`${API_BASE}/storage/detect-document-type`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lines })
-      });
-      const detect = await detectResp.json().catch(() => ({}));
-      const detectedType = detect?.documentType || 'unknown';
-      setUploadedDocumentType(detectedType);
+      const getLines = async () => {
+        if (Array.isArray(linesCache)) return linesCache;
+        setTranscriptLoadingMessage('Reading PDF text…');
+        let rawLines = await extractPdfLines(file);
+        if (shouldForceOcr(rawLines) || !hasTermInLines(rawLines)) {
+          rawLines = await extractPdfOcrLines(file, setTranscriptLoadingMessage);
+        }
+        linesCache = preprocessTranscriptLines(rawLines);
+        return linesCache;
+      };
 
-      const dataBase64 = await fileToBase64(file);
+      const getDataBase64 = async () => {
+        if (typeof dataBase64Cache === 'string' && dataBase64Cache.length > 0) {
+          return dataBase64Cache;
+        }
+        dataBase64Cache = await fileToBase64(file);
+        return dataBase64Cache;
+      };
 
-      let result;
-      if (detectedType === 'degree-evaluation') {
+      const parseAsDegreeEvaluation = async () => {
+        let lines = [];
+        try {
+          lines = await getLines();
+        } catch {
+          return {
+            ok: false,
+            error: 'Unable to read this PDF for degree evaluation parsing.'
+          };
+        }
         setTranscriptLoadingMessage('Extracting courses from degree evaluation…');
         const response = await fetch(`${API_BASE}/storage/parse-degree-evaluation`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ lines })
         });
-        result = await response.json().catch(() => ({}));
-        if (!response.ok || !Array.isArray(result?.terms)) {
-          setTranscriptError(result?.error || 'Unable to extract courses from this degree evaluation PDF.');
-          return;
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !Array.isArray(payload?.terms)) {
+          return {
+            ok: false,
+            error: payload?.error || 'Unable to extract courses from this degree evaluation PDF.'
+          };
         }
-      } else {
+        return { ok: true, payload };
+      };
+
+      const parseAsTranscript = async () => {
+        const dataBase64 = await getDataBase64();
         setTranscriptLoadingMessage('Uploading transcript…');
         const response = await fetch(`${API_BASE}/storage/parse-transcript`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ fileName: file.name, dataBase64 })
         });
-        result = await response.json();
-        if (!response.ok || !Array.isArray(result?.terms)) {
-          setTranscriptError(result?.error || 'Unable to parse this transcript.');
-          return;
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !Array.isArray(payload?.terms)) {
+          return {
+            ok: false,
+            error: payload?.error || 'Unable to parse this transcript.'
+          };
         }
+        return { ok: true, payload };
+      };
+
+      let detectedType = 'unknown';
+      try {
+        const lines = await getLines();
+        setTranscriptLoadingMessage('Detecting document type…');
+        const detectResp = await fetch(`${API_BASE}/storage/detect-document-type`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lines })
+        });
+        const detect = await detectResp.json().catch(() => ({}));
+        detectedType = detect?.documentType || 'unknown';
+      } catch {
+        detectedType = 'unknown';
       }
+      setUploadedDocumentType(detectedType);
+
+      const parseOrder =
+        detectedType === 'degree-evaluation'
+          ? ['degree-evaluation', 'transcript']
+          : detectedType === 'transcript'
+            ? ['transcript', 'degree-evaluation']
+            : ['transcript', 'degree-evaluation'];
+
+      let result = null;
+      let parsedAsType = '';
+      let lastParseError = '';
+      for (const parseType of parseOrder) {
+        const attempt =
+          parseType === 'degree-evaluation'
+            ? await parseAsDegreeEvaluation()
+            : await parseAsTranscript();
+        if (attempt.ok) {
+          result = attempt.payload;
+          parsedAsType = parseType;
+          break;
+        }
+        lastParseError = attempt.error || lastParseError;
+      }
+
+      if (!result || !Array.isArray(result?.terms)) {
+        setTranscriptError(
+          lastParseError ||
+            'Unable to parse this PDF. Please upload again and choose the correct PDF type.'
+        );
+        return;
+      }
+
+      setUploadedDocumentType(parsedAsType || detectedType);
+
       if (!result.terms || result.terms.length === 0) {
         setTranscriptError('No terms/courses detected. Please try a different file.');
         return;
@@ -2626,10 +2696,10 @@ function App() {
       setIsTranscriptDirty(false);
       setShowTranscriptReview(false);
       setEvaluationMode('computed');
-      if (detectedType === 'degree-evaluation') {
+      if (parsedAsType === 'degree-evaluation') {
         showToast('Degree evaluation courses extracted. Run Generate to evaluate.', 'success');
       }
-      if (detectedType === 'unknown') {
+      if (detectedType === 'unknown' && parsedAsType === 'transcript') {
         setReqWarning('Document type detection uncertain. Parsed as transcript using Python parser.');
       }
     } catch (err) {
@@ -5007,21 +5077,25 @@ Now answer the student's question using only this context.`
 
         {/* Action buttons */}
         <div className="flex flex-wrap items-center gap-2 mb-2">
-          <label className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-100 cursor-pointer inline-flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => uploadInputRef.current?.click()}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-100 cursor-pointer inline-flex items-center gap-1.5"
+          >
             <Plus className="w-4 h-4" />
-            <input
-              ref={uploadInputRef}
-              type="file"
-              accept="application/pdf"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) queueTranscriptUpload(file);
-                e.target.value = '';
-              }}
-            />
-            Upload PDF
-          </label>
+            Upload Unofficial Transcript / Degree Evaluation PDF
+          </button>
+          <input
+            ref={uploadInputRef}
+            type="file"
+            accept="application/pdf"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) queueTranscriptUpload(file);
+              e.target.value = '';
+            }}
+          />
           <div className="w-px h-5 bg-gray-300" />
           <button
             type="button"
@@ -7462,7 +7536,7 @@ Now answer the student's question using only this context.`
       <ExportDecisionModal />
 
       {!isFlowFullscreen && (
-        <div className="fixed right-0 bottom-6 z-50 flex items-end pointer-events-none">
+        <div className="fixed right-6 bottom-6 z-50 flex items-end pointer-events-none">
           {isChatOpen && (
           <div
             className="mr-3 rounded-2xl border border-gray-200 bg-white shadow-xl flex relative pointer-events-auto"
@@ -7636,7 +7710,7 @@ Now answer the student's question using only this context.`
                           {
                             id: `assistant-upload-${Date.now()}`,
                             role: 'assistant',
-                            text: `I can parse ${file.name}. I will auto-detect transcript vs degree evaluation after you confirm the consent dialog.`
+                            text: `I can parse ${file.name} after you confirm the consent dialog.`
                           }
                         ]);
                       }
@@ -7683,10 +7757,23 @@ Now answer the student's question using only this context.`
           <button
             type="button"
             onClick={() => setIsChatOpen((prev) => !prev)}
-            className="pointer-events-auto flex items-center justify-center h-14 w-7 rounded-l-full bg-[#500000] text-white shadow-lg hover:bg-[#3d0000]"
-            aria-label="Toggle chat assistant"
+            className={`pointer-events-auto flex flex-col items-center justify-center h-24 w-24 rounded-full border-2 border-white text-white shadow-xl transition-all ${
+              isChatOpen ? 'bg-[#3d0000]' : 'bg-[#500000] hover:bg-[#3d0000]'
+            }`}
+            aria-label={isChatOpen ? 'Close chat assistant' : 'Open chat assistant'}
+            title={isChatOpen ? 'Close chat' : 'Open chat'}
           >
-            {isChatOpen ? '›' : '‹'}
+            {isChatOpen ? (
+              <>
+                <X className="h-7 w-7" />
+                <span className="mt-1 text-xs font-semibold leading-none">Close</span>
+              </>
+            ) : (
+              <>
+                <MessageCircle className="h-7 w-7" />
+                <span className="mt-1 text-xs font-semibold leading-none">Chat</span>
+              </>
+            )}
           </button>
         </div>
       )}
