@@ -14,7 +14,7 @@ const loadReqSet = async (name) => {
   return set;
 };
 
-const makeCourse = (code, credits, grade = 'A') => {
+const makeCourse = (code, credits, grade = 'A', opts = {}) => {
   const [department, number] = code.split(' ');
   return {
     course: {
@@ -25,7 +25,8 @@ const makeCourse = (code, credits, grade = 'A') => {
       course_id: -1
     },
     grade,
-    status: 'completed'
+    status: 'completed',
+    ...(opts.evaluationPriority === true ? { evaluationPriority: true } : {})
   };
 };
 
@@ -757,6 +758,41 @@ const run = async () => {
     const group = result.groups[0];
     assert.ok(group.satisfied, 'Cybersecurity emphasis should be satisfied');
     assert.ok(group.overflowCourses.length > 0, 'Should have overflow courses when exceeding minCredits');
+    const wnaCodes = new Set((result.workNotApplied || []).map((e) => e.code));
+    for (const code of group.overflowCourses) {
+      assert.ok(wnaCodes.has(code), `Overflow course ${code} should appear in workNotApplied`);
+    }
+    const overlap = group.usedCourses.filter((c) => group.overflowCourses.includes(c));
+    assert.strictEqual(overlap.length, 0, 'usedCourses should not include overflow codes');
+    const entry = (result.workNotApplied || []).find((e) => e.code === group.overflowCourses[0]);
+    assert.ok(
+      entry && String(entry.reason || '').includes('Surplus'),
+      'Work-not-applied entry for overflow should explain surplus toward requirement'
+    );
+  });
+
+  // evaluationPriority flex: prefer flagged courses in applied bucket vs overflow
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Emphasis - Cybersecurity');
+    const studentCourses = [
+      makeCourse('CYBR 484', 3, 'A', { evaluationPriority: true }),
+      makeCourse('ECEN 424', 3),
+      makeCourse('ESET 315', 3),
+      makeCourse('ITSV 308', 3),
+      makeCourse('ESET 269', 3)
+    ];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const group = result.groups[0];
+    assert.ok(group.overflowCourses.length > 0, 'Still have overflow when over min credits');
+    assert.ok(
+      !group.overflowCourses.includes('CYBR 484'),
+      'Priority-marked flex should not be overflowed when other flex can absorb surplus'
+    );
+    assert.ok(group.usedCourses.includes('CYBR 484'), 'Priority flex should remain in usedCourses');
   });
 
   // overflowCourses should be empty when credits match exactly
@@ -948,6 +984,30 @@ const run = async () => {
     const req = await loadReqSet('Minor - Game Design and Development');
     const group = req.groups[0];
     assert.ok(group.name.includes('15'), `Game Minor group should say 15 credits, got: "${group.name}"`);
+  });
+
+  // evaluationPriority: tie-break anyOf toward flagged course
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Degree - Core');
+    const studentCourses = [
+      makeCourse('ENGR 216', 2, 'A'),
+      makeCourse('PHYS 216', 2, 'A', { evaluationPriority: true })
+    ];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    const sup = result.groups.find((g) => g.name.includes('Supporting Coursework'));
+    assert.ok(sup, 'Supporting group exists');
+    assert.ok(
+      sup.usedCourses.includes('PHYS 216'),
+      'PHYS 216 should win anyOf vs ENGR 216 when marked evaluationPriority'
+    );
+    assert.ok(
+      !sup.usedCourses.includes('ENGR 216'),
+      'ENGR 216 should not be used when PHYS is prioritized (same credits)'
+    );
   });
 
   // Run tests
