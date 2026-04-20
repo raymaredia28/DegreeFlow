@@ -223,7 +223,7 @@ const evaluateAnyOf = (anyOf, context, minGrade) => {
       const course = context.courseIndex.get(code);
       if (isCompleted(course, minGrade, context)) {
         const credits = Number(course.credits) || 0;
-        const candidate = { satisfied: true, credits, used: [code] };
+        const candidate = { satisfied: true, credits, used: [course.code] };
         if (anyOfPickIsBetter(candidate, best, context)) {
           best = candidate;
         }
@@ -249,7 +249,11 @@ const evaluateAnyOf = (anyOf, context, minGrade) => {
         const candidate = {
           satisfied: true,
           credits,
-          used: option.allOf.map(normalizeCode)
+          used: option.allOf.map((codeRaw) => {
+            const n = normalizeCode(codeRaw);
+            const c = context.courseIndex.get(n);
+            return c ? c.code : n;
+          })
         };
         if (anyOfPickIsBetter(candidate, best, context)) {
           best = candidate;
@@ -333,7 +337,7 @@ const evaluateCourseRule = (courseCode, context, minGrade) => {
   if (!isCompleted(course, minGrade, context)) {
     return { satisfied: false, credits: 0, missing: [code] };
   }
-  return { satisfied: true, credits: creditValue(course), used: [code] };
+  return { satisfied: true, credits: creditValue(course), used: [course.code] };
 };
 
 const evaluatePool = (poolRule, context, minGrade) => {
