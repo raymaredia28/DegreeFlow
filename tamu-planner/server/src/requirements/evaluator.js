@@ -56,6 +56,7 @@ const normalizeDepartment = (rawDept) => {
 const EQUIVALENT_COURSE_GROUPS = [
   ['CSCE 120', 'CSCE 121'],
   ['CSCE 315', 'CSCE 331'],
+  ['ACCT 209', 'ACCT 229'],
 ];
 
 const EQUIVALENT_MAP = new Map();
@@ -318,7 +319,8 @@ const evaluateTag = (tagRule, context, minGrade) => {
   }
   if (minCount !== null && count < minCount) {
     const remaining = Math.max(0, minCount - count);
-    missing.push(`Need ${remaining} courses from tag ${tag}`);
+    const estimatedCredits = remaining * 3;
+    missing.push(`Need ~${estimatedCredits} more credits from tag ${tag} (${remaining} course${remaining !== 1 ? 's' : ''})`);
   }
   if (maxCount !== null && count > maxCount) missing.push(`Max ${maxCount} courses for tag ${tag}`);
   if (maxCredits !== null && credits > maxCredits) missing.push(`Max ${maxCredits} credits for tag ${tag}`);
@@ -369,7 +371,8 @@ const evaluatePool = (poolRule, context, minGrade) => {
   }
   if (minCount !== null && count < minCount) {
     const remaining = Math.max(0, minCount - count);
-    missing.push(`Need ${remaining} courses from pool`);
+    const estimatedCredits = remaining * 3;
+    missing.push(`Need ~${estimatedCredits} more credits from pool (${remaining} course${remaining !== 1 ? 's' : ''})`);
   }
   if (maxCount !== null && count > maxCount) missing.push(`Max ${maxCount} courses from pool`);
   if (maxCredits !== null && credits > maxCredits) missing.push(`Max ${maxCredits} credits from pool`);
@@ -715,6 +718,21 @@ const computeOverflowCourses = (usedCourses, mandatoryCourses, earnedCredits, re
 };
 
 const summarizeGroup = (name, rules, context, { deriveCredits = false } = {}) => {
+  // Transfer students are automatically exempt from First Year Experience (FYEX/CLEN)
+  if (context.isTransferStudent && name && name.startsWith('First Year Experience')) {
+    return {
+      name,
+      requiredCredits: rules.minCredits ?? null,
+      earnedCredits: 0,
+      satisfied: true,
+      missing: [],
+      usedCourses: [],
+      overflowCourses: [],
+      warnings: ['Satisfied: transfer student exemption'],
+      recommendationBuckets: []
+    };
+  }
+
   if (rules.manual) {
     return {
       name,
@@ -986,6 +1004,7 @@ const evaluateRequirements = ({
   emphasisCourseIds,
   hasHsLanguage,
   hasSabrCourse,
+  isTransferStudent = false,
   externallyAppliedCodes = []
 }) => {
   const courseIndex = buildCourseIndex(studentCourses);
@@ -1007,6 +1026,7 @@ const evaluateRequirements = ({
     emphasisCourseIds,
     hasHsLanguage: Boolean(hasHsLanguage),
     hasSabrCourse: Boolean(hasSabrCourse),
+    isTransferStudent: Boolean(isTransferStudent),
     priorityCodes
   };
 

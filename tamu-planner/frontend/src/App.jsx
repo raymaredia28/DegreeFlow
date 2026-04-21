@@ -23,7 +23,8 @@ import {
   Loader2,
   RefreshCw,
   Info,
-  Settings
+  Settings,
+  Trash2
 } from 'lucide-react';
 
 import { computeEvaluationSignature } from './utils/evaluationFreshness.mjs';
@@ -1138,6 +1139,7 @@ function App() {
   const [selectedMinor, setSelectedMinor] = useState('None');
   const [hasHsLanguage, setHasHsLanguage] = useState(false);
   const [hasSabrCourse, setHasSabrCourse] = useState(false);
+  const [fyexOverride, setFyexOverride] = useState(false);
   const [studentId, setStudentId] = useState(() => localStorage.getItem('studentId') || '');
   const AUTH_STORAGE_KEY = 'tamuPlannerAuthUser';
   const AUTH_TOKEN_STORAGE_KEY = 'tamuPlannerAuthToken';
@@ -1417,6 +1419,7 @@ function App() {
           selectedMinor,
           hasHsLanguage,
           hasSabrCourse,
+          fyexOverride,
           evaluationPriorityByCode
         })
       });
@@ -1438,6 +1441,7 @@ function App() {
     selectedMinor,
     hasHsLanguage,
     hasSabrCourse,
+    fyexOverride,
     evaluationPriorityByCode,
     saveTranscriptToStorage,
     authHeaders
@@ -1467,6 +1471,7 @@ function App() {
           selectedMinor,
           hasHsLanguage,
           hasSabrCourse,
+          fyexOverride,
           evaluationPriorityByCode,
           savedEvaluation: {
             degreeResult,
@@ -1500,6 +1505,7 @@ function App() {
     selectedMinor,
     hasHsLanguage,
     hasSabrCourse,
+    fyexOverride,
     degreeResult,
     requirementsResult,
     minorResult,
@@ -1587,6 +1593,9 @@ function App() {
         }
         if (data.planner.hasSabrCourse != null) {
           setHasSabrCourse(data.planner.hasSabrCourse);
+        }
+        if (data.planner.fyexOverride != null) {
+          setFyexOverride(data.planner.fyexOverride);
         }
         if (data.planner.savedEvaluation) {
           const ev = data.planner.savedEvaluation;
@@ -1915,6 +1924,9 @@ function App() {
           )?.minor_id || null
           : null;
 
+      // Auto-detect transfer student: any course flagged as transfer credit
+      const isTransferStudent = Array.from(combined.values()).some((c) => c.transfer === true);
+
       // Degree-level evaluation — pass degreeEmphasisId so the backend can
       // populate emphasisCourseIds for the emphasisCredits sub-rule in
       // Supporting Coursework without switching to the emphasis requirement set.
@@ -1926,7 +1938,8 @@ function App() {
         minorId: null,
         courses: Array.from(combined.values()),
         hasHsLanguage,
-        hasSabrCourse
+        hasSabrCourse,
+        isTransferStudent
       };
 
       //console.log('Sending degree evaluation payload', degreePayload);
@@ -1964,7 +1977,8 @@ function App() {
         minorId: selectedMinorId,
         courses: Array.from(combined.values()),
         hasHsLanguage,
-        hasSabrCourse
+        hasSabrCourse,
+        isTransferStudent
       };
 
       const res = await fetch(`${API_BASE}/api/requirements/evaluate-local`, {
@@ -3814,10 +3828,53 @@ Now answer the student's question using only this context.`
       delete next[nk];
       return next;
     });
+    setExcludedFromEval((prev) => {
+      const next = new Set(prev);
+      next.delete(nk);
+      return next;
+    });
     setSemesterPlans((prev) => ({
       ...prev,
-      [semester]: (prev[semester] || []).filter((c) => c !== courseCode)
+      [semester]: (prev[semester] || []).filter((c) => normalizeCode(c) !== nk)
     }));
+    setPlannerDirty(true);
+  };
+
+  /** Remove a course from the transcript for a given term (planner + academic record). */
+  const removeCourseFromTranscriptRecord = (termLabel, courseCode) => {
+    const nk = normalizeCode(courseCode);
+    if (!termLabel || !nk) return;
+    const filterCourses = (courses) =>
+      (courses || []).filter((c) => normalizeCode(c?.code) !== nk);
+    const updater = (prevTerms) =>
+      (prevTerms || []).map((term) => {
+        if (term.label !== termLabel) return term;
+        return { ...term, courses: filterCourses(term.courses) };
+      });
+    setTranscriptTerms((prevT) => {
+      const nextT = updater(prevT);
+      setReviewTerms((prevR) => updater(prevR && prevR.length > 0 ? prevR : prevT));
+      return nextT;
+    });
+    setExcludedFromEval((prev) => {
+      const next = new Set(prev);
+      next.delete(nk);
+      return next;
+    });
+    setEvaluationPriorityByCode((prev) => {
+      if (!nk || !prev[nk]) return prev;
+      const next = { ...prev };
+      delete next[nk];
+      return next;
+    });
+    setExcludedTransferCourses((prev) => {
+      const next = new Set(prev);
+      next.delete(courseCode);
+      next.delete(nk);
+      return next;
+    });
+    setIsTranscriptDirty(true);
+    setPlannerDirty(true);
   };
 
   const confirmPendingChatActions = () => {
@@ -4322,7 +4379,7 @@ Now answer the student's question using only this context.`
               <div>
                 <label className="text-sm text-gray-700">Emphasis</label>
                 <select
-                  className="mt-1 w-48 rounded border border-gray-300 bg-white px-3 py-2 text-sm"
+                  className="mt-1 w-48 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm dark:text-gray-100"
                   value={selectedEmphasis}
                   onChange={(e) => setSelectedEmphasis(e.target.value)}
                 >
@@ -4336,7 +4393,7 @@ Now answer the student's question using only this context.`
               <div>
                 <label className="text-sm text-gray-700">Minor</label>
                 <select
-                  className="mt-1 w-48 rounded border border-gray-300 bg-white px-3 py-2 text-sm"
+                  className="mt-1 w-48 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm dark:text-gray-100"
                   value={selectedMinor}
                   onChange={(e) => setSelectedMinor(e.target.value)}
                 >
@@ -4355,7 +4412,7 @@ Now answer the student's question using only this context.`
                 type="checkbox"
                 checked={hasHsLanguage}
                 onChange={(e) => setHasHsLanguage(e.target.checked)}
-                className="w-4 h-4 rounded border-gray-300 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
+                className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
               />
               <span className="text-sm text-gray-700">Completed 2 years of same foreign language in HS</span>
             </label>
@@ -4364,7 +4421,7 @@ Now answer the student's question using only this context.`
                 type="checkbox"
                 checked={hasSabrCourse}
                 onChange={(e) => setHasSabrCourse(e.target.checked)}
-                className="w-4 h-4 rounded border-gray-300 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
+                className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
               />
               <span className="text-sm text-gray-700">Completed a Study Abroad (SABR) course</span>
             </label>
@@ -4425,7 +4482,10 @@ Now answer the student's question using only this context.`
           {reqError && <p className="text-sm text-red-600 mb-2">{reqError}</p>}
           {reqWarning && !reqError && <p className="text-sm text-amber-700 mb-2">{reqWarning}</p>}
           {degreeResult ? (() => {
-            const allGroups = degreeResult.groups || [];
+            const isFyexGroup = (g) => g.name?.startsWith('First Year Experience');
+            const allGroups = (degreeResult.groups || []).map((g) =>
+              isFyexGroup(g) && fyexOverride ? { ...g, satisfied: true, missing: [] } : g
+            );
             const satisfiedGroups = allGroups.filter((g) => g.satisfied);
             const unsatisfiedGroups = allGroups.filter((g) => !g.satisfied);
             const totalSatisfied = satisfiedGroups.length;
@@ -4443,14 +4503,13 @@ Now answer the student's question using only this context.`
               const ariaLabel = required > 0
                 ? `${earned} of ${required} credits counted${plannedCredits > 0 ? `, ${plannedCredits} planned` : ''}${exceeded ? `, ${extraCredits} extra` : ''}`
                 : (group.satisfied ? 'Satisfied' : 'Not satisfied');
-              const hasDetails =
-                (group.missing?.length > 0) ||
-                (group.usedCourses?.length > 0) ||
-                (group.warnings?.length > 0);
+              const hasOverflow = group.overflowCourses?.length > 0;
+              const isFyex = isFyexGroup(group);
+              const hasDetails = (group.missing?.length > 0) || (group.usedCourses?.length > 0) || (group.warnings?.length > 0) || hasOverflow || isFyex;
 
               return (
-                <details key={group.name} className="rounded border border-gray-200 group">
-                  <summary className="cursor-pointer select-none px-3 py-2 hover:bg-gray-50 transition-colors rounded list-none">
+                <details key={group.name} className="rounded border border-gray-200 dark:border-gray-700 group">
+                  <summary className="cursor-pointer select-none px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors rounded list-none">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 min-w-0">
                         <ChevronDown className="w-4 h-4 text-gray-400 details-chevron flex-shrink-0" />
@@ -4527,7 +4586,7 @@ Now answer the student's question using only this context.`
                     </div>
                   </summary>
                   {hasDetails && (
-                    <div className="px-3 pb-2 ml-6 border-t border-gray-100 mt-1 pt-2 space-y-1">
+                    <div className="px-3 pb-2 ml-6 border-t border-gray-100 dark:border-gray-700 mt-1 pt-2 space-y-1">
                       {group.usedCourses?.length > 0 && (
                         <div className="text-xs text-gray-500">
                           <p className="font-medium text-gray-600">Used courses</p>
@@ -4542,11 +4601,57 @@ Now answer the student's question using only this context.`
                         </div>
                       )}
                       {group.missing?.length > 0 && (
-                        <p className="text-xs text-red-600">Missing: {group.missing.join(', ')}</p>
+                        <div className="text-xs text-red-600 mt-1">
+                          <p className="font-medium mb-0.5">Still needed:</p>
+                          <ul className="space-y-0.5">
+                            {group.missing.map((item, i) => {
+                              const codeMatch = String(item).trim().match(/^([A-Z]{2,6}\s+\d{3,4}[A-Z]?)$/);
+                              if (codeMatch) {
+                                const code = codeMatch[1];
+                                const meta = COURSES[code];
+                                return (
+                                  <li key={i}>
+                                    • <span className="font-semibold">{code}</span>
+                                    {meta?.title ? ` — ${meta.title}` : ''}
+                                    {meta?.credits != null ? ` (${meta.credits} credits)` : ''}
+                                  </li>
+                                );
+                              }
+                              if (/^Need \d+ (credits?|courses?) from (pool|tag )/.test(String(item))) {
+                                const usedSet = new Set(group.usedCourses || []);
+                                const examples = (group.recommendationBuckets || [])
+                                  .filter(b => b.type === 'pool' || b.type === 'anyOf')
+                                  .flatMap(b => (b.codes || []).filter(c => !usedSet.has(c)))
+                                  .filter((c, idx, arr) => arr.indexOf(c) === idx)
+                                  .slice(0, 4);
+                                return (
+                                  <li key={i}>
+                                    • {item}
+                                    {examples.length > 0 && (
+                                      <span className="text-red-400"> (e.g., {examples.join(', ')})</span>
+                                    )}
+                                  </li>
+                                );
+                              }
+                              return <li key={i}>• {item}</li>;
+                            })}
+                          </ul>
+                        </div>
                       )}
                       {group.warnings?.length > 0 && group.warnings.map((w, i) => (
                         <p key={i} className="text-xs text-amber-600">{w}</p>
                       ))}
+                      {isFyex && (
+                        <label className="flex items-center gap-2 mt-1 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={fyexOverride}
+                            onChange={(e) => setFyexOverride(e.target.checked)}
+                            className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                          />
+                          <span className="text-xs text-gray-600">Mark as completed (manual override)</span>
+                        </label>
+                      )}
                     </div>
                   )}
                 </details>
@@ -4565,7 +4670,7 @@ Now answer the student's question using only this context.`
                 </div>
 
                 {/* Progress summary bar */}
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-3">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-medium text-gray-700">
                       Degree Progress: {totalSatisfied}/{totalGroups} requirement groups satisfied
@@ -4631,7 +4736,7 @@ Now answer the student's question using only this context.`
                     <div className="space-y-2 mt-2">
                       <p className="text-xs text-gray-500 ml-6">These courses are not currently being used to satisfy any degree or minor requirement group.</p>
                       {filtered.map((entry) => (
-                        <div key={entry.code} className="rounded border border-blue-200 bg-blue-50/50 px-3 py-2 ml-6">
+                        <div key={entry.code} className="rounded border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/20 px-3 py-2 ml-6">
                           <div className="flex items-center justify-between">
                             <span className="text-sm font-medium text-gray-900">{entry.code}</span>
                             <span className="text-xs text-gray-500">{entry.credits} credit{entry.credits !== 1 ? 's' : ''} · {entry.status}</span>
@@ -4673,8 +4778,8 @@ Now answer the student's question using only this context.`
                 (group.warnings?.length > 0);
 
               return (
-                <details key={group.name} className="rounded border border-gray-200 group">
-                  <summary className="cursor-pointer select-none px-3 py-2 hover:bg-gray-50 transition-colors rounded list-none">
+                <details key={group.name} className="rounded border border-gray-200 dark:border-gray-700 group">
+                  <summary className="cursor-pointer select-none px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors rounded list-none">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 min-w-0">
                         <ChevronDown className="w-4 h-4 text-gray-400 details-chevron flex-shrink-0" />
@@ -4751,7 +4856,7 @@ Now answer the student's question using only this context.`
                     </div>
                   </summary>
                   {hasDetails && (
-                    <div className="px-3 pb-2 ml-6 border-t border-gray-100 mt-1 pt-2 space-y-1">
+                    <div className="px-3 pb-2 ml-6 border-t border-gray-100 dark:border-gray-700 mt-1 pt-2 space-y-1">
                       {group.usedCourses?.length > 0 && (
                         <div className="text-xs text-gray-500">
                           <p className="font-medium text-gray-600">Used courses</p>
@@ -4766,7 +4871,42 @@ Now answer the student's question using only this context.`
                         </div>
                       )}
                       {group.missing?.length > 0 && (
-                        <p className="text-xs text-red-600">Missing: {group.missing.join(', ')}</p>
+                        <div className="text-xs text-red-600 mt-1">
+                          <p className="font-medium mb-0.5">Still needed:</p>
+                          <ul className="space-y-0.5">
+                            {group.missing.map((item, i) => {
+                              const codeMatch = String(item).trim().match(/^([A-Z]{2,6}\s+\d{3,4}[A-Z]?)$/);
+                              if (codeMatch) {
+                                const code = codeMatch[1];
+                                const meta = COURSES[code];
+                                return (
+                                  <li key={i}>
+                                    • <span className="font-semibold">{code}</span>
+                                    {meta?.title ? ` — ${meta.title}` : ''}
+                                    {meta?.credits != null ? ` (${meta.credits} credits)` : ''}
+                                  </li>
+                                );
+                              }
+                              if (/^Need \d+ (credits?|courses?) from (pool|tag )/.test(String(item))) {
+                                const usedSet = new Set(group.usedCourses || []);
+                                const examples = (group.recommendationBuckets || [])
+                                  .filter(b => b.type === 'pool' || b.type === 'anyOf')
+                                  .flatMap(b => (b.codes || []).filter(c => !usedSet.has(c)))
+                                  .filter((c, idx, arr) => arr.indexOf(c) === idx)
+                                  .slice(0, 4);
+                                return (
+                                  <li key={i}>
+                                    • {item}
+                                    {examples.length > 0 && (
+                                      <span className="text-red-400"> (e.g., {examples.join(', ')})</span>
+                                    )}
+                                  </li>
+                                );
+                              }
+                              return <li key={i}>• {item}</li>;
+                            })}
+                          </ul>
+                        </div>
                       )}
                       {group.warnings?.length > 0 && group.warnings.map((w, i) => (
                         <p key={i} className="text-xs text-amber-600">{w}</p>
@@ -4840,7 +4980,7 @@ Now answer the student's question using only this context.`
                 </p>
               </div>
             </div>
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 mb-3">
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-3 mb-3">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-gray-700">
                   {minorCreditProgress.requiredCredits > 0
@@ -4878,9 +5018,9 @@ Now answer the student's question using only this context.`
                 return (
                   <details
                     key={group.name}
-                    className="rounded border border-gray-200 group"
+                    className="rounded border border-gray-200 dark:border-gray-700 group"
                   >
-                    <summary className="cursor-pointer select-none px-3 py-2 hover:bg-gray-50 transition-colors rounded list-none">
+                    <summary className="cursor-pointer select-none px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors rounded list-none">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 min-w-0">
                           <ChevronDown className="w-4 h-4 text-gray-400 details-chevron flex-shrink-0" />
@@ -4940,7 +5080,7 @@ Now answer the student's question using only this context.`
                       </div>
                     </summary>
                     {hasDetails && (
-                      <div className="px-3 pb-2 ml-6 border-t border-gray-100 mt-1 pt-2 space-y-1">
+                      <div className="px-3 pb-2 ml-6 border-t border-gray-100 dark:border-gray-700 mt-1 pt-2 space-y-1">
                         {group.usedCourses?.length > 0 && (
                           <div className="text-xs text-gray-500">
                             <p className="font-medium text-gray-600">Used courses</p>
@@ -4955,7 +5095,42 @@ Now answer the student's question using only this context.`
                           </div>
                         )}
                         {group.missing?.length > 0 && (
-                          <p className="text-xs text-red-600">Missing: {group.missing.join(', ')}</p>
+                          <div className="text-xs text-red-600 mt-1">
+                            <p className="font-medium mb-0.5">Still needed:</p>
+                            <ul className="space-y-0.5">
+                              {group.missing.map((item, i) => {
+                                const codeMatch = String(item).trim().match(/^([A-Z]{2,6}\s+\d{3,4}[A-Z]?)$/);
+                                if (codeMatch) {
+                                  const code = codeMatch[1];
+                                  const meta = COURSES[code];
+                                  return (
+                                    <li key={i}>
+                                      • <span className="font-semibold">{code}</span>
+                                      {meta?.title ? ` — ${meta.title}` : ''}
+                                      {meta?.credits != null ? ` (${meta.credits} credits)` : ''}
+                                    </li>
+                                  );
+                                }
+                                if (/^Need \d+ (credits?|courses?) from (pool|tag )/.test(String(item))) {
+                                  const usedSet = new Set(group.usedCourses || []);
+                                  const examples = (group.recommendationBuckets || [])
+                                    .filter(b => b.type === 'pool' || b.type === 'anyOf')
+                                    .flatMap(b => (b.codes || []).filter(c => !usedSet.has(c)))
+                                    .filter((c, idx, arr) => arr.indexOf(c) === idx)
+                                    .slice(0, 4);
+                                  return (
+                                    <li key={i}>
+                                      • {item}
+                                      {examples.length > 0 && (
+                                        <span className="text-red-400"> (e.g., {examples.join(', ')})</span>
+                                      )}
+                                    </li>
+                                  );
+                                }
+                                return <li key={i}>• {item}</li>;
+                              })}
+                            </ul>
+                          </div>
                         )}
                       </div>
                     )}
@@ -5066,37 +5241,33 @@ Now answer the student's question using only this context.`
     };
 
     return (
-      <div className="bg-white rounded-lg shadow p-6">
+      <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-6">
         {/* Header */}
         <div className="mb-4">
-          <h3 className="text-lg font-bold text-gray-900">Academic Record</h3>
-          <p className="text-sm text-gray-600 mt-0.5">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white">Academic Record</h3>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
             Transcript-aligned terms with grades. Drag courses between terms to correct parsing.
           </p>
         </div>
 
         {/* Action buttons */}
         <div className="flex flex-wrap items-center gap-2 mb-2">
-          <button
-            type="button"
-            onClick={() => uploadInputRef.current?.click()}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-100 cursor-pointer inline-flex items-center gap-1.5"
-          >
+          <label className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer inline-flex items-center gap-1.5">
             <Plus className="w-4 h-4" />
+            <input
+              ref={uploadInputRef}
+              type="file"
+              accept="application/pdf"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) queueTranscriptUpload(file);
+                e.target.value = '';
+              }}
+            />
             Upload Unofficial Transcript / Degree Evaluation PDF
-          </button>
-          <input
-            ref={uploadInputRef}
-            type="file"
-            accept="application/pdf"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) queueTranscriptUpload(file);
-              e.target.value = '';
-            }}
-          />
-          <div className="w-px h-5 bg-gray-300" />
+          </label>
+          <div className="w-px h-5 bg-gray-300 dark:bg-gray-600" />
           <button
             type="button"
             onClick={applyReviewedTranscript}
@@ -5130,7 +5301,7 @@ Now answer the student's question using only this context.`
                   setSelectedTranscriptYear('');
                 }
               }}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50"
+              className="px-3 py-1.5 rounded-lg text-sm font-medium border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
             >
               Clear Record
             </button>
@@ -5164,8 +5335,8 @@ Now answer the student's question using only this context.`
 
         {/* Year tabs row */}
         {transcriptYearLabels.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 mb-5 border-b border-gray-200 pb-3">
-            <span className="text-xs font-medium text-gray-500 uppercase tracking-wide mr-1">Year:</span>
+          <div className="flex flex-wrap items-center gap-2 mb-5 border-b border-gray-200 dark:border-gray-700 pb-3">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mr-1">Year:</span>
             {transcriptYearLabels.map((year) => (
               <button
                 key={year}
@@ -5173,7 +5344,7 @@ Now answer the student's question using only this context.`
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
                   selectedTranscriptYear === year
                     ? 'text-white border-transparent'
-                    : 'text-gray-700 border-gray-200 hover:bg-gray-100'
+                    : 'text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700'
                 }`}
                 style={selectedTranscriptYear === year ? { backgroundColor: '#500000' } : {}}
               >
@@ -5192,11 +5363,11 @@ Now answer the student's question using only this context.`
             ].map((entry) => (
               <div
                 key={entry.label}
-                className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3"
+                className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-4 py-3"
               >
-                <p className="text-xs text-gray-500 uppercase">{entry.label} Totals</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase">{entry.label} Totals</p>
                 {entry.data ? (
-                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-gray-700">
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-gray-700 dark:text-gray-300">
                     <span>Earned Hours</span>
                     <span className="text-right font-semibold">{entry.data.earnedHours}</span>
                     <span>GPA Hours</span>
@@ -5215,7 +5386,7 @@ Now answer the student's question using only this context.`
         )}
 
         {!transcriptYear ? (
-          <div className="border border-dashed border-gray-300 rounded-lg p-8 text-center text-gray-500">
+          <div className="border border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center text-gray-500">
             Upload a transcript PDF to populate your academic record.
           </div>
         ) : (
@@ -5231,7 +5402,7 @@ Now answer the student's question using only this context.`
                 <div
                   key={term.label}
                   data-term-label={term.label}
-                  className="border border-gray-200 rounded-lg p-4 bg-gray-50 transition"
+                  className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-gray-50 dark:bg-gray-800 transition"
                   onDragOver={(event) => handleTermDragOver(term.label, event)}
                   onDragEnter={(event) => handleTermDragEnter(term.label, event)}
                   onDragLeave={(event) => handleTermDragLeave(term.label, event)}
@@ -5239,8 +5410,8 @@ Now answer the student's question using only this context.`
                 >
                   <div className="flex items-center justify-between mb-3">
                     <div>
-                      <h4 className="font-semibold text-gray-900">{term.label}</h4>
-                      <p className="text-xs text-gray-600">{termCredits} credits</p>
+                      <h4 className="font-semibold text-gray-900 dark:text-white">{term.label}</h4>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">{termCredits} credits</p>
                     </div>
                     <span
                       className={`text-xs px-2 py-1 rounded-full ${
@@ -5253,7 +5424,7 @@ Now answer the student's question using only this context.`
                   <div className="space-y-2">
                     {termCourses.length === 0 ? (
                       <div
-                        className="text-xs text-gray-500 border border-dashed border-gray-300 rounded-md px-3 py-4 text-center"
+                        className="text-xs text-gray-500 border border-dashed border-gray-300 dark:border-gray-600 rounded-md px-3 py-4 text-center"
                         onDragOver={(event) => handleTermDragOver(term.label, event)}
                         onDragEnter={(event) => handleTermDragEnter(term.label, event)}
                         onDrop={(event) => handleTermDrop(term.label, event)}
@@ -5264,7 +5435,7 @@ Now answer the student's question using only this context.`
                       termCourses.map((course) => (
                           <div
                             key={`${term.label}-${course.code}`}
-                            className="rounded-md bg-white border border-gray-100 px-3 py-2 cursor-grab active:cursor-grabbing"
+                            className="rounded-md bg-white dark:bg-gray-700 border border-gray-100 dark:border-gray-600 px-3 py-2 cursor-grab active:cursor-grabbing"
                             draggable
                             onDragStart={(event) => handleCourseDragStart(course, term.label, event)}
                             onDragEnd={(event) => {
@@ -5288,13 +5459,13 @@ Now answer the student's question using only this context.`
                                 <>
                             <div className="flex items-start justify-between">
                               <div>
-                                <p className="text-sm font-semibold text-gray-900">
+                                <p className="text-sm font-semibold text-gray-900 dark:text-white">
                                   {course.code}
                                 </p>
-                                <p className="text-xs text-gray-600">{toTitleCase(course.title)}</p>
+                                <p className="text-xs text-gray-600 dark:text-gray-400">{toTitleCase(course.title)}</p>
                               </div>
                               <div className="text-right">
-                                <p className="text-sm font-semibold text-gray-900">
+                                <p className="text-sm font-semibold text-gray-900 dark:text-white">
                                   {course.grade === 'TIP' ? 'TA / IP' : course.grade}
                                 </p>
                                 {editingCourse?.termLabel === term.label && editingCourse?.courseCode === course.code ? (
@@ -5337,7 +5508,7 @@ Now answer the student's question using only this context.`
                                   </div>
                                 ) : (
                                   <div className="flex items-center gap-1">
-                                    <p className="text-xs text-gray-500">
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">
                                       {Number(course.credits).toFixed(0)} cr
                                     </p>
                                     <button
@@ -5351,6 +5522,25 @@ Now answer the student's question using only this context.`
                                     >
                                       <Edit2 className="w-3 h-3" />
                                     </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (
+                                          !window.confirm(
+                                            `Remove ${course.code} from ${term.label}? Click "Update Record" to save.`
+                                          )
+                                        ) {
+                                          return;
+                                        }
+                                        removeCourseFromTranscriptRecord(term.label, course.code);
+                                        setMoveMenuCourseKey(null);
+                                      }}
+                                      className="text-gray-400 hover:text-red-600 transition-colors"
+                                      title="Remove course from record"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
                                     <div className="relative">
                                       <button
                                         onClick={(e) => {
@@ -5362,7 +5552,7 @@ Now answer the student's question using only this context.`
                                         className={`text-xs px-1.5 py-0.5 rounded border transition-colors ${
                                           moveOpen
                                             ? 'border-[#500000] text-[#500000] bg-[#500000]/5'
-                                            : 'border-gray-200 text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                                            : 'border-gray-200 dark:border-gray-600 text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
                                         }`}
                                         title="Move to another term"
                                       >
@@ -5370,7 +5560,7 @@ Now answer the student's question using only this context.`
                                       </button>
                                       {moveOpen && (
                                         <div
-                                          className="absolute right-0 top-full mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg w-40 max-h-48 overflow-y-auto py-1"
+                                          className="absolute right-0 top-full mt-1 z-30 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg w-40 max-h-48 overflow-y-auto py-1"
                                           onClick={(e) => e.stopPropagation()}
                                         >
                                           <p className="text-[9px] font-semibold text-gray-400 uppercase px-2 py-0.5 tracking-wide">
@@ -5397,7 +5587,7 @@ Now answer the student's question using only this context.`
                                                         moveReviewedCourse(course.code, term.label, targetLabel);
                                                         setMoveMenuCourseKey(null);
                                                       }}
-                                                      className="w-full text-left text-[10px] px-2 py-1 hover:bg-gray-50 text-gray-700 hover:text-gray-900"
+                                                      className="w-full text-left text-[10px] px-2 py-1 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
                                                     >
                                                       {targetLabel}
                                                     </button>
@@ -5480,9 +5670,9 @@ Now answer the student's question using only this context.`
                                         }
                                         setIsTranscriptDirty(true);
                                       }}
-                                      className="w-3.5 h-3.5 rounded border-gray-300 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
+                                      className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
                                     />
-                                    <span className={`text-xs ${excludedTransferCourses.has(course.code) ? 'text-gray-400 line-through' : 'text-gray-600'}`}>
+                                    <span className={`text-xs ${excludedTransferCourses.has(course.code) ? 'text-gray-400 dark:text-gray-500 line-through' : 'text-gray-600 dark:text-gray-400'}`}>
                                       Count toward degree
                                     </span>
                                   </label>
@@ -5543,9 +5733,9 @@ Now answer the student's question using only this context.`
                                           });
                                         }
                                       }}
-                                      className="w-3.5 h-3.5 rounded border-gray-300 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
+                                      className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
                                     />
-                                    <span className={`text-xs ${excludedFromEval.has(normalizeCode(course.code)) ? 'text-gray-400 line-through' : 'text-gray-600'}`}>
+                                    <span className={`text-xs ${excludedFromEval.has(normalizeCode(course.code)) ? 'text-gray-400 dark:text-gray-500 line-through' : 'text-gray-600 dark:text-gray-400'}`}>
                                       Use in evaluation
                                     </span>
                                   </label>
@@ -5592,9 +5782,9 @@ Now answer the student's question using only this context.`
                                     e.stopPropagation();
                                     toggleCourseEmphasis(term.label, course.code, e.target.checked);
                                   }}
-                                  className="w-3.5 h-3.5 rounded border-gray-300 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
+                                  className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
                                 />
-                                <span className={`text-xs ${isEmphasis ? 'text-[#500000] font-medium' : 'text-gray-500'}`}>
+                                <span className={`text-xs ${isEmphasis ? 'text-[#500000] dark:text-[#ff6666] font-medium' : 'text-gray-500 dark:text-gray-400'}`}>
                                   Count toward emphasis
                                 </span>
                               </label>
@@ -5748,7 +5938,7 @@ Now answer the student's question using only this context.`
                   className={`px-3 py-2 rounded-lg text-sm font-medium border ${
                     selectedPlanYear === year
                       ? 'text-white'
-                      : 'text-gray-700 border-gray-200 hover:bg-gray-100'
+                      : 'text-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700'
                   }`}
                   style={selectedPlanYear === year ? { backgroundColor: '#500000' } : {}}
                 >
@@ -5759,7 +5949,7 @@ Now answer the student's question using only this context.`
           </div>
 
           {(planError || validation.errors.length > 0) && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-4">
               <div className="flex items-start">
                 <X className="w-5 h-5 text-red-600 mt-0.5 mr-3" />
                 <div className="flex-1">
@@ -5782,7 +5972,7 @@ Now answer the student's question using only this context.`
           )}
 
           {validation.warnings.length > 0 && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 mb-4">
               <div className="flex items-start">
                 <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 mr-3" />
                 <div className="flex-1">
@@ -5851,9 +6041,9 @@ Now answer the student's question using only this context.`
               const isEditable = true;
               const isViewOnly = termState === 'current';
               return (
-                <div key={term} className="border border-gray-200 rounded-lg bg-gray-50 overflow-hidden">
+                <div key={term} className="border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 overflow-hidden">
                   {/* ── Term Header ── */}
-                  <div className="px-4 pt-4 pb-3 border-b border-gray-200 bg-white">
+                  <div className="px-4 pt-4 pb-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/30">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2 min-w-0">
                         <h4 className="font-bold text-gray-900 text-base truncate">{term}</h4>
@@ -5909,7 +6099,7 @@ Now answer the student's question using only this context.`
                             <span className="text-gray-300 text-xs">|</span>
                             <span
                               className="text-xs font-bold px-2 py-0.5 rounded-md border"
-                              style={{ borderColor: cfg.color, color: cfg.text, backgroundColor: cfg.bg }}
+                              style={{ borderColor: cfg.color, color: theme === 'dark' ? cfg.color : cfg.text, backgroundColor: theme === 'dark' ? 'transparent' : cfg.bg }}
                             >
                               ⚡ {cfg.label} Load
                             </span>
@@ -5989,10 +6179,10 @@ Now answer the student's question using only this context.`
                             key={`${term}-${course.code}-${course.type}`}
                             className={`p-3 rounded-lg border ${
                               trulyMissing.length > 0
-                                ? 'border-red-300 bg-red-50'
+                                ? 'border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/20'
                                 : plannedLaterPrereqs.length > 0
-                                  ? 'border-yellow-300 bg-yellow-50'
-                                  : 'border-gray-200 bg-white'
+                                  ? 'border-yellow-300 dark:border-yellow-700 bg-yellow-50 dark:bg-yellow-900/20'
+                                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700'
                             }`}
                           >
                             <div className="flex justify-between items-start gap-2">
@@ -6060,7 +6250,7 @@ Now answer the student's question using only this context.`
                                         });
                                       }
                                     }}
-                                    className="w-3.5 h-3.5 rounded border-gray-300 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
+                                    className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-[#500000] focus:ring-[#500000]/30 cursor-pointer"
                                   />
                                   <span className={`text-xs ${excludedFromEval.has(normalizeCode(course.code)) ? 'text-gray-400 line-through' : 'text-gray-600'}`}>
                                     Use in evaluation
@@ -6097,6 +6287,8 @@ Now answer the student's question using only this context.`
                               </div>
                               {course.type === 'planned' && (
                                 <button
+                                  type="button"
+                                  title="Remove from plan"
                                   onClick={() => {
                                     if (!isEditable) return;
                                     removeCourseFromSemester(course.code, term);
@@ -6109,6 +6301,26 @@ Now answer the student's question using only this context.`
                                   disabled={!isEditable}
                                 >
                                   <X className="w-4 h-4" />
+                                </button>
+                              )}
+                              {course.type === 'transcript' && (
+                                <button
+                                  type="button"
+                                  title="Remove from academic record"
+                                  onClick={() => {
+                                    const nk = normalizeCode(course.code);
+                                    if (
+                                      !window.confirm(
+                                        `Remove ${nk} from ${term} on your academic record? Click "Update Record" in Academic Record to save.`
+                                      )
+                                    ) {
+                                      return;
+                                    }
+                                    removeCourseFromTranscriptRecord(term, course.code);
+                                  }}
+                                  className="shrink-0 p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50"
+                                >
+                                  <Trash2 className="w-4 h-4" />
                                 </button>
                               )}
                             </div>
@@ -6134,8 +6346,8 @@ Now answer the student's question using only this context.`
           const courseNum = parseInt(code.replace(/[^0-9]/g, ''), 10) || 0;
           return (
             <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setShowDifficultyInfo(null)}>
-              <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                <div className="px-6 py-4 border-b border-gray-100" style={{ backgroundColor: cfg ? (theme === 'dark' ? `${cfg.color}22` : cfg.bg) : (theme === 'dark' ? '#334155' : '#f3f4f6') }}>
+              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700" style={{ backgroundColor: cfg ? (theme === 'dark' ? `${cfg.color}22` : cfg.bg) : (theme === 'dark' ? '#334155' : '#f3f4f6') }}>
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="font-bold text-lg text-gray-900">{code}</h3>
@@ -6157,7 +6369,7 @@ Now answer the student's question using only this context.`
                         const active = lvl === diff;
                         return (
                           <div key={lvl} className={`flex-1 text-center py-1.5 rounded text-xs font-semibold border ${active ? 'ring-2 ring-offset-1' : 'opacity-40'}`}
-                            style={{ borderColor: c.color, color: active ? c.text : c.color, backgroundColor: active ? c.bg : 'transparent', ...(active ? { ringColor: c.color } : {}) }}>
+                            style={{ borderColor: c.color, color: active ? (theme === 'dark' ? c.color : c.text) : c.color, backgroundColor: active ? (theme === 'dark' ? 'transparent' : c.bg) : 'transparent', ...(active ? { ringColor: c.color } : {}) }}>
                             {c.label}
                           </div>
                         );
@@ -6173,13 +6385,13 @@ Now answer the student's question using only this context.`
                       }
                     </p>
                   </div>
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
                     <p className="text-xs text-amber-800">
                       <strong>Advisory only</strong> — This is an estimate for planning support. Actual difficulty varies by instructor, semester, and individual preparation. Not an official university rating.
                     </p>
                   </div>
                 </div>
-                <div className="px-6 py-3 border-t border-gray-100 bg-gray-50 flex justify-end">
+                <div className="px-6 py-3 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 flex justify-end">
                   <button
                     onClick={() => setShowDifficultyInfo(null)}
                     className="px-4 py-1.5 text-sm font-medium rounded-lg text-white"
@@ -6195,10 +6407,10 @@ Now answer the student's question using only this context.`
 
         {showCourseModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] overflow-hidden">
-              <div className="p-6 border-b">
+            <div className="bg-white dark:bg-gray-800 rounded-lg max-w-2xl w-full max-h-[80vh] overflow-hidden">
+              <div className="p-6 border-b dark:border-gray-700">
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-xl font-bold">Add Course to {selectedSemester}</h3>
+                  <h3 className="text-xl font-bold text-gray-900">Add Course to {selectedSemester}</h3>
                   <button
                     onClick={() => {
                       setShowCourseModal(false);
@@ -6210,7 +6422,7 @@ Now answer the student's question using only this context.`
                   </button>
                 </div>
                 {planError && (
-                  <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
+                  <div className="mb-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-800 dark:text-red-300">
                     {planError}
                   </div>
                 )}
@@ -6301,7 +6513,7 @@ Now answer the student's question using only this context.`
                         <div className="flex justify-between items-start">
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
-                              <h4 className="font-bold">{code}</h4>
+                              <h4 className="font-bold text-gray-900">{code}</h4>
                               <span className="text-xs bg-gray-200 px-2 py-1 rounded">
                                 {getCourseCreditsForRequirementBar(code)} cr
                               </span>
@@ -6618,7 +6830,7 @@ Now answer the student's question using only this context.`
     return (
       <div className="space-y-4">
         <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-bold mb-2">Course Prerequisite Flowchart</h3>
+          <h3 className="text-lg font-bold text-gray-900 mb-2">Course Prerequisite Flowchart</h3>
           <p className="text-sm text-gray-600 mb-6">
             Solid (full) lines indicate prerequisites; dashed lines indicate co-requisites.
           </p>
@@ -7505,6 +7717,43 @@ Now answer the student's question using only this context.`
             </nav>
           )}
         </>
+      )}
+
+      {authUser && isTranscriptDirty && activeTab !== 'login' && (
+        <div className="bg-amber-50 border-b border-amber-200">
+          <div className="max-w-7xl mx-auto px-4 py-2.5 flex flex-wrap items-center gap-3">
+            <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+            <span className="text-sm text-amber-900 flex-1 min-w-0">
+              You have unsaved academic record changes. Click{' '}
+              <span className="font-semibold">Update Record</span> to save them so
+              your evaluation reflects the latest data.
+            </span>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => void applyReviewedTranscript()}
+                disabled={isTranscriptSaving}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-md inline-flex items-center gap-1.5 ${
+                  isTranscriptSaving
+                    ? 'bg-amber-200 text-amber-700 cursor-not-allowed'
+                    : 'bg-amber-600 text-white hover:bg-amber-700'
+                }`}
+              >
+                <Save className="w-3.5 h-3.5" />
+                {isTranscriptSaving ? 'Saving…' : 'Update Record'}
+              </button>
+              {activeTab !== 'planner' && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('planner')}
+                  className="text-xs font-medium px-3 py-1.5 rounded-md border border-amber-300 text-amber-800 hover:bg-amber-100"
+                >
+                  Go to Planner
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       <main className={isFlowFullscreen ? 'p-0' : 'max-w-7xl mx-auto px-4 py-8'}>

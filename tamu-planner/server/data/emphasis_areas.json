@@ -1,7 +1,7 @@
 [
   {
     "emphasis_id": 1,
-    "name": "Math",
+    "name": "Mathematics",
     "catalog_year": "2025-2026",
     "min_credits": 12,
     "description": "12 credits of math beyond what is already used elsewhere in the CSCE degree plan.",
@@ -79,7 +79,7 @@
   },
   {
     "emphasis_id": 6,
-    "name": "Game",
+    "name": "Game Design and Development",
     "catalog_year": "2025-2026",
     "min_credits": 12,
     "description": "12 hours from the approved non-CSCE Game minor course list.",
@@ -119,17 +119,12 @@
     "name": "Liberal Arts & Social Sciences",
     "catalog_year": "2025-2026",
     "min_credits": 12,
-    "description": "Upper-level courses in liberal arts/social sciences with a clear computing tie-in (e.g., digital humanities, technical writing, computer music).",
+    "description": "Upper-level courses in liberal arts/social sciences (e.g., digital humanities, technical writing, music, history, philosophy, foreign languages, social sciences).",
     "rules": {
       "allowed_domains": ["Liberal Arts", "Social Sciences"],
-      "require_computing_alignment": true,
-      "examples": [
-        "Music courses involving computing in performance/composition",
-        "English courses in digital humanities or technical writing"
-      ],
       "no_double_counting": true
     },
-    "notes": "Student must justify the relationship to computing; include upper-division courses."
+    "notes": "Mark qualifying liberal arts or social sciences courses as 'Count toward emphasis' in your Academic Record. Include upper-division courses where possible."
   },
   {
     "emphasis_id": 10,

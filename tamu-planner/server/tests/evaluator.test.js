@@ -50,7 +50,7 @@ const run = async () => {
 
   // Math Emphasis (should pass)
   tests.push(async () => {
-    const req = await loadReqSet('CSCE Emphasis - Math');
+    const req = await loadReqSet('CSCE Emphasis - Mathematics');
     const studentCourses = [
       makeCourse('MATH 401', 3),
       makeCourse('MATH 447', 3),
@@ -67,7 +67,7 @@ const run = async () => {
 
   // Math Emphasis should fail if not enough 400-level / credits
   tests.push(async () => {
-    const req = await loadReqSet('CSCE Emphasis - Math');
+    const req = await loadReqSet('CSCE Emphasis - Mathematics');
     const studentCourses = [
       makeCourse('MATH 401', 3), // only 3 credits 400-level
       makeCourse('MATH 251', 3),
@@ -81,13 +81,12 @@ const run = async () => {
     assert.ok(!result.groups[0].satisfied, 'Math emphasis should fail with insufficient 400-level/credits');
   });
 
-  // Math Minor example should fail (only 13 credits)
+  // Math Minor should fail when pool credits < 9 (only MATH 251 + MATH 412 = 6 credits in pool)
   tests.push(async () => {
     const req = await loadReqSet('Minor - Mathematics');
     const studentCourses = [
       makeCourse('MATH 148', 4),
       makeCourse('MATH 251', 3),
-      makeCourse('MATH 308', 3),
       makeCourse('MATH 412', 3)
     ];
     const result = evaluateRequirements({
@@ -95,7 +94,7 @@ const run = async () => {
       studentCourses,
       emphasisCourseIds: new Set()
     });
-    assert.ok(!result.groups[0].satisfied, 'Math minor should fail when under 16 credits');
+    assert.ok(!result.groups[0].satisfied, 'Math minor should fail when pool has insufficient credits (6 < 9)');
   });
 
   // Math Minor should pass with 16 credits and 1+ 400-level
@@ -172,44 +171,40 @@ const run = async () => {
     assert.ok(!result.groups[0].satisfied, 'Business minor should fail if any required course is missing');
   });
 
-  // Game Design minor should pass with required pairs and 3 electives
+  // Game Design minor should pass with one intro course, required pairs, and 2 electives
   tests.push(async () => {
     const req = await loadReqSet('Minor - Game Design and Development');
     const studentCourses = [
-      makeCourse('CSCE 110', 4),
-      makeCourse('CSCE 111', 4),
+      makeCourse('CSCE 120', 4),
       makeCourse('CSCE 441', 3),
       makeCourse('CSCE 443', 3),
       makeCourse('COMM 230', 3),
-      makeCourse('COMM 453', 3),
-      makeCourse('VIST 370', 3)
+      makeCourse('COMM 453', 3)
     ];
     const result = evaluateRequirements({
       requirementSet: req,
       studentCourses,
       emphasisCourseIds: new Set()
     });
-    assert.ok(result.groups[0].satisfied, 'Game minor should be satisfied');
+    assert.ok(result.groups[0].satisfied, 'Game minor should be satisfied with 2 electives');
   });
 
-  // Game Design minor should fail if electives count < 3
+  // Game Design minor should fail if electives count < 2
   tests.push(async () => {
     const req = await loadReqSet('Minor - Game Design and Development');
     const studentCourses = [
-      makeCourse('CSCE 110', 4),
       makeCourse('CSCE 120', 4),
       makeCourse('VIST 386', 3),
       makeCourse('VIST 487', 3),
-      makeCourse('COMM 230', 3),
-      makeCourse('COMM 453', 3)
-      // only 2 electives
+      makeCourse('COMM 230', 3)
+      // only 1 elective
     ];
     const result = evaluateRequirements({
       requirementSet: req,
       studentCourses,
       emphasisCourseIds: new Set()
     });
-    assert.ok(!result.groups[0].satisfied, 'Game minor should fail with fewer than 3 electives');
+    assert.ok(!result.groups[0].satisfied, 'Game minor should fail with fewer than 2 electives');
   });
 
   // Cybersecurity emphasis pass
@@ -246,7 +241,7 @@ const run = async () => {
 
   // Game emphasis (emphasis) pass
   tests.push(async () => {
-    const req = await loadReqSet('CSCE Emphasis - Game');
+    const req = await loadReqSet('CSCE Emphasis - Game Design and Development');
     const studentCourses = [
       makeCourse('VIST 386', 3),
       makeCourse('VIST 487', 3),
@@ -400,7 +395,7 @@ const run = async () => {
       `Expected remaining credits missing to be 3, got: ${(group.missing || []).join(' | ')}`
     );
     assert.ok(
-      Array.isArray(group.missing) && group.missing.some((m) => String(m).includes('Need 1 courses from pool')),
+      Array.isArray(group.missing) && group.missing.some((m) => String(m).includes('1 course')),
       `Expected remaining courses missing to be 1, got: ${(group.missing || []).join(' | ')}`
     );
   });
@@ -828,6 +823,167 @@ const run = async () => {
       emphasisCourseIds: new Set()
     });
     assert.deepStrictEqual(result.groups[0].overflowCourses, [], 'Manual group should have empty overflow');
+  });
+
+  // === Task 3: Catalog Label Fixes — Statistics Minor ===
+
+  // Statistics minor should fail if STAT 211 is missing
+  tests.push(async () => {
+    const req = await loadReqSet('Minor - Statistics');
+    const studentCourses = [
+      // STAT 211 intentionally omitted
+      makeCourse('STAT 212', 3),
+      makeCourse('STAT 315', 3),
+      makeCourse('STAT 335', 3),
+      makeCourse('STAT 404', 3)
+    ];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    assert.ok(!result.groups[0].satisfied, 'Statistics minor should fail when STAT 211 is missing');
+    const missing = result.groups[0].missing || [];
+    assert.ok(missing.some((m) => String(m).includes('STAT 211')), `STAT 211 should appear in missing: ${missing.join(' | ')}`);
+  });
+
+  // Statistics minor should fail if STAT 212 is missing
+  tests.push(async () => {
+    const req = await loadReqSet('Minor - Statistics');
+    const studentCourses = [
+      makeCourse('STAT 211', 3),
+      // STAT 212 intentionally omitted
+      makeCourse('STAT 315', 3),
+      makeCourse('STAT 335', 3),
+      makeCourse('STAT 404', 3)
+    ];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    assert.ok(!result.groups[0].satisfied, 'Statistics minor should fail when STAT 212 is missing');
+    const missing = result.groups[0].missing || [];
+    assert.ok(missing.some((m) => String(m).includes('STAT 212')), `STAT 212 should appear in missing: ${missing.join(' | ')}`);
+  });
+
+  // Statistics minor should fail with fewer than 3 electives
+  tests.push(async () => {
+    const req = await loadReqSet('Minor - Statistics');
+    const studentCourses = [
+      makeCourse('STAT 211', 3),
+      makeCourse('STAT 212', 3),
+      makeCourse('STAT 315', 3),
+      makeCourse('STAT 335', 3)
+      // only 2 electives — need 3
+    ];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    assert.ok(!result.groups[0].satisfied, 'Statistics minor should fail with only 2 electives');
+  });
+
+  // === Task 3: Catalog Label Fixes — Game Design Minor intro course variants ===
+
+  // Game Design minor should pass with CSCE 110 as the intro course
+  tests.push(async () => {
+    const req = await loadReqSet('Minor - Game Design and Development');
+    const studentCourses = [
+      makeCourse('CSCE 110', 3),
+      makeCourse('CSCE 441', 3),
+      makeCourse('CSCE 443', 3),
+      makeCourse('COMM 230', 3),
+      makeCourse('COMM 453', 3)
+    ];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    assert.ok(result.groups[0].satisfied, 'Game minor should pass with CSCE 110 as intro course');
+  });
+
+  // Game Design minor should pass with CSCE 111 as the intro course
+  tests.push(async () => {
+    const req = await loadReqSet('Minor - Game Design and Development');
+    const studentCourses = [
+      makeCourse('CSCE 111', 3),
+      makeCourse('VIST 386', 3),
+      makeCourse('VIST 487', 3),
+      makeCourse('COMM 230', 3),
+      makeCourse('VIST 370', 3)
+    ];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    assert.ok(result.groups[0].satisfied, 'Game minor should pass with CSCE 111 as intro course');
+  });
+
+  // Game Design minor should fail without any intro course
+  tests.push(async () => {
+    const req = await loadReqSet('Minor - Game Design and Development');
+    const studentCourses = [
+      // no intro course (CSCE 110/111/120)
+      makeCourse('CSCE 441', 3),
+      makeCourse('CSCE 443', 3),
+      makeCourse('COMM 230', 3),
+      makeCourse('COMM 453', 3)
+    ];
+    const result = evaluateRequirements({
+      requirementSet: req,
+      studentCourses,
+      emphasisCourseIds: new Set()
+    });
+    assert.ok(!result.groups[0].satisfied, 'Game minor should fail without an intro course');
+  });
+
+  // === Task 3: Catalog Label Fixes — renamed emphasis sets are loadable ===
+
+  // "CSCE Emphasis - Mathematics" (renamed from "CSCE Emphasis - Math") should load
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Emphasis - Mathematics');
+    assert.ok(req, 'CSCE Emphasis - Mathematics requirement set should exist');
+    assert.strictEqual(req.name, 'CSCE Emphasis - Mathematics');
+  });
+
+  // "CSCE Emphasis - Game Design and Development" (renamed from "CSCE Emphasis - Game") should load
+  tests.push(async () => {
+    const req = await loadReqSet('CSCE Emphasis - Game Design and Development');
+    assert.ok(req, 'CSCE Emphasis - Game Design and Development requirement set should exist');
+    assert.strictEqual(req.name, 'CSCE Emphasis - Game Design and Development');
+  });
+
+  // "Minor - Game Design and Development" (renamed from "Minor - Game") should load
+  tests.push(async () => {
+    const req = await loadReqSet('Minor - Game Design and Development');
+    assert.ok(req, 'Minor - Game Design and Development requirement set should exist');
+    assert.strictEqual(req.name, 'Minor - Game Design and Development');
+  });
+
+  // Math Minor group label should reflect 16 credits, not 13
+  tests.push(async () => {
+    const req = await loadReqSet('Minor - Mathematics');
+    const group = req.groups[0];
+    assert.ok(group.name.includes('16'), `Math Minor group should say 16 credits, got: "${group.name}"`);
+    assert.ok(!group.name.includes('13'), `Math Minor group should not say 13 credits, got: "${group.name}"`);
+  });
+
+  // Statistics Minor group label should reflect 15 credits
+  tests.push(async () => {
+    const req = await loadReqSet('Minor - Statistics');
+    const group = req.groups[0];
+    assert.ok(group.name.includes('15'), `Statistics Minor group should say 15 credits, got: "${group.name}"`);
+  });
+
+  // Game Design Minor group label should reflect 15 credits
+  tests.push(async () => {
+    const req = await loadReqSet('Minor - Game Design and Development');
+    const group = req.groups[0];
+    assert.ok(group.name.includes('15'), `Game Minor group should say 15 credits, got: "${group.name}"`);
   });
 
   // evaluationPriority: tie-break anyOf toward flagged course

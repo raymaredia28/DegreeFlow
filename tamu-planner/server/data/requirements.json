@@ -644,12 +644,13 @@
       {
         "name": "First Year Experience (0 credits)",
         "rules": {
-          "note": "FYEX 101 or ENGR 181 required (0 credits)",
+          "note": "FYEX 101, ENGR 181, or CLEN 181 required (0 credits)",
           "items": [
             {
               "anyOf": [
                 "FYEX 101",
-                "ENGR 181"
+                "ENGR 181",
+                "CLEN 181"
               ]
             }
           ]
@@ -1051,11 +1052,11 @@
     ]
   },
   {
-    "name": "CSCE Emphasis - Math",
+    "name": "CSCE Emphasis - Mathematics",
     "catalog_year": "2025-2026",
     "groups": [
       {
-        "name": "Math Emphasis (12 credits)",
+        "name": "Mathematics Emphasis (12 credits)",
         "rules": {
           "minCredits": 12,
           "items": [
@@ -1567,11 +1568,11 @@
     ]
   },
   {
-    "name": "CSCE Emphasis - Game",
+    "name": "CSCE Emphasis - Game Design and Development",
     "catalog_year": "2025-2026",
     "groups": [
       {
-        "name": "Game Emphasis (12 credits)",
+        "name": "Game Design and Development Emphasis (12 credits)",
         "rules": {
           "minCredits": 12,
           "pool": [
@@ -1631,8 +1632,12 @@
       {
         "name": "STEM Emphasis (12 credits)",
         "rules": {
-          "manual": true,
-          "note": "12 upper-level credits from a STEM department (service courses excluded, no double counting). Add explicit course list or tags to enforce."
+          "items": [
+            {
+              "emphasisCredits": 12,
+              "note": "Mark upper-level STEM courses as 'Count toward emphasis' in your Academic Record"
+            }
+          ]
         }
       }
     ]
@@ -1644,8 +1649,12 @@
       {
         "name": "Liberal Arts/Social Sciences Emphasis (12 credits)",
         "rules": {
-          "manual": true,
-          "note": "12 upper-level credits with clear computing alignment (e.g., digital humanities, technical writing, computer music). Add allowed course list to enforce."
+          "items": [
+            {
+              "emphasisCredits": 12,
+              "note": "Mark Liberal Arts or Social Sciences courses as 'Count toward emphasis' in your Academic Record"
+            }
+          ]
         }
       }
     ]
@@ -1672,7 +1681,7 @@
     "catalog_year": "2025-2026",
     "groups": [
       {
-        "name": "Math Minor (13 credits)",
+        "name": "Math Minor (16 credits)",
         "rules": {
           "items": [
             {
@@ -1687,6 +1696,9 @@
                 "MATH 221",
                 "MATH 251",
                 "MATH 253",
+                "MATH 302",
+                "MATH 304",
+                "MATH 308",
                 "MATH 401",
                 "MATH 407",
                 "MATH 409",
@@ -1768,15 +1780,13 @@
     "catalog_year": "2025-2026",
     "groups": [
       {
-        "name": "Statistics Minor",
+        "name": "Statistics Minor (15 credits)",
         "rules": {
+          "allOf": [
+            "STAT 211",
+            "STAT 212"
+          ],
           "items": [
-            {
-              "allOf": [
-                "STAT 211",
-                "STAT 212"
-              ]
-            },
             {
               "pool": [
                 "STAT 315",
@@ -1831,16 +1841,12 @@
     "catalog_year": "2025-2026",
     "groups": [
       {
-        "name": "Game Design Minor",
+        "name": "Game Design and Development Minor (15 credits)",
         "rules": {
           "items": [
             {
-              "allOf": [
-                "CSCE 110"
-              ]
-            },
-            {
               "anyOf": [
+                "CSCE 110",
                 "CSCE 111",
                 "CSCE 120"
               ]
@@ -1859,14 +1865,20 @@
             },
             {
               "pool": [
+                "ARTS 345",
                 "COMM 230",
                 "JOUR 230",
                 "COMM 453",
                 "CSCE 436",
+                "MSTC 221",
+                "VIST 357",
                 "VIST 370",
-                "VIST 374"
+                "VIST 374",
+                "VIST 477",
+                "CSCE 446",
+                "VIST 480"
               ],
-              "minCount": 3
+              "minCount": 2
             }
           ]
         }

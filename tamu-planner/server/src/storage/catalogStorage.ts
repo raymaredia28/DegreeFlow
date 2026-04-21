@@ -4,12 +4,12 @@ import { env } from "../config/env.js";
 import { ensureFirebaseApp } from "../services/auth.js";
 import { getFirestore } from "firebase-admin/firestore";
 
-const ADMIN_SUBJECT = "CSCE";
+const ADMIN_SUBJECTS = new Set(["CSCE", "CPEN", "ECEN"]);
 
 export interface CatalogStorageProvider {
-  /** All CSCE courses (admin-managed). Used by admin panel. */
+  /** All admin-managed courses (CSCE/CPEN/ECEN). Used by admin panel. */
   getAllCourses(): Promise<any[]>;
-  /** Full catalog: non-CSCE from static file + CSCE from admin store. Used by public API + evaluator. */
+  /** Full catalog: non-admin subjects from static file + admin subjects from admin store. Used by public API + evaluator. */
   getFullCatalog(): Promise<any[]>;
   getCourseById(courseId: number): Promise<any | null>;
   addCourse(course: any): Promise<any>;
@@ -43,7 +43,8 @@ function setCachedCatalog(catalog: any[]): any[] {
 
 const COURSES_FILE = path.resolve("data", "courses.json");
 
-const isCsceCourse = (c: any) => c.primary_subject === ADMIN_SUBJECT;
+const isAdminCourse = (c: any) =>
+  ADMIN_SUBJECTS.has(String(c?.primary_subject || "").toUpperCase());
 
 /**
  * Sanitize an object for Firestore:
@@ -121,7 +122,7 @@ function nextCourseId(courses: any[]): number {
 const localCatalogStorage: CatalogStorageProvider = {
   async getAllCourses() {
     const courses = await readCoursesFile();
-    return courses.filter(isCsceCourse);
+    return courses.filter(isAdminCourse);
   },
 
   async getFullCatalog() {
@@ -197,34 +198,35 @@ async function ensureSeeded(): Promise<void> {
       return;
     }
 
-    console.log("[catalogStorage] Seeding Firestore with CSCE courses from courses.json...");
+    const subjectsLabel = [...ADMIN_SUBJECTS].join("/");
+    console.log(`[catalogStorage] Seeding Firestore with ${subjectsLabel} courses from courses.json...`);
     const allCourses = await readCoursesFile();
-    const csceCourses = allCourses.filter(isCsceCourse);
-    console.log(`[catalogStorage] Found ${csceCourses.length} CSCE courses (of ${allCourses.length} total), writing to Firestore...`);
+    const adminCourses = allCourses.filter(isAdminCourse);
+    console.log(`[catalogStorage] Found ${adminCourses.length} ${subjectsLabel} courses (of ${allCourses.length} total), writing to Firestore...`);
 
     const BATCH_SIZE = 400;
-    for (let i = 0; i < csceCourses.length; i += BATCH_SIZE) {
+    for (let i = 0; i < adminCourses.length; i += BATCH_SIZE) {
       const batch = db.batch();
-      const slice = csceCourses.slice(i, i + BATCH_SIZE);
+      const slice = adminCourses.slice(i, i + BATCH_SIZE);
       for (const course of slice) {
         const docRef = db.collection(COURSES_COLLECTION).doc(String(course.course_id));
         batch.set(docRef, sanitizeForFirestore(course));
       }
       await batch.commit();
-      console.log(`[catalogStorage] Seeded batch ${Math.floor(i / BATCH_SIZE) + 1} (${Math.min(i + BATCH_SIZE, csceCourses.length)}/${csceCourses.length})`);
+      console.log(`[catalogStorage] Seeded batch ${Math.floor(i / BATCH_SIZE) + 1} (${Math.min(i + BATCH_SIZE, adminCourses.length)}/${adminCourses.length})`);
     }
 
-    await metaRef.set({ seeded: true, seeded_at: new Date().toISOString(), count: csceCourses.length });
+    await metaRef.set({ seeded: true, seeded_at: new Date().toISOString(), count: adminCourses.length });
     seeded = true;
-    console.log(`[catalogStorage] Seeded ${csceCourses.length} CSCE courses into Firestore.`);
+    console.log(`[catalogStorage] Seeded ${adminCourses.length} ${subjectsLabel} courses into Firestore.`);
   } catch (err) {
     console.error("[catalogStorage] ensureSeeded FAILED:", err);
     throw err;
   }
 }
 
-/** Read CSCE courses from Firestore. */
-async function getFirestoreCsceCourses(): Promise<any[]> {
+/** Read admin-managed courses (CSCE/CPEN/ECEN) from Firestore. */
+async function getFirestoreAdminCourses(): Promise<any[]> {
   await ensureSeeded();
   const db = getDb();
   const snapshot = await db.collection(COURSES_COLLECTION).get();
@@ -233,7 +235,7 @@ async function getFirestoreCsceCourses(): Promise<any[]> {
 
 const firestoreCatalogStorage: CatalogStorageProvider = {
   async getAllCourses() {
-    return getFirestoreCsceCourses();
+    return getFirestoreAdminCourses();
   },
 
   async getFullCatalog() {
@@ -241,11 +243,11 @@ const firestoreCatalogStorage: CatalogStorageProvider = {
     if (cached) return cached;
 
     const allStatic = await readCoursesFile();
-    const csceCourses = await getFirestoreCsceCourses();
+    const adminCourses = await getFirestoreAdminCourses();
 
-    const csceById = new Map(csceCourses.map((c: any) => [c.course_id, c]));
-    const nonCsce = allStatic.filter((c: any) => !isCsceCourse(c));
-    return setCachedCatalog([...nonCsce, ...csceById.values()]);
+    const adminById = new Map(adminCourses.map((c: any) => [c.course_id, c]));
+    const nonAdmin = allStatic.filter((c: any) => !isAdminCourse(c));
+    return setCachedCatalog([...nonAdmin, ...adminById.values()]);
   },
 
   async getCourseById(courseId) {
@@ -307,7 +309,7 @@ const firestoreCatalogStorage: CatalogStorageProvider = {
 const useLocal = env.nodeEnv !== "production";
 
 console.log(
-  `[catalogStorage] Using ${useLocal ? "local JSON file" : "Firestore (CSCE only)"} catalog storage (${env.nodeEnv})`
+  `[catalogStorage] Using ${useLocal ? "local JSON file" : `Firestore (${[...ADMIN_SUBJECTS].join("/")})`} catalog storage (${env.nodeEnv})`
 );
 
 export const catalogStorage: CatalogStorageProvider = useLocal

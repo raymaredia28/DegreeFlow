@@ -77,7 +77,7 @@ export function DegreeProgress({ completedCourses, emphasisAreaCourses = [] }) {
         </div>
 
         {validation.summary.remainingCredits > 0 && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
             <p className="text-sm text-blue-900">
               <strong>{validation.summary.remainingCredits} credits remaining</strong> to meet graduation requirements
             </p>
@@ -217,7 +217,7 @@ export function DegreeProgress({ completedCourses, emphasisAreaCourses = [] }) {
       </div>
 
       {/* Important Notes */}
-      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+      <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
         <h4 className="text-sm font-semibold text-gray-900 mb-2">Important Notes</h4>
         <ul className="text-xs text-gray-600 space-y-1">
           <li>• All required courses must be completed with a grade of C or better</li>
