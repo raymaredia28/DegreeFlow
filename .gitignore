@@ -16,3 +16,7 @@ tamu-planner/server/data/local-db.json
 # Firebase
 firebase-debug.log
 
+# MkDocs build output
+/site/
+.venv/
+
