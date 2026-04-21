@@ -7649,6 +7649,43 @@ Now answer the student's question using only this context.`
         </>
       )}
 
+      {authUser && isTranscriptDirty && activeTab !== 'login' && (
+        <div className="bg-amber-50 border-b border-amber-200">
+          <div className="max-w-7xl mx-auto px-4 py-2.5 flex flex-wrap items-center gap-3">
+            <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+            <span className="text-sm text-amber-900 flex-1 min-w-0">
+              You have unsaved academic record changes. Click{' '}
+              <span className="font-semibold">Update Record</span> to save them so
+              your evaluation reflects the latest data.
+            </span>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => void applyReviewedTranscript()}
+                disabled={isTranscriptSaving}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-md inline-flex items-center gap-1.5 ${
+                  isTranscriptSaving
+                    ? 'bg-amber-200 text-amber-700 cursor-not-allowed'
+                    : 'bg-amber-600 text-white hover:bg-amber-700'
+                }`}
+              >
+                <Save className="w-3.5 h-3.5" />
+                {isTranscriptSaving ? 'Saving…' : 'Update Record'}
+              </button>
+              {activeTab !== 'planner' && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('planner')}
+                  className="text-xs font-medium px-3 py-1.5 rounded-md border border-amber-300 text-amber-800 hover:bg-amber-100"
+                >
+                  Go to Planner
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <main className={isFlowFullscreen ? 'p-0' : 'max-w-7xl mx-auto px-4 py-8'}>
         <div key={activeTab} className="animate-fade-in">
           {isLoadingData && activeTab !== 'login' ? (
