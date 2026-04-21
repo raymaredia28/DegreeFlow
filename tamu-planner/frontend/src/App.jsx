@@ -1247,6 +1247,14 @@ function App() {
   const [transcriptTerms, setTranscriptTerms] = useState([]);
   const [transcriptPdfName, setTranscriptPdfName] = useState('');
   const [transcriptTotals, setTranscriptTotals] = useState(null);
+  const chatActionTermCandidates = useMemo(() => {
+    const labels = new Set(semesterOrder);
+    (Array.isArray(transcriptTerms) ? transcriptTerms : []).forEach((term) => {
+      const label = String(term?.label || '').trim();
+      if (label) labels.add(label);
+    });
+    return Array.from(labels);
+  }, [semesterOrder, transcriptTerms]);
   const [showTranscriptReview, setShowTranscriptReview] = useState(false);
   const [reviewTerms, setReviewTerms] = useState([]);
   const [reviewTotals, setReviewTotals] = useState(null);
@@ -2853,7 +2861,7 @@ function App() {
         const type = String(item?.type || item?.action || '').trim().toLowerCase();
         const courseCode = normalizeCode(item?.courseCode || item?.course || item?.code || '');
         const rawTerm = String(item?.term || item?.semester || item?.termLabel || '').trim();
-        const term = normalizePlannerTermLabel(rawTerm, semesterOrder) || rawTerm;
+        const term = normalizePlannerTermLabel(rawTerm, chatActionTermCandidates) || rawTerm;
         const reason = String(item?.reason || '').trim();
         if ((type !== 'add' && type !== 'remove') || !courseCode || !term) return null;
         return { type, courseCode, term, reason };
@@ -2887,7 +2895,7 @@ function App() {
     if (!type) return [];
 
     const courseMatch = text.match(COURSE_REGEX);
-    const term = normalizePlannerTermLabel(text, semesterOrder);
+    const term = normalizePlannerTermLabel(text, chatActionTermCandidates);
     if (!courseMatch || !term) return [];
 
     const courseCode = normalizeCode(`${courseMatch[1]} ${courseMatch[2]}`);
@@ -2919,9 +2927,11 @@ function App() {
       const userAction = userByKey.get(key);
       if (!userAction) return action;
 
-      const aiTerm = normalizePlannerTermLabel(action.term, semesterOrder) || String(action.term || '').trim();
+      const aiTerm =
+        normalizePlannerTermLabel(action.term, chatActionTermCandidates) || String(action.term || '').trim();
       const userTerm =
-        normalizePlannerTermLabel(userAction.term, semesterOrder) || String(userAction.term || '').trim();
+        normalizePlannerTermLabel(userAction.term, chatActionTermCandidates) ||
+        String(userAction.term || '').trim();
 
       if (!userTerm || aiTerm === userTerm) {
         return { ...action, term: aiTerm };
@@ -3962,12 +3972,14 @@ Now answer the student's question using only this context.`
   /** Remove a course from the transcript for a given term (planner + academic record). */
   const removeCourseFromTranscriptRecord = (termLabel, courseCode) => {
     const nk = normalizeCode(courseCode);
-    if (!termLabel || !nk) return;
+    const normalizedTermLabel = String(termLabel || '').trim().toLowerCase();
+    if (!normalizedTermLabel || !nk) return;
     const filterCourses = (courses) =>
       (courses || []).filter((c) => normalizeCode(c?.code) !== nk);
     const updater = (prevTerms) =>
       (prevTerms || []).map((term) => {
-        if (term.label !== termLabel) return term;
+        const currentLabel = String(term?.label || '').trim().toLowerCase();
+        if (currentLabel !== normalizedTermLabel) return term;
         return { ...term, courses: filterCourses(term.courses) };
       });
     setTranscriptTerms((prevT) => {
@@ -4002,68 +4014,146 @@ Now answer the student's question using only this context.`
     const actionsToApply = pendingChatActions.actions;
     const applied = [];
     const rejected = [];
-
-    setSemesterPlans((prev) => {
-      const next = {};
-      Object.entries(prev).forEach(([term, codes]) => {
-        next[term] = [...(codes || [])];
-      });
-
-      actionsToApply.forEach((action) => {
-        const code = normalizeCode(action.courseCode);
-        const rawTerm = String(action.term || '').trim();
-        const term = normalizePlannerTermLabel(rawTerm, Object.keys(next)) || rawTerm;
-        const type = action.type;
-
-        if (!code || !term || (type !== 'add' && type !== 'remove')) {
-          rejected.push(`${formatPlannerActionLabel(action)}: invalid action format`);
-          return;
-        }
-        if (!Object.prototype.hasOwnProperty.call(next, term)) {
-          rejected.push(`${formatPlannerActionLabel(action)}: invalid term`);
-          return;
-        }
-
-        if (type === 'add') {
-          if (!COURSES[code]) {
-            rejected.push(`${formatPlannerActionLabel(action)}: course not found in catalog`);
-            return;
-          }
-          if (isCourseCompleted(code)) {
-            rejected.push(`${formatPlannerActionLabel(action)}: already completed`);
-            return;
-          }
-          if (isCourseInProgress(code)) {
-            rejected.push(`${formatPlannerActionLabel(action)}: currently in progress`);
-            return;
-          }
-          if ((next[term] || []).includes(code)) {
-            rejected.push(`${formatPlannerActionLabel(action)}: already in ${term}`);
-            return;
-          }
-          const inOtherTerm = Object.entries(next).some(([otherTerm, codes]) => {
-            if (otherTerm === term) return false;
-            return (codes || []).includes(code);
-          });
-          if (inOtherTerm) {
-            rejected.push(`${formatPlannerActionLabel(action)}: already planned in another term`);
-            return;
-          }
-          next[term] = [...(next[term] || []), code];
-          applied.push(`${formatPlannerActionLabel(action)}`);
-          return;
-        }
-
-        if (!(next[term] || []).includes(code)) {
-          rejected.push(`${formatPlannerActionLabel(action)}: not found in ${term}`);
-          return;
-        }
-        next[term] = (next[term] || []).filter((item) => item !== code);
-        applied.push(`${formatPlannerActionLabel(action)}`);
-      });
-
-      return next;
+    const transcriptTermLabels = (Array.isArray(transcriptTerms) ? transcriptTerms : [])
+      .map((term) => String(term?.label || '').trim())
+      .filter(Boolean);
+    const transcriptTermCodes = new Map();
+    (Array.isArray(transcriptTerms) ? transcriptTerms : []).forEach((term) => {
+      const label = String(term?.label || '').trim();
+      if (!label) return;
+      transcriptTermCodes.set(
+        label,
+        new Set(
+          (Array.isArray(term?.courses) ? term.courses : [])
+            .map((course) => normalizeCode(course?.code))
+            .filter(Boolean)
+        )
+      );
     });
+    const transcriptRemovals = [];
+    const findTranscriptTermForCode = (requestedTermRaw, normalizedCode) => {
+      const requested = String(requestedTermRaw || '').trim();
+      if (requested) {
+        const normalizedRequested = normalizePlannerTermLabel(requested, transcriptTermLabels);
+        if (normalizedRequested && transcriptTermCodes.get(normalizedRequested)?.has(normalizedCode)) {
+          return normalizedRequested;
+        }
+        const exactRequested = transcriptTermLabels.find(
+          (label) => label.toLowerCase() === requested.toLowerCase()
+        );
+        if (exactRequested && transcriptTermCodes.get(exactRequested)?.has(normalizedCode)) {
+          return exactRequested;
+        }
+        return '';
+      }
+      for (const [label, codes] of transcriptTermCodes.entries()) {
+        if (codes?.has(normalizedCode)) return label;
+      }
+      return '';
+    };
+
+    const next = {};
+    Object.entries(semesterPlans || {}).forEach(([term, codes]) => {
+      next[term] = [...(codes || [])];
+    });
+    let plannerUpdated = false;
+
+    actionsToApply.forEach((action) => {
+      const code = normalizeCode(action.courseCode);
+      const rawTerm = String(action.term || '').trim();
+      const plannerTerm = normalizePlannerTermLabel(rawTerm, Object.keys(next));
+      const transcriptTerm = normalizePlannerTermLabel(rawTerm, transcriptTermLabels);
+      const term = plannerTerm || transcriptTerm || rawTerm;
+      const type = action.type;
+      const actionLabel = formatPlannerActionLabel({ ...action, term });
+
+      if (!code || !term || (type !== 'add' && type !== 'remove')) {
+        rejected.push(`${actionLabel}: invalid action format`);
+        return;
+      }
+
+      if (type === 'add') {
+        if (!plannerTerm || !Object.prototype.hasOwnProperty.call(next, plannerTerm)) {
+          rejected.push(`${actionLabel}: invalid term`);
+          return;
+        }
+        if (!COURSES[code]) {
+          rejected.push(`${actionLabel}: course not found in catalog`);
+          return;
+        }
+        if (isCourseCompleted(code)) {
+          rejected.push(`${actionLabel}: already completed`);
+          return;
+        }
+        if (isCourseInProgress(code)) {
+          rejected.push(`${actionLabel}: currently in progress`);
+          return;
+        }
+        if ((next[plannerTerm] || []).includes(code)) {
+          rejected.push(`${actionLabel}: already in ${plannerTerm}`);
+          return;
+        }
+        const inOtherTerm = Object.entries(next).some(([otherTerm, codes]) => {
+          if (otherTerm === plannerTerm) return false;
+          return (codes || []).includes(code);
+        });
+        if (inOtherTerm) {
+          rejected.push(`${actionLabel}: already planned in another term`);
+          return;
+        }
+        next[plannerTerm] = [...(next[plannerTerm] || []), code];
+        plannerUpdated = true;
+        applied.push(`${formatPlannerActionLabel({ ...action, term: plannerTerm })}`);
+        return;
+      }
+
+      let removedFromPlanner = false;
+      let removedFromTranscript = false;
+
+      if (plannerTerm) {
+        const plannerCodes = next[plannerTerm] || [];
+        if (plannerCodes.some((item) => normalizeCode(item) === code)) {
+          next[plannerTerm] = plannerCodes.filter((item) => normalizeCode(item) !== code);
+          removedFromPlanner = true;
+          plannerUpdated = true;
+        }
+      }
+
+      const transcriptTermForRemoval =
+        (transcriptTerm && transcriptTermCodes.get(transcriptTerm)?.has(code) && transcriptTerm) ||
+        findTranscriptTermForCode(rawTerm, code);
+      if (transcriptTermForRemoval) {
+        const termCodes = transcriptTermCodes.get(transcriptTermForRemoval);
+        if (termCodes?.has(code)) {
+          transcriptRemovals.push({ termLabel: transcriptTermForRemoval, courseCode: code });
+          termCodes.delete(code);
+          removedFromTranscript = true;
+        }
+      }
+
+      if (removedFromPlanner || removedFromTranscript) {
+        const appliedTerm = transcriptTermForRemoval || plannerTerm || term;
+        applied.push(`${formatPlannerActionLabel({ ...action, term: appliedTerm })}`);
+        return;
+      }
+
+      if (!plannerTerm && !transcriptTerm && !transcriptTermForRemoval) {
+        rejected.push(`${actionLabel}: invalid term`);
+        return;
+      }
+      rejected.push(`${actionLabel}: not found in ${term}`);
+    });
+
+    if (plannerUpdated) {
+      setSemesterPlans(next);
+      setPlannerDirty(true);
+    }
+
+    if (transcriptRemovals.length > 0) {
+      transcriptRemovals.forEach(({ termLabel, courseCode }) => {
+        removeCourseFromTranscriptRecord(termLabel, courseCode);
+      });
+    }
 
     setPendingChatActions(null);
 
