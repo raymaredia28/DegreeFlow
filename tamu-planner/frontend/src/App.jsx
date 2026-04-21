@@ -1064,7 +1064,8 @@ function App() {
           return { term: 'Summer', year };
         case 'Summer':
         default:
-          return { term: 'Fall', year: year + 1 };
+          // Summer 2026 should roll into Fall 2026 (same calendar year)
+          return { term: 'Fall', year };
       }
     };
 
@@ -1123,6 +1124,87 @@ function App() {
     });
     return seeded;
   };
+  const normalizePlannerTermLabel = useCallback(
+    (rawTerm, candidateTerms = semesterOrder) => {
+      const terms = (Array.isArray(candidateTerms) ? candidateTerms : [])
+        .map((term) => String(term || '').trim())
+        .filter(Boolean);
+      if (terms.length === 0) return '';
+
+      const pickExact = (value) => {
+        const lowered = String(value || '').trim().toLowerCase();
+        if (!lowered) return '';
+        return terms.find((term) => term.toLowerCase() === lowered) || '';
+      };
+
+      const raw = String(rawTerm || '').trim();
+      if (!raw) return '';
+      const exactRaw = pickExact(raw);
+      if (exactRaw) return exactRaw;
+
+      const cleaned = raw.replace(/[.,;:!?]+$/g, '').replace(/\s+/g, ' ').trim();
+      if (!cleaned) return '';
+      const exactCleaned = pickExact(cleaned);
+      if (exactCleaned) return exactCleaned;
+
+      const normalizeSeason = (seasonValue) => {
+        const season = String(seasonValue || '').trim().toLowerCase();
+        if (!season) return '';
+        if (season === 'autumn') return 'Fall';
+        const normalized = season.charAt(0).toUpperCase() + season.slice(1);
+        return ['Fall', 'Winter', 'Spring', 'Summer'].includes(normalized) ? normalized : '';
+      };
+
+      const seasonYearMatch = cleaned.match(/\b(fall|spring|summer|winter|autumn)\s*[-/]?\s*(20\d{2})\b/i);
+      if (seasonYearMatch) {
+        const season = normalizeSeason(seasonYearMatch[1]);
+        const year = seasonYearMatch[2];
+        const candidate = season ? `${season} ${year}` : '';
+        if (candidate && terms.includes(candidate)) return candidate;
+      }
+
+      const yearSeasonMatch = cleaned.match(/\b(20\d{2})\s*[-/]?\s*(fall|spring|summer|winter|autumn)\b/i);
+      if (yearSeasonMatch) {
+        const year = yearSeasonMatch[1];
+        const season = normalizeSeason(yearSeasonMatch[2]);
+        const candidate = season ? `${season} ${year}` : '';
+        if (candidate && terms.includes(candidate)) return candidate;
+      }
+
+      const academicYearMatch = cleaned.match(/\b(20\d{2})\s*[-/]\s*(20\d{2})\b/);
+      if (academicYearMatch) {
+        const firstYear = Number(academicYearMatch[1]);
+        const secondYear = Number(academicYearMatch[2]);
+        const startYear = secondYear === firstYear + 1 ? firstYear : Math.min(firstYear, secondYear);
+        const candidates = [
+          `Fall ${startYear}`,
+          `Winter ${startYear}`,
+          `Spring ${startYear + 1}`,
+          `Summer ${startYear + 1}`
+        ];
+        const resolved = candidates.find((candidate) => terms.includes(candidate));
+        if (resolved) return resolved;
+      }
+
+      const yearOnlyMatch = cleaned.match(/\b(20\d{2})\b/);
+      if (yearOnlyMatch) {
+        const year = yearOnlyMatch[1];
+        const candidates = [
+          `Fall ${year}`,
+          `Winter ${year}`,
+          `Spring ${year}`,
+          `Summer ${year}`,
+          `Spring ${Number(year) + 1}`,
+          `Summer ${Number(year) + 1}`
+        ];
+        const resolved = candidates.find((candidate) => terms.includes(candidate));
+        if (resolved) return resolved;
+      }
+
+      return '';
+    },
+    [semesterOrder]
+  );
 
   const [activeTab, setActiveTab] = useState(() => {
     try {
@@ -2770,7 +2852,8 @@ function App() {
       .map((item) => {
         const type = String(item?.type || item?.action || '').trim().toLowerCase();
         const courseCode = normalizeCode(item?.courseCode || item?.course || item?.code || '');
-        const term = String(item?.term || item?.semester || item?.termLabel || '').trim();
+        const rawTerm = String(item?.term || item?.semester || item?.termLabel || '').trim();
+        const term = normalizePlannerTermLabel(rawTerm, semesterOrder) || rawTerm;
         const reason = String(item?.reason || '').trim();
         if ((type !== 'add' && type !== 'remove') || !courseCode || !term) return null;
         return { type, courseCode, term, reason };
@@ -2804,13 +2887,10 @@ function App() {
     if (!type) return [];
 
     const courseMatch = text.match(COURSE_REGEX);
-    const termMatch = text.match(TERM_REGEX);
-    if (!courseMatch || !termMatch) return [];
+    const term = normalizePlannerTermLabel(text, semesterOrder);
+    if (!courseMatch || !term) return [];
 
     const courseCode = normalizeCode(`${courseMatch[1]} ${courseMatch[2]}`);
-    const season = termMatch[1];
-    const year = termMatch[2];
-    const term = `${season.charAt(0).toUpperCase()}${season.slice(1).toLowerCase()} ${year}`;
     if (!courseCode || !term) return [];
 
     return [
@@ -2821,6 +2901,42 @@ function App() {
         reason: 'Requested in chat'
       }
     ];
+  };
+  const reconcilePlannerActionsWithUserIntent = (aiActions, userActions) => {
+    const ai = (Array.isArray(aiActions) ? aiActions : []).filter(Boolean);
+    const user = (Array.isArray(userActions) ? userActions : []).filter(Boolean);
+    if (ai.length === 0 || user.length === 0) return ai;
+
+    const userByKey = new Map();
+    user.forEach((action) => {
+      const key = `${action.type}::${normalizeCode(action.courseCode)}`;
+      userByKey.set(key, action);
+    });
+
+    let adjusted = false;
+    const reconciled = ai.map((action) => {
+      const key = `${action.type}::${normalizeCode(action.courseCode)}`;
+      const userAction = userByKey.get(key);
+      if (!userAction) return action;
+
+      const aiTerm = normalizePlannerTermLabel(action.term, semesterOrder) || String(action.term || '').trim();
+      const userTerm =
+        normalizePlannerTermLabel(userAction.term, semesterOrder) || String(userAction.term || '').trim();
+
+      if (!userTerm || aiTerm === userTerm) {
+        return { ...action, term: aiTerm };
+      }
+
+      adjusted = true;
+      return {
+        ...action,
+        term: userTerm,
+        reason: action.reason || userAction.reason || 'Requested in chat'
+      };
+    });
+
+    if (adjusted) return reconciled;
+    return ai;
   };
 
   const sendChatMessage = async (userMessage) => {
@@ -3739,8 +3855,11 @@ Now answer the student's question using only this context.`
       const data = await response.json();
       const assistantText = data.choices?.[0]?.message?.content || 'Sorry, I could not generate a response.';
       const { cleanText, actions } = parsePlannerActionsFromResponse(assistantText);
+      const parsedUserActions = parsePlannerActionFromUserMessage(userMessage);
       const fallbackActions =
-        actions.length > 0 ? actions : parsePlannerActionFromUserMessage(userMessage);
+        actions.length > 0
+          ? reconcilePlannerActionsWithUserIntent(actions, parsedUserActions)
+          : parsedUserActions;
       const usedFallback = actions.length === 0 && fallbackActions.length > 0;
       
       let assistantReplyText = '';
@@ -3892,7 +4011,8 @@ Now answer the student's question using only this context.`
 
       actionsToApply.forEach((action) => {
         const code = normalizeCode(action.courseCode);
-        const term = String(action.term || '').trim();
+        const rawTerm = String(action.term || '').trim();
+        const term = normalizePlannerTermLabel(rawTerm, Object.keys(next)) || rawTerm;
         const type = action.type;
 
         if (!code || !term || (type !== 'add' && type !== 'remove')) {
