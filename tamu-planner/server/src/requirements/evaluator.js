@@ -371,15 +371,33 @@ const evaluatePool = (poolRule, context, minGrade) => {
 
   const satisfied = creditOk && countOk && creditCapOk;
 
+  const eligibleCodeSet = new Set(
+    eligible.map((c) => normalizeCode(`${c.department} ${c.course_number}`))
+  );
+  const remainingOptions = Array.from(
+    new Set(
+      (poolRule.pool || [])
+        .map(normalizeCode)
+        .filter((code) => code && !excludeSet.has(code) && !eligibleCodeSet.has(code))
+    )
+  );
+  const OPTION_SAMPLE_LIMIT = 6;
+  const formatOptions = (codes) => {
+    if (codes.length === 0) return '';
+    if (codes.length <= OPTION_SAMPLE_LIMIT) return `options: ${codes.join(', ')}`;
+    return `options: ${codes.slice(0, OPTION_SAMPLE_LIMIT).join(', ')}, +${codes.length - OPTION_SAMPLE_LIMIT} more`;
+  };
+  const optionsSuffix = remainingOptions.length > 0 ? ` — ${formatOptions(remainingOptions)}` : '';
+
   const missing = [];
   if (!creditOk && minCredits !== null) {
     const remaining = Math.max(0, minCredits - credits);
-    missing.push(`Need ${remaining} credits from pool`);
+    missing.push(`Need ${remaining} credits from pool${optionsSuffix}`);
   }
   if (minCount !== null && count < minCount) {
     const remaining = Math.max(0, minCount - count);
     const estimatedCredits = remaining * 3;
-    missing.push(`Need ~${estimatedCredits} more credits from pool (${remaining} course${remaining !== 1 ? 's' : ''})`);
+    missing.push(`Need ~${estimatedCredits} more credits from pool (${remaining} course${remaining !== 1 ? 's' : ''})${optionsSuffix}`);
   }
   if (maxCount !== null && count > maxCount) missing.push(`Max ${maxCount} courses from pool`);
   if (maxCredits !== null && credits > maxCredits) missing.push(`Max ${maxCredits} credits from pool`);
