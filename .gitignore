@@ -21,3 +21,6 @@ firebase-debug.log
 /site/
 .venv/
 
+# Local/editor config — not part of the project
+.claude/
+.vscode/

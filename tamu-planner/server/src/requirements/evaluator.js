@@ -249,7 +249,11 @@ const evaluateAnyOf = (anyOf, context, minGrade) => {
         const candidate = {
           satisfied: true,
           credits,
-          used: option.allOf.map(normalizeCode)
+          used: option.allOf.map((codeRaw) => {
+            const n = normalizeCode(codeRaw);
+            const c = context.courseIndex.get(n);
+            return c ? c.code : n;
+          })
         };
         if (anyOfPickIsBetter(candidate, best, context)) {
           best = candidate;
@@ -278,7 +282,10 @@ const evaluateAnyOf = (anyOf, context, minGrade) => {
   });
 
   if (!best.satisfied) {
-    return { satisfied: false, credits: 0, missing: missingOptions };
+    if (missingOptions.length <= 1) {
+      return { satisfied: false, credits: 0, missing: missingOptions };
+    }
+    return { satisfied: false, credits: 0, missing: [`Need 1 from: ${missingOptions.join(', ')}`] };
   }
 
   return { satisfied: true, credits: best.credits, used: best.used };
@@ -333,7 +340,7 @@ const evaluateCourseRule = (courseCode, context, minGrade) => {
   if (!isCompleted(course, minGrade, context)) {
     return { satisfied: false, credits: 0, missing: [code] };
   }
-  return { satisfied: true, credits: creditValue(course), used: [code] };
+  return { satisfied: true, credits: creditValue(course), used: [course.code] };
 };
 
 const evaluatePool = (poolRule, context, minGrade) => {
@@ -364,15 +371,33 @@ const evaluatePool = (poolRule, context, minGrade) => {
 
   const satisfied = creditOk && countOk && creditCapOk;
 
+  const eligibleCodeSet = new Set(
+    eligible.map((c) => normalizeCode(`${c.department} ${c.course_number}`))
+  );
+  const remainingOptions = Array.from(
+    new Set(
+      (poolRule.pool || [])
+        .map(normalizeCode)
+        .filter((code) => code && !excludeSet.has(code) && !eligibleCodeSet.has(code))
+    )
+  );
+  const OPTION_SAMPLE_LIMIT = 6;
+  const formatOptions = (codes) => {
+    if (codes.length === 0) return '';
+    if (codes.length <= OPTION_SAMPLE_LIMIT) return `options: ${codes.join(', ')}`;
+    return `options: ${codes.slice(0, OPTION_SAMPLE_LIMIT).join(', ')}, +${codes.length - OPTION_SAMPLE_LIMIT} more`;
+  };
+  const optionsSuffix = remainingOptions.length > 0 ? ` — ${formatOptions(remainingOptions)}` : '';
+
   const missing = [];
   if (!creditOk && minCredits !== null) {
     const remaining = Math.max(0, minCredits - credits);
-    missing.push(`Need ${remaining} credits from pool`);
+    missing.push(`Need ${remaining} credits from pool${optionsSuffix}`);
   }
   if (minCount !== null && count < minCount) {
     const remaining = Math.max(0, minCount - count);
     const estimatedCredits = remaining * 3;
-    missing.push(`Need ~${estimatedCredits} more credits from pool (${remaining} course${remaining !== 1 ? 's' : ''})`);
+    missing.push(`Need ~${estimatedCredits} more credits from pool (${remaining} course${remaining !== 1 ? 's' : ''})${optionsSuffix}`);
   }
   if (maxCount !== null && count > maxCount) missing.push(`Max ${maxCount} courses from pool`);
   if (maxCredits !== null && credits > maxCredits) missing.push(`Max ${maxCredits} credits from pool`);
@@ -817,6 +842,18 @@ const summarizeGroup = (name, rules, context, { deriveCredits = false } = {}) =>
   }, 0);
 
   const minCredits = rules.minCredits ?? null;
+
+  // Surface a group-level credit shortfall when items passed individually but the
+  // total credit count is still below the group minimum (e.g. Math emphasis: each
+  // sub-pool passes its own minCredits but the combined total is under 12).
+  if (minCredits !== null && credits < minCredits) {
+    const alreadyHasCreditMsg = missing.some((m) => /credit/i.test(m));
+    if (!alreadyHasCreditMsg) {
+      const remaining = minCredits - credits;
+      missing.push(`Need ${remaining} more credit${remaining !== 1 ? 's' : ''} (${credits} of ${minCredits} required)`);
+    }
+  }
+
   let satisfied =
     missing.length === 0 && (minCredits !== null ? credits >= minCredits : true);
 
