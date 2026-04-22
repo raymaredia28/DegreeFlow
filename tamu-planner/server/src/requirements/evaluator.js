@@ -842,6 +842,18 @@ const summarizeGroup = (name, rules, context, { deriveCredits = false } = {}) =>
   }, 0);
 
   const minCredits = rules.minCredits ?? null;
+
+  // Surface a group-level credit shortfall when items passed individually but the
+  // total credit count is still below the group minimum (e.g. Math emphasis: each
+  // sub-pool passes its own minCredits but the combined total is under 12).
+  if (minCredits !== null && credits < minCredits) {
+    const alreadyHasCreditMsg = missing.some((m) => /credit/i.test(m));
+    if (!alreadyHasCreditMsg) {
+      const remaining = minCredits - credits;
+      missing.push(`Need ${remaining} more credit${remaining !== 1 ? 's' : ''} (${credits} of ${minCredits} required)`);
+    }
+  }
+
   let satisfied =
     missing.length === 0 && (minCredits !== null ? credits >= minCredits : true);
 
