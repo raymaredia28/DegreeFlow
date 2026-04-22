@@ -282,7 +282,10 @@ const evaluateAnyOf = (anyOf, context, minGrade) => {
   });
 
   if (!best.satisfied) {
-    return { satisfied: false, credits: 0, missing: missingOptions };
+    if (missingOptions.length <= 1) {
+      return { satisfied: false, credits: 0, missing: missingOptions };
+    }
+    return { satisfied: false, credits: 0, missing: [`Need 1 from: ${missingOptions.join(', ')}`] };
   }
 
   return { satisfied: true, credits: best.credits, used: best.used };
