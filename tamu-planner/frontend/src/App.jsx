@@ -1958,6 +1958,13 @@ function App() {
       const semesterPlansSnapshot = JSON.parse(JSON.stringify(semesterPlans || {}));
 
       // Build combined course list: transcript (completed + in-progress) + planned (manual adds too)
+      // Catalog stores credits as {min, max} objects for variable-credit courses; resolve to a number.
+      const resolveCredits = (c) => {
+        if (typeof c === 'number') return c;
+        if (c && typeof c === 'object') return Number(c.max ?? c.min ?? 0) || 0;
+        return Number(c) || 0;
+      };
+
       const combined = new Map();
       transcriptCourseList.forEach((course) => {
         const code = normalizeCode(course.code);
@@ -1970,7 +1977,7 @@ function App() {
           code,
           department: code.split(' ')[0],
           course_number: code.split(' ')[1],
-          credits: Number(course.credits) || Number(meta.credits) || 0,
+          credits: resolveCredits(course.credits) || resolveCredits(meta.credits),
           categories: Array.from(new Set([...catalogCategories, ...userCategories])),
           grade: course.grade || null,
           status: isCourseMarkedInProgress(course) ? 'in-progress' : 'completed',
@@ -1989,7 +1996,7 @@ function App() {
             code,
             department: code.split(' ')[0],
             course_number: code.split(' ')[1],
-            credits: Number(meta.credits) || 0,
+            credits: resolveCredits(meta.credits),
             categories: Array.isArray(meta.categories) ? meta.categories : [],
             grade: null,
             status: 'planned',
