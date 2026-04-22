@@ -3820,9 +3820,9 @@ IMPORTANT INSTRUCTIONS:
 [DEGREEFLOW_ACTIONS]
 {"actions":[{"type":"add|remove","courseCode":"SUBJ 123","term":"Fall 2026","reason":"optional short reason"}]}
 [/DEGREEFLOW_ACTIONS]
-4.8. Only include actions the user asked for, and only use term labels from "Planner terms available for edits".
+4.8. Only include actions the user asked for. Use ANY term label from "Planner terms available for edits" — including past semesters. Never refuse an add/remove because the semester is in the past.
 4.9. For direct commands like "add/remove COURSE_CODE to/from TERM", always include the action block; do not refuse for ambiguity.
-4.10. For semester-by-semester recommendations, start at "Next recommendation term" and never suggest earlier terms.
+4.10. For unprompted semester-by-semester RECOMMENDATIONS only, start at "Next recommendation term". If the user explicitly names a specific semester, use it exactly as requested regardless of whether it is past or future.
 4.11. For pool/choice requirements (e.g., Creative Arts), present options as OR choices; do not treat every option as required.
 4.12. For future-planning/recommendation questions, prefer a concise ranked list of 5-6 remaining courses ordered highest-to-lowest by prerequisite dependency priority.
 5. Format your responses with clear structure:
@@ -6687,12 +6687,12 @@ Now answer the student's question using only this context.`
                         key={code}
                         className={`p-4 rounded-lg border ${
                           isLocked
-                            ? 'border-gray-300 bg-gray-100 opacity-60'
+                            ? 'border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 opacity-60'
                             : alreadyPlanned
                               ? 'border-green-300 bg-green-50'
                               : alreadyTaken || inProgress || alreadyPlannedEarlier
                                 ? 'border-red-300 bg-red-50'
-                                : 'border-gray-200 hover:bg-yellow-50 cursor-pointer'
+                                : 'border-gray-200 dark:border-gray-600 hover:bg-yellow-50 dark:hover:bg-slate-700 cursor-pointer'
                         }`}
                         onMouseEnter={(e) => {
                           if (!isDisabled) {
@@ -6724,7 +6724,7 @@ Now answer the student's question using only this context.`
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
                               <h4 className="font-bold text-gray-900">{code}</h4>
-                              <span className="text-xs bg-gray-200 px-2 py-1 rounded">
+                              <span className="text-xs bg-gray-200 dark:bg-gray-600 dark:text-gray-200 px-2 py-1 rounded">
                                 {getCourseCreditsForRequirementBar(code)} cr
                               </span>
                             </div>
@@ -8053,10 +8053,10 @@ Now answer the student's question using only this context.`
               </div>
               <div className="flex-1 min-h-0 px-4 py-3 text-xs text-gray-600 space-y-2 overflow-y-auto">
                 {chatMessages.length === 0 ? (
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-gray-700">
-                    <p className="font-semibold text-gray-900">Welcome to DegreeFlow Assistant!</p>
-                    <p className="mt-1 text-xs text-gray-600">I can help you with:</p>
-                    <ul className="mt-2 list-disc pl-5 space-y-1 text-xs text-gray-700">
+                  <div className="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-slate-700 p-3 text-gray-700 dark:text-gray-200">
+                    <p className="font-semibold text-gray-900 dark:text-gray-100">Welcome to DegreeFlow Assistant!</p>
+                    <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">I can help you with:</p>
+                    <ul className="mt-2 list-disc pl-5 space-y-1 text-xs text-gray-700 dark:text-gray-200">
                       <li>Identify which degree evaluation requirements are still not met.</li>
                       <li>Recommend future courses based on prerequisites and missing requirements.</li>
                       <li>Add or remove courses in your planner (with pre-requisite check and confirmation).</li>
@@ -8064,7 +8064,7 @@ Now answer the student's question using only this context.`
                       <li>Parse an uploaded transcript PDF and update your plan.</li>
                       <li>Parse a degree evaluation PDF and update your plan.</li>
                     </ul>
-                    <p className="mt-2 text-xs text-gray-500">
+                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                       Try asking: "What requirements am I still missing?" or "What should I take next semester?"
                     </p>
                   </div>
@@ -8102,7 +8102,7 @@ Now answer the student's question using only this context.`
                           className={`max-w-[85%] rounded-lg px-3 py-2 text-xs ${
                             message.role === 'user'
                               ? 'bg-[#500000] text-white'
-                              : 'bg-gray-100 text-gray-800'
+                              : 'bg-gray-100 dark:bg-slate-700 text-gray-800 dark:text-gray-100'
                           }`}
                         >
                           {message.role === 'user' ? message.text : formatText(message.text)}
@@ -8112,7 +8112,7 @@ Now answer the student's question using only this context.`
                   })
                 )}
                 {pendingChatActions?.actions?.length > 0 && (
-                  <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
                     <p className="font-semibold">Confirm planner update</p>
                     <p className="mt-1">The assistant requested these changes:</p>
                     <div className="mt-2 space-y-1">
@@ -8134,7 +8134,7 @@ Now answer the student's question using only this context.`
                       <button
                         type="button"
                         onClick={cancelPendingChatActions}
-                        className="rounded-full border border-amber-400 bg-white px-3 py-1.5 text-[11px] font-semibold text-amber-900 hover:bg-amber-100"
+                        className="rounded-full border border-amber-400 dark:border-amber-600 bg-white dark:bg-slate-700 px-3 py-1.5 text-[11px] font-semibold text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-slate-600"
                       >
                         Cancel
                       </button>
@@ -8143,7 +8143,7 @@ Now answer the student's question using only this context.`
                 )}
                 {isChatLoading && (
                   <div className="flex justify-start">
-                    <span className="max-w-[85%] rounded-lg bg-gray-100 px-3 py-2 text-xs text-gray-500">
+                    <span className="max-w-[85%] rounded-lg bg-gray-100 dark:bg-slate-700 px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
                       <span className="inline-flex gap-1">
                         <span className="animate-bounce">●</span>
                         <span className="animate-bounce" style={{ animationDelay: '0.1s' }}>●</span>
@@ -8180,7 +8180,7 @@ Now answer the student's question using only this context.`
                     type="button"
                     onClick={() => chatUploadInputRef.current?.click()}
                     disabled={isChatLoading || transcriptLoading}
-                    className="rounded-lg border border-gray-200 px-2.5 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+                    className="rounded-lg border border-gray-200 dark:border-gray-600 px-2.5 py-2 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
                     title="Upload transcript or degree evaluation PDF"
                   >
                     Upload
@@ -8197,7 +8197,7 @@ Now answer the student's question using only this context.`
                       }
                     }}
                     disabled={isChatLoading}
-                    className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#500000]/20 disabled:bg-gray-50 disabled:cursor-not-allowed"
+                    className="flex-1 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-slate-700 dark:text-gray-100 dark:placeholder-gray-400 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#500000]/20 disabled:bg-gray-50 disabled:cursor-not-allowed"
                   />
                   <button
                     type="button"

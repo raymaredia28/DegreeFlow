@@ -1,0 +1,98 @@
+site_name: DegreeFlow
+site_description: Documentation for DegreeFlow — a TAMU Computer Science degree planner.
+site_url: https://raymaredia28.github.io/DegreeFlow/
+repo_url: https://github.com/raymaredia28/DegreeFlow
+repo_name: raymaredia28/DegreeFlow
+edit_uri: edit/deployment-test/docs/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: deep orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: deep orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.indexes
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - User guide:
+      - user-guide/index.md
+      - Getting started: user-guide/getting-started.md
+      - Academic record: user-guide/academic-record.md
+      - Planner: user-guide/planner.md
+      - Degree evaluation: user-guide/evaluation.md
+      - Prerequisites viewer: user-guide/prerequisites.md
+      - Chat assistant: user-guide/chat-assistant.md
+      - Admin panel: user-guide/admin.md
+  - Developer guide:
+      - developer/index.md
+      - Local setup: developer/setup.md
+      - Architecture: developer/architecture.md
+      - Frontend: developer/frontend.md
+      - Backend: developer/backend.md
+      - Data model: developer/data-model.md
+      - Evaluation engine: developer/evaluation-engine.md
+      - Seeding Firestore: developer/seeding-firestore.md
+      - Deployment: developer/deployment.md
+  - Reference:
+      - reference/index.md
+      - REST API: reference/api.md
+      - Environment variables: reference/env-vars.md
+      - Firestore schema: reference/firestore-schema.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/raymaredia28/DegreeFlow

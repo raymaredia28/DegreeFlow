@@ -17,3 +17,7 @@ CLAUDE.md
 # Firebase
 firebase-debug.log
 
+# MkDocs build output
+/site/
+.venv/
+
