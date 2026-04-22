@@ -60,11 +60,14 @@ details[open] > summary .details-chevron {
   background-color: #0f172a !important;
 }
 
+/* Dark surface hierarchy (darkest → lightest):
+   page (#0f172a) → section (#152535) → card (#1e293b) */
 .dark .bg-white {
   background-color: #1e293b !important;
 }
+/* bg-gray-50 sits between page and card so nested containers are visually distinct */
 .dark .bg-gray-50 {
-  background-color: #1e293b !important;
+  background-color: #152535 !important;
 }
 .dark .bg-gray-100 {
   background-color: #0f172a !important;
@@ -327,6 +330,41 @@ details[open] > summary .details-chevron {
 }
 .dark .shadow-2xl {
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.8) !important;
+}
+
+/* ─── Missing border overrides ────────────────────────────────────────────── */
+.dark .border-gray-400 {
+  border-color: #64748b !important;
+}
+.dark .border-gray-500 {
+  border-color: #475569 !important;
+}
+.dark .border-gray-600 {
+  border-color: #475569 !important;
+}
+.dark .border-gray-700 {
+  border-color: #334155 !important;
+}
+.dark .border-gray-800 {
+  border-color: #1e293b !important;
+}
+
+/* ─── Missing background overrides ───────────────────────────────────────── */
+.dark .bg-gray-700 {
+  background-color: #374151 !important;
+}
+.dark .bg-gray-800 {
+  background-color: #1f2937 !important;
+}
+.dark .bg-gray-900 {
+  background-color: #111827 !important;
+}
+
+/* ─── Chat panel specific overrides ──────────────────────────────────────── */
+/* Assistant message bubbles use bg-gray-100 which maps to page bg (#0f172a)
+   in our dark mode scale — override to a lighter slate so they're visible */
+.dark .rounded-lg.bg-gray-100 {
+  background-color: #334155 !important;
 }
 
 /* ─── Nav & structural ──────────────────────────────────────────────────── */
