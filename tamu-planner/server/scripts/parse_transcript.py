@@ -13,6 +13,7 @@ HEADER_RE = re.compile(r"Subj\s+No\.?\s+Course\s*Title", re.IGNORECASE)
 TERM_TOTALS_RE = re.compile(r"(Term|Transcript)\s*Totals", re.IGNORECASE)
 IN_PROGRESS_RE = re.compile(r"COURSES\s*IN\s*PROGRESS", re.IGNORECASE)
 TERM_CODE_RE = re.compile(r"\((\d{6})\)")
+SUMMER_SESSION_RE = re.compile(r"^\d+(st|nd|rd|th)\s+Summer\s+Session$", re.IGNORECASE)
 
 TERM_CODE_MAP = {
     "11": "Spring",
@@ -133,6 +134,49 @@ def strip_trailing_noise(line: str) -> str:
 
 def normalize_grade_token(token: str) -> str:
     return re.sub(r"[^A-Z0-9+\-]", "", str(token or "").strip().upper())
+
+
+def normalize_term_ocr(line: str) -> str:
+    """Normalize common OCR misspellings in term headers."""
+    if not line:
+        return line
+    normalized = line
+    # Common Summer OCR variants seen in unofficial transcripts.
+    normalized = re.sub(r"\bSu[mn][A-Za-z]{0,2}mer\b", "Summer", normalized, flags=re.IGNORECASE)
+    return normalized
+
+
+def normalize_credit_token(token: str) -> str:
+    """
+    Normalize OCR-noisy credit tokens to canonical d.ddd format when possible.
+    Example: 1.00L0 -> 1.000
+    """
+    raw = str(token or "").strip()
+    if not raw:
+        return raw
+    cleaned = re.sub(r"[^0-9A-Za-z.]", "", raw).replace(",", ".")
+    if "." not in cleaned:
+        return cleaned
+    left, right = cleaned.split(".", 1)
+    left = re.sub(r"[^0-9]", "", left)
+    if not left:
+        return cleaned
+
+    # In credit decimals, OCR often reads 0 as O and sometimes inserts L/I.
+    right = (
+        right.replace("O", "0")
+        .replace("o", "0")
+        .replace("I", "1")
+        .replace("i", "1")
+        .replace("l", "1")
+        .replace("L", "0")
+    )
+    right = re.sub(r"[^0-9]", "", right)
+    if len(right) < 3:
+        right = right.ljust(3, "0")
+    elif len(right) > 3:
+        right = right[:3]
+    return f"{left}.{right}"
 
 
 def is_in_progress_grade(grade: str) -> bool:
@@ -310,9 +354,12 @@ def parse_course(line: str, in_progress_mode: bool) -> Optional[Course]:
 
     rest = tokens[2:]
     credit_idx = None
+    credit_value = None
     for i, tok in enumerate(rest):
-        if CREDIT_RE.match(tok):
+        normalized_credit = normalize_credit_token(tok)
+        if CREDIT_RE.match(normalized_credit):
             credit_idx = i
+            credit_value = normalized_credit
             break
     if credit_idx is None:
         return None
@@ -356,7 +403,7 @@ def parse_course(line: str, in_progress_mode: bool) -> Optional[Course]:
     title = title_case_course_title(title)
 
     try:
-        credits = float(rest[credit_idx])
+        credits = float(credit_value if credit_value is not None else rest[credit_idx])
     except ValueError:
         return None
 
@@ -470,11 +517,13 @@ def parse_page_columns_words(page, split_columns: bool = True) -> List[TermBlock
                 in_progress_mode = True
                 continue
 
-            term_code_match = TERM_CODE_RE.search(line)
+            line_for_term = normalize_term_ocr(line)
+
+            term_code_match = TERM_CODE_RE.search(line_for_term)
             if term_code_match:
                 pending_code = term_code_match.group(1)
 
-            term_match = TERM_RE.search(line)
+            term_match = TERM_RE.search(line_for_term)
             if term_match:
                 term, year = term_match.groups()
                 label = f"{term} {year}"
@@ -513,6 +562,11 @@ def parse_page_columns_words(page, split_columns: bool = True) -> List[TermBlock
                 continue
 
             if SUMMARY_LINE_RE.search(line):
+                last_was_course = False
+                continue
+
+            if SUMMER_SESSION_RE.search(line):
+                # Section headers inside Summer term should never be course-title continuations.
                 last_was_course = False
                 continue
 
@@ -779,11 +833,13 @@ def parse_lines(lines: List[str]) -> List[TermBlock]:
             in_progress_mode = True
             continue
 
-        term_code_match = TERM_CODE_RE.search(line)
+        line_for_term = normalize_term_ocr(line)
+
+        term_code_match = TERM_CODE_RE.search(line_for_term)
         if term_code_match:
             pending_code = term_code_match.group(1)
 
-        term_match = TERM_RE.search(line)
+        term_match = TERM_RE.search(line_for_term)
         if term_match:
             term, year = term_match.groups()
             label = f"{term} {year}"
@@ -826,6 +882,11 @@ def parse_lines(lines: List[str]) -> List[TermBlock]:
             continue
 
         if SUMMARY_LINE_RE.search(line):
+            pending_dept = None
+            last_was_course = False
+            continue
+
+        if SUMMER_SESSION_RE.search(line):
             pending_dept = None
             last_was_course = False
             continue

@@ -10,6 +10,7 @@ import {
   Calendar,
   AlertTriangle,
   CheckCircle,
+  MessageCircle,
   Book,
   Plus,
   X,
@@ -1063,7 +1064,8 @@ function App() {
           return { term: 'Summer', year };
         case 'Summer':
         default:
-          return { term: 'Fall', year: year + 1 };
+          // Summer 2026 should roll into Fall 2026 (same calendar year)
+          return { term: 'Fall', year };
       }
     };
 
@@ -1122,6 +1124,87 @@ function App() {
     });
     return seeded;
   };
+  const normalizePlannerTermLabel = useCallback(
+    (rawTerm, candidateTerms = semesterOrder) => {
+      const terms = (Array.isArray(candidateTerms) ? candidateTerms : [])
+        .map((term) => String(term || '').trim())
+        .filter(Boolean);
+      if (terms.length === 0) return '';
+
+      const pickExact = (value) => {
+        const lowered = String(value || '').trim().toLowerCase();
+        if (!lowered) return '';
+        return terms.find((term) => term.toLowerCase() === lowered) || '';
+      };
+
+      const raw = String(rawTerm || '').trim();
+      if (!raw) return '';
+      const exactRaw = pickExact(raw);
+      if (exactRaw) return exactRaw;
+
+      const cleaned = raw.replace(/[.,;:!?]+$/g, '').replace(/\s+/g, ' ').trim();
+      if (!cleaned) return '';
+      const exactCleaned = pickExact(cleaned);
+      if (exactCleaned) return exactCleaned;
+
+      const normalizeSeason = (seasonValue) => {
+        const season = String(seasonValue || '').trim().toLowerCase();
+        if (!season) return '';
+        if (season === 'autumn') return 'Fall';
+        const normalized = season.charAt(0).toUpperCase() + season.slice(1);
+        return ['Fall', 'Winter', 'Spring', 'Summer'].includes(normalized) ? normalized : '';
+      };
+
+      const seasonYearMatch = cleaned.match(/\b(fall|spring|summer|winter|autumn)\s*[-/]?\s*(20\d{2})\b/i);
+      if (seasonYearMatch) {
+        const season = normalizeSeason(seasonYearMatch[1]);
+        const year = seasonYearMatch[2];
+        const candidate = season ? `${season} ${year}` : '';
+        if (candidate && terms.includes(candidate)) return candidate;
+      }
+
+      const yearSeasonMatch = cleaned.match(/\b(20\d{2})\s*[-/]?\s*(fall|spring|summer|winter|autumn)\b/i);
+      if (yearSeasonMatch) {
+        const year = yearSeasonMatch[1];
+        const season = normalizeSeason(yearSeasonMatch[2]);
+        const candidate = season ? `${season} ${year}` : '';
+        if (candidate && terms.includes(candidate)) return candidate;
+      }
+
+      const academicYearMatch = cleaned.match(/\b(20\d{2})\s*[-/]\s*(20\d{2})\b/);
+      if (academicYearMatch) {
+        const firstYear = Number(academicYearMatch[1]);
+        const secondYear = Number(academicYearMatch[2]);
+        const startYear = secondYear === firstYear + 1 ? firstYear : Math.min(firstYear, secondYear);
+        const candidates = [
+          `Fall ${startYear}`,
+          `Winter ${startYear}`,
+          `Spring ${startYear + 1}`,
+          `Summer ${startYear + 1}`
+        ];
+        const resolved = candidates.find((candidate) => terms.includes(candidate));
+        if (resolved) return resolved;
+      }
+
+      const yearOnlyMatch = cleaned.match(/\b(20\d{2})\b/);
+      if (yearOnlyMatch) {
+        const year = yearOnlyMatch[1];
+        const candidates = [
+          `Fall ${year}`,
+          `Winter ${year}`,
+          `Spring ${year}`,
+          `Summer ${year}`,
+          `Spring ${Number(year) + 1}`,
+          `Summer ${Number(year) + 1}`
+        ];
+        const resolved = candidates.find((candidate) => terms.includes(candidate));
+        if (resolved) return resolved;
+      }
+
+      return '';
+    },
+    [semesterOrder]
+  );
 
   const [activeTab, setActiveTab] = useState(() => {
     try {
@@ -1164,6 +1247,14 @@ function App() {
   const [transcriptTerms, setTranscriptTerms] = useState([]);
   const [transcriptPdfName, setTranscriptPdfName] = useState('');
   const [transcriptTotals, setTranscriptTotals] = useState(null);
+  const chatActionTermCandidates = useMemo(() => {
+    const labels = new Set(semesterOrder);
+    (Array.isArray(transcriptTerms) ? transcriptTerms : []).forEach((term) => {
+      const label = String(term?.label || '').trim();
+      if (label) labels.add(label);
+    });
+    return Array.from(labels);
+  }, [semesterOrder, transcriptTerms]);
   const [showTranscriptReview, setShowTranscriptReview] = useState(false);
   const [reviewTerms, setReviewTerms] = useState([]);
   const [reviewTotals, setReviewTotals] = useState(null);
@@ -2578,53 +2669,122 @@ function App() {
     setTranscriptError('');
     setTranscriptLoading(true);
 
-    setTranscriptLoadingMessage('Reading PDF text…');
-
     try {
-      let rawLines = await extractPdfLines(file);
-      if (shouldForceOcr(rawLines) || !hasTermInLines(rawLines)) {
-        rawLines = await extractPdfOcrLines(file, setTranscriptLoadingMessage);
-      }
-      const lines = preprocessTranscriptLines(rawLines);
+      let linesCache = null;
+      let dataBase64Cache = null;
 
-      setTranscriptLoadingMessage('Detecting document type…');
-      const detectResp = await fetch(`${API_BASE}/storage/detect-document-type`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lines })
-      });
-      const detect = await detectResp.json().catch(() => ({}));
-      const detectedType = detect?.documentType || 'unknown';
-      setUploadedDocumentType(detectedType);
+      const getLines = async () => {
+        if (Array.isArray(linesCache)) return linesCache;
+        setTranscriptLoadingMessage('Reading PDF text…');
+        let rawLines = await extractPdfLines(file);
+        if (shouldForceOcr(rawLines) || !hasTermInLines(rawLines)) {
+          rawLines = await extractPdfOcrLines(file, setTranscriptLoadingMessage);
+        }
+        linesCache = preprocessTranscriptLines(rawLines);
+        return linesCache;
+      };
 
-      const dataBase64 = await fileToBase64(file);
+      const getDataBase64 = async () => {
+        if (typeof dataBase64Cache === 'string' && dataBase64Cache.length > 0) {
+          return dataBase64Cache;
+        }
+        dataBase64Cache = await fileToBase64(file);
+        return dataBase64Cache;
+      };
 
-      let result;
-      if (detectedType === 'degree-evaluation') {
+      const parseAsDegreeEvaluation = async () => {
+        let lines = [];
+        try {
+          lines = await getLines();
+        } catch {
+          return {
+            ok: false,
+            error: 'Unable to read this PDF for degree evaluation parsing.'
+          };
+        }
         setTranscriptLoadingMessage('Extracting courses from degree evaluation…');
         const response = await fetch(`${API_BASE}/storage/parse-degree-evaluation`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ lines })
         });
-        result = await response.json().catch(() => ({}));
-        if (!response.ok || !Array.isArray(result?.terms)) {
-          setTranscriptError(result?.error || 'Unable to extract courses from this degree evaluation PDF.');
-          return;
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !Array.isArray(payload?.terms)) {
+          return {
+            ok: false,
+            error: payload?.error || 'Unable to extract courses from this degree evaluation PDF.'
+          };
         }
-      } else {
+        return { ok: true, payload };
+      };
+
+      const parseAsTranscript = async () => {
+        const dataBase64 = await getDataBase64();
         setTranscriptLoadingMessage('Uploading transcript…');
         const response = await fetch(`${API_BASE}/storage/parse-transcript`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ fileName: file.name, dataBase64 })
         });
-        result = await response.json();
-        if (!response.ok || !Array.isArray(result?.terms)) {
-          setTranscriptError(result?.error || 'Unable to parse this transcript.');
-          return;
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !Array.isArray(payload?.terms)) {
+          return {
+            ok: false,
+            error: payload?.error || 'Unable to parse this transcript.'
+          };
         }
+        return { ok: true, payload };
+      };
+
+      let detectedType = 'unknown';
+      try {
+        const lines = await getLines();
+        setTranscriptLoadingMessage('Detecting document type…');
+        const detectResp = await fetch(`${API_BASE}/storage/detect-document-type`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lines })
+        });
+        const detect = await detectResp.json().catch(() => ({}));
+        detectedType = detect?.documentType || 'unknown';
+      } catch {
+        detectedType = 'unknown';
       }
+      setUploadedDocumentType(detectedType);
+
+      const parseOrder =
+        detectedType === 'degree-evaluation'
+          ? ['degree-evaluation', 'transcript']
+          : detectedType === 'transcript'
+            ? ['transcript', 'degree-evaluation']
+            : ['transcript', 'degree-evaluation'];
+
+      let result = null;
+      let parsedAsType = '';
+      let lastParseError = '';
+      for (const parseType of parseOrder) {
+        const attempt =
+          parseType === 'degree-evaluation'
+            ? await parseAsDegreeEvaluation()
+            : await parseAsTranscript();
+        if (attempt.ok) {
+          result = attempt.payload;
+          parsedAsType = parseType;
+          break;
+        }
+        lastParseError = attempt.error || lastParseError;
+      }
+
+      if (!result || !Array.isArray(result?.terms)) {
+        setTranscriptError(
+          lastParseError ||
+            'Unable to parse this PDF. Please upload again and choose the correct PDF type.'
+        );
+        return;
+      }
+
+      setUploadedDocumentType(parsedAsType || detectedType);
+
       if (!result.terms || result.terms.length === 0) {
         setTranscriptError('No terms/courses detected. Please try a different file.');
         return;
@@ -2640,10 +2800,10 @@ function App() {
       setIsTranscriptDirty(false);
       setShowTranscriptReview(false);
       setEvaluationMode('computed');
-      if (detectedType === 'degree-evaluation') {
+      if (parsedAsType === 'degree-evaluation') {
         showToast('Degree evaluation courses extracted. Run Generate to evaluate.', 'success');
       }
-      if (detectedType === 'unknown') {
+      if (detectedType === 'unknown' && parsedAsType === 'transcript') {
         setReqWarning('Document type detection uncertain. Parsed as transcript using Python parser.');
       }
     } catch (err) {
@@ -2700,7 +2860,8 @@ function App() {
       .map((item) => {
         const type = String(item?.type || item?.action || '').trim().toLowerCase();
         const courseCode = normalizeCode(item?.courseCode || item?.course || item?.code || '');
-        const term = String(item?.term || item?.semester || item?.termLabel || '').trim();
+        const rawTerm = String(item?.term || item?.semester || item?.termLabel || '').trim();
+        const term = normalizePlannerTermLabel(rawTerm, chatActionTermCandidates) || rawTerm;
         const reason = String(item?.reason || '').trim();
         if ((type !== 'add' && type !== 'remove') || !courseCode || !term) return null;
         return { type, courseCode, term, reason };
@@ -2734,13 +2895,10 @@ function App() {
     if (!type) return [];
 
     const courseMatch = text.match(COURSE_REGEX);
-    const termMatch = text.match(TERM_REGEX);
-    if (!courseMatch || !termMatch) return [];
+    const term = normalizePlannerTermLabel(text, chatActionTermCandidates);
+    if (!courseMatch || !term) return [];
 
     const courseCode = normalizeCode(`${courseMatch[1]} ${courseMatch[2]}`);
-    const season = termMatch[1];
-    const year = termMatch[2];
-    const term = `${season.charAt(0).toUpperCase()}${season.slice(1).toLowerCase()} ${year}`;
     if (!courseCode || !term) return [];
 
     return [
@@ -2751,6 +2909,44 @@ function App() {
         reason: 'Requested in chat'
       }
     ];
+  };
+  const reconcilePlannerActionsWithUserIntent = (aiActions, userActions) => {
+    const ai = (Array.isArray(aiActions) ? aiActions : []).filter(Boolean);
+    const user = (Array.isArray(userActions) ? userActions : []).filter(Boolean);
+    if (ai.length === 0 || user.length === 0) return ai;
+
+    const userByKey = new Map();
+    user.forEach((action) => {
+      const key = `${action.type}::${normalizeCode(action.courseCode)}`;
+      userByKey.set(key, action);
+    });
+
+    let adjusted = false;
+    const reconciled = ai.map((action) => {
+      const key = `${action.type}::${normalizeCode(action.courseCode)}`;
+      const userAction = userByKey.get(key);
+      if (!userAction) return action;
+
+      const aiTerm =
+        normalizePlannerTermLabel(action.term, chatActionTermCandidates) || String(action.term || '').trim();
+      const userTerm =
+        normalizePlannerTermLabel(userAction.term, chatActionTermCandidates) ||
+        String(userAction.term || '').trim();
+
+      if (!userTerm || aiTerm === userTerm) {
+        return { ...action, term: aiTerm };
+      }
+
+      adjusted = true;
+      return {
+        ...action,
+        term: userTerm,
+        reason: action.reason || userAction.reason || 'Requested in chat'
+      };
+    });
+
+    if (adjusted) return reconciled;
+    return ai;
   };
 
   const sendChatMessage = async (userMessage) => {
@@ -3624,9 +3820,9 @@ IMPORTANT INSTRUCTIONS:
 [DEGREEFLOW_ACTIONS]
 {"actions":[{"type":"add|remove","courseCode":"SUBJ 123","term":"Fall 2026","reason":"optional short reason"}]}
 [/DEGREEFLOW_ACTIONS]
-4.8. Only include actions the user asked for, and only use term labels from "Planner terms available for edits".
+4.8. Only include actions the user asked for. Use ANY term label from "Planner terms available for edits" — including past semesters. Never refuse an add/remove because the semester is in the past.
 4.9. For direct commands like "add/remove COURSE_CODE to/from TERM", always include the action block; do not refuse for ambiguity.
-4.10. For semester-by-semester recommendations, start at "Next recommendation term" and never suggest earlier terms.
+4.10. For unprompted semester-by-semester RECOMMENDATIONS only, start at "Next recommendation term". If the user explicitly names a specific semester, use it exactly as requested regardless of whether it is past or future.
 4.11. For pool/choice requirements (e.g., Creative Arts), present options as OR choices; do not treat every option as required.
 4.12. For future-planning/recommendation questions, prefer a concise ranked list of 5-6 remaining courses ordered highest-to-lowest by prerequisite dependency priority.
 5. Format your responses with clear structure:
@@ -3669,8 +3865,11 @@ Now answer the student's question using only this context.`
       const data = await response.json();
       const assistantText = data.choices?.[0]?.message?.content || 'Sorry, I could not generate a response.';
       const { cleanText, actions } = parsePlannerActionsFromResponse(assistantText);
+      const parsedUserActions = parsePlannerActionFromUserMessage(userMessage);
       const fallbackActions =
-        actions.length > 0 ? actions : parsePlannerActionFromUserMessage(userMessage);
+        actions.length > 0
+          ? reconcilePlannerActionsWithUserIntent(actions, parsedUserActions)
+          : parsedUserActions;
       const usedFallback = actions.length === 0 && fallbackActions.length > 0;
       
       let assistantReplyText = '';
@@ -3773,12 +3972,14 @@ Now answer the student's question using only this context.`
   /** Remove a course from the transcript for a given term (planner + academic record). */
   const removeCourseFromTranscriptRecord = (termLabel, courseCode) => {
     const nk = normalizeCode(courseCode);
-    if (!termLabel || !nk) return;
+    const normalizedTermLabel = String(termLabel || '').trim().toLowerCase();
+    if (!normalizedTermLabel || !nk) return;
     const filterCourses = (courses) =>
       (courses || []).filter((c) => normalizeCode(c?.code) !== nk);
     const updater = (prevTerms) =>
       (prevTerms || []).map((term) => {
-        if (term.label !== termLabel) return term;
+        const currentLabel = String(term?.label || '').trim().toLowerCase();
+        if (currentLabel !== normalizedTermLabel) return term;
         return { ...term, courses: filterCourses(term.courses) };
       });
     setTranscriptTerms((prevT) => {
@@ -3813,67 +4014,146 @@ Now answer the student's question using only this context.`
     const actionsToApply = pendingChatActions.actions;
     const applied = [];
     const rejected = [];
-
-    setSemesterPlans((prev) => {
-      const next = {};
-      Object.entries(prev).forEach(([term, codes]) => {
-        next[term] = [...(codes || [])];
-      });
-
-      actionsToApply.forEach((action) => {
-        const code = normalizeCode(action.courseCode);
-        const term = String(action.term || '').trim();
-        const type = action.type;
-
-        if (!code || !term || (type !== 'add' && type !== 'remove')) {
-          rejected.push(`${formatPlannerActionLabel(action)}: invalid action format`);
-          return;
-        }
-        if (!Object.prototype.hasOwnProperty.call(next, term)) {
-          rejected.push(`${formatPlannerActionLabel(action)}: invalid term`);
-          return;
-        }
-
-        if (type === 'add') {
-          if (!COURSES[code]) {
-            rejected.push(`${formatPlannerActionLabel(action)}: course not found in catalog`);
-            return;
-          }
-          if (isCourseCompleted(code)) {
-            rejected.push(`${formatPlannerActionLabel(action)}: already completed`);
-            return;
-          }
-          if (isCourseInProgress(code)) {
-            rejected.push(`${formatPlannerActionLabel(action)}: currently in progress`);
-            return;
-          }
-          if ((next[term] || []).includes(code)) {
-            rejected.push(`${formatPlannerActionLabel(action)}: already in ${term}`);
-            return;
-          }
-          const inOtherTerm = Object.entries(next).some(([otherTerm, codes]) => {
-            if (otherTerm === term) return false;
-            return (codes || []).includes(code);
-          });
-          if (inOtherTerm) {
-            rejected.push(`${formatPlannerActionLabel(action)}: already planned in another term`);
-            return;
-          }
-          next[term] = [...(next[term] || []), code];
-          applied.push(`${formatPlannerActionLabel(action)}`);
-          return;
-        }
-
-        if (!(next[term] || []).includes(code)) {
-          rejected.push(`${formatPlannerActionLabel(action)}: not found in ${term}`);
-          return;
-        }
-        next[term] = (next[term] || []).filter((item) => item !== code);
-        applied.push(`${formatPlannerActionLabel(action)}`);
-      });
-
-      return next;
+    const transcriptTermLabels = (Array.isArray(transcriptTerms) ? transcriptTerms : [])
+      .map((term) => String(term?.label || '').trim())
+      .filter(Boolean);
+    const transcriptTermCodes = new Map();
+    (Array.isArray(transcriptTerms) ? transcriptTerms : []).forEach((term) => {
+      const label = String(term?.label || '').trim();
+      if (!label) return;
+      transcriptTermCodes.set(
+        label,
+        new Set(
+          (Array.isArray(term?.courses) ? term.courses : [])
+            .map((course) => normalizeCode(course?.code))
+            .filter(Boolean)
+        )
+      );
     });
+    const transcriptRemovals = [];
+    const findTranscriptTermForCode = (requestedTermRaw, normalizedCode) => {
+      const requested = String(requestedTermRaw || '').trim();
+      if (requested) {
+        const normalizedRequested = normalizePlannerTermLabel(requested, transcriptTermLabels);
+        if (normalizedRequested && transcriptTermCodes.get(normalizedRequested)?.has(normalizedCode)) {
+          return normalizedRequested;
+        }
+        const exactRequested = transcriptTermLabels.find(
+          (label) => label.toLowerCase() === requested.toLowerCase()
+        );
+        if (exactRequested && transcriptTermCodes.get(exactRequested)?.has(normalizedCode)) {
+          return exactRequested;
+        }
+        return '';
+      }
+      for (const [label, codes] of transcriptTermCodes.entries()) {
+        if (codes?.has(normalizedCode)) return label;
+      }
+      return '';
+    };
+
+    const next = {};
+    Object.entries(semesterPlans || {}).forEach(([term, codes]) => {
+      next[term] = [...(codes || [])];
+    });
+    let plannerUpdated = false;
+
+    actionsToApply.forEach((action) => {
+      const code = normalizeCode(action.courseCode);
+      const rawTerm = String(action.term || '').trim();
+      const plannerTerm = normalizePlannerTermLabel(rawTerm, Object.keys(next));
+      const transcriptTerm = normalizePlannerTermLabel(rawTerm, transcriptTermLabels);
+      const term = plannerTerm || transcriptTerm || rawTerm;
+      const type = action.type;
+      const actionLabel = formatPlannerActionLabel({ ...action, term });
+
+      if (!code || !term || (type !== 'add' && type !== 'remove')) {
+        rejected.push(`${actionLabel}: invalid action format`);
+        return;
+      }
+
+      if (type === 'add') {
+        if (!plannerTerm || !Object.prototype.hasOwnProperty.call(next, plannerTerm)) {
+          rejected.push(`${actionLabel}: invalid term`);
+          return;
+        }
+        if (!COURSES[code]) {
+          rejected.push(`${actionLabel}: course not found in catalog`);
+          return;
+        }
+        if (isCourseCompleted(code)) {
+          rejected.push(`${actionLabel}: already completed`);
+          return;
+        }
+        if (isCourseInProgress(code)) {
+          rejected.push(`${actionLabel}: currently in progress`);
+          return;
+        }
+        if ((next[plannerTerm] || []).includes(code)) {
+          rejected.push(`${actionLabel}: already in ${plannerTerm}`);
+          return;
+        }
+        const inOtherTerm = Object.entries(next).some(([otherTerm, codes]) => {
+          if (otherTerm === plannerTerm) return false;
+          return (codes || []).includes(code);
+        });
+        if (inOtherTerm) {
+          rejected.push(`${actionLabel}: already planned in another term`);
+          return;
+        }
+        next[plannerTerm] = [...(next[plannerTerm] || []), code];
+        plannerUpdated = true;
+        applied.push(`${formatPlannerActionLabel({ ...action, term: plannerTerm })}`);
+        return;
+      }
+
+      let removedFromPlanner = false;
+      let removedFromTranscript = false;
+
+      if (plannerTerm) {
+        const plannerCodes = next[plannerTerm] || [];
+        if (plannerCodes.some((item) => normalizeCode(item) === code)) {
+          next[plannerTerm] = plannerCodes.filter((item) => normalizeCode(item) !== code);
+          removedFromPlanner = true;
+          plannerUpdated = true;
+        }
+      }
+
+      const transcriptTermForRemoval =
+        (transcriptTerm && transcriptTermCodes.get(transcriptTerm)?.has(code) && transcriptTerm) ||
+        findTranscriptTermForCode(rawTerm, code);
+      if (transcriptTermForRemoval) {
+        const termCodes = transcriptTermCodes.get(transcriptTermForRemoval);
+        if (termCodes?.has(code)) {
+          transcriptRemovals.push({ termLabel: transcriptTermForRemoval, courseCode: code });
+          termCodes.delete(code);
+          removedFromTranscript = true;
+        }
+      }
+
+      if (removedFromPlanner || removedFromTranscript) {
+        const appliedTerm = transcriptTermForRemoval || plannerTerm || term;
+        applied.push(`${formatPlannerActionLabel({ ...action, term: appliedTerm })}`);
+        return;
+      }
+
+      if (!plannerTerm && !transcriptTerm && !transcriptTermForRemoval) {
+        rejected.push(`${actionLabel}: invalid term`);
+        return;
+      }
+      rejected.push(`${actionLabel}: not found in ${term}`);
+    });
+
+    if (plannerUpdated) {
+      setSemesterPlans(next);
+      setPlannerDirty(true);
+    }
+
+    if (transcriptRemovals.length > 0) {
+      transcriptRemovals.forEach(({ termLabel, courseCode }) => {
+        removeCourseFromTranscriptRecord(termLabel, courseCode);
+      });
+    }
 
     setPendingChatActions(null);
 
@@ -5195,7 +5475,7 @@ Now answer the student's question using only this context.`
                 e.target.value = '';
               }}
             />
-            Upload PDF
+            Upload Unofficial Transcript / Degree Evaluation PDF
           </label>
           <div className="w-px h-5 bg-gray-300 dark:bg-gray-600" />
           <button
@@ -6407,12 +6687,12 @@ Now answer the student's question using only this context.`
                         key={code}
                         className={`p-4 rounded-lg border ${
                           isLocked
-                            ? 'border-gray-300 bg-gray-100 opacity-60'
+                            ? 'border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 opacity-60'
                             : alreadyPlanned
                               ? 'border-green-300 bg-green-50'
                               : alreadyTaken || inProgress || alreadyPlannedEarlier
                                 ? 'border-red-300 bg-red-50'
-                                : 'border-gray-200 hover:bg-yellow-50 cursor-pointer'
+                                : 'border-gray-200 dark:border-gray-600 hover:bg-yellow-50 dark:hover:bg-slate-700 cursor-pointer'
                         }`}
                         onMouseEnter={(e) => {
                           if (!isDisabled) {
@@ -6444,7 +6724,7 @@ Now answer the student's question using only this context.`
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
                               <h4 className="font-bold text-gray-900">{code}</h4>
-                              <span className="text-xs bg-gray-200 px-2 py-1 rounded">
+                              <span className="text-xs bg-gray-200 dark:bg-gray-600 dark:text-gray-200 px-2 py-1 rounded">
                                 {getCourseCreditsForRequirementBar(code)} cr
                               </span>
                             </div>
@@ -7649,6 +7929,43 @@ Now answer the student's question using only this context.`
         </>
       )}
 
+      {authUser && isTranscriptDirty && activeTab !== 'login' && (
+        <div className="bg-amber-50 border-b border-amber-200">
+          <div className="max-w-7xl mx-auto px-4 py-2.5 flex flex-wrap items-center gap-3">
+            <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+            <span className="text-sm text-amber-900 flex-1 min-w-0">
+              You have unsaved academic record changes. Click{' '}
+              <span className="font-semibold">Update Record</span> to save them so
+              your evaluation reflects the latest data.
+            </span>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => void applyReviewedTranscript()}
+                disabled={isTranscriptSaving}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-md inline-flex items-center gap-1.5 ${
+                  isTranscriptSaving
+                    ? 'bg-amber-200 text-amber-700 cursor-not-allowed'
+                    : 'bg-amber-600 text-white hover:bg-amber-700'
+                }`}
+              >
+                <Save className="w-3.5 h-3.5" />
+                {isTranscriptSaving ? 'Saving…' : 'Update Record'}
+              </button>
+              {activeTab !== 'planner' && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('planner')}
+                  className="text-xs font-medium px-3 py-1.5 rounded-md border border-amber-300 text-amber-800 hover:bg-amber-100"
+                >
+                  Go to Planner
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <main className={isFlowFullscreen ? 'p-0' : 'max-w-7xl mx-auto px-4 py-8'}>
         <div key={activeTab} className="animate-fade-in">
           {isLoadingData && activeTab !== 'login' ? (
@@ -7678,7 +7995,7 @@ Now answer the student's question using only this context.`
       <ExportDecisionModal />
 
       {!isFlowFullscreen && (
-        <div className="fixed right-0 bottom-6 z-50 flex items-end pointer-events-none">
+        <div className="fixed right-6 bottom-6 z-50 flex items-end pointer-events-none">
           {isChatOpen && (
           <div
             className="mr-3 rounded-2xl border border-gray-200 bg-white shadow-xl flex relative pointer-events-auto"
@@ -7736,10 +8053,10 @@ Now answer the student's question using only this context.`
               </div>
               <div className="flex-1 min-h-0 px-4 py-3 text-xs text-gray-600 space-y-2 overflow-y-auto">
                 {chatMessages.length === 0 ? (
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-gray-700">
-                    <p className="font-semibold text-gray-900">Welcome to DegreeFlow Assistant!</p>
-                    <p className="mt-1 text-xs text-gray-600">I can help you with:</p>
-                    <ul className="mt-2 list-disc pl-5 space-y-1 text-xs text-gray-700">
+                  <div className="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-slate-700 p-3 text-gray-700 dark:text-gray-200">
+                    <p className="font-semibold text-gray-900 dark:text-gray-100">Welcome to DegreeFlow Assistant!</p>
+                    <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">I can help you with:</p>
+                    <ul className="mt-2 list-disc pl-5 space-y-1 text-xs text-gray-700 dark:text-gray-200">
                       <li>Identify which degree evaluation requirements are still not met.</li>
                       <li>Recommend future courses based on prerequisites and missing requirements.</li>
                       <li>Add or remove courses in your planner (with pre-requisite check and confirmation).</li>
@@ -7747,7 +8064,7 @@ Now answer the student's question using only this context.`
                       <li>Parse an uploaded transcript PDF and update your plan.</li>
                       <li>Parse a degree evaluation PDF and update your plan.</li>
                     </ul>
-                    <p className="mt-2 text-xs text-gray-500">
+                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                       Try asking: "What requirements am I still missing?" or "What should I take next semester?"
                     </p>
                   </div>
@@ -7785,7 +8102,7 @@ Now answer the student's question using only this context.`
                           className={`max-w-[85%] rounded-lg px-3 py-2 text-xs ${
                             message.role === 'user'
                               ? 'bg-[#500000] text-white'
-                              : 'bg-gray-100 text-gray-800'
+                              : 'bg-gray-100 dark:bg-slate-700 text-gray-800 dark:text-gray-100'
                           }`}
                         >
                           {message.role === 'user' ? message.text : formatText(message.text)}
@@ -7795,7 +8112,7 @@ Now answer the student's question using only this context.`
                   })
                 )}
                 {pendingChatActions?.actions?.length > 0 && (
-                  <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
                     <p className="font-semibold">Confirm planner update</p>
                     <p className="mt-1">The assistant requested these changes:</p>
                     <div className="mt-2 space-y-1">
@@ -7817,7 +8134,7 @@ Now answer the student's question using only this context.`
                       <button
                         type="button"
                         onClick={cancelPendingChatActions}
-                        className="rounded-full border border-amber-400 bg-white px-3 py-1.5 text-[11px] font-semibold text-amber-900 hover:bg-amber-100"
+                        className="rounded-full border border-amber-400 dark:border-amber-600 bg-white dark:bg-slate-700 px-3 py-1.5 text-[11px] font-semibold text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-slate-600"
                       >
                         Cancel
                       </button>
@@ -7826,7 +8143,7 @@ Now answer the student's question using only this context.`
                 )}
                 {isChatLoading && (
                   <div className="flex justify-start">
-                    <span className="max-w-[85%] rounded-lg bg-gray-100 px-3 py-2 text-xs text-gray-500">
+                    <span className="max-w-[85%] rounded-lg bg-gray-100 dark:bg-slate-700 px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
                       <span className="inline-flex gap-1">
                         <span className="animate-bounce">●</span>
                         <span className="animate-bounce" style={{ animationDelay: '0.1s' }}>●</span>
@@ -7852,7 +8169,7 @@ Now answer the student's question using only this context.`
                           {
                             id: `assistant-upload-${Date.now()}`,
                             role: 'assistant',
-                            text: `I can parse ${file.name}. I will auto-detect transcript vs degree evaluation after you confirm the consent dialog.`
+                            text: `I can parse ${file.name} after you confirm the consent dialog.`
                           }
                         ]);
                       }
@@ -7863,7 +8180,7 @@ Now answer the student's question using only this context.`
                     type="button"
                     onClick={() => chatUploadInputRef.current?.click()}
                     disabled={isChatLoading || transcriptLoading}
-                    className="rounded-lg border border-gray-200 px-2.5 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+                    className="rounded-lg border border-gray-200 dark:border-gray-600 px-2.5 py-2 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
                     title="Upload transcript or degree evaluation PDF"
                   >
                     Upload
@@ -7880,7 +8197,7 @@ Now answer the student's question using only this context.`
                       }
                     }}
                     disabled={isChatLoading}
-                    className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#500000]/20 disabled:bg-gray-50 disabled:cursor-not-allowed"
+                    className="flex-1 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-slate-700 dark:text-gray-100 dark:placeholder-gray-400 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#500000]/20 disabled:bg-gray-50 disabled:cursor-not-allowed"
                   />
                   <button
                     type="button"
@@ -7899,10 +8216,23 @@ Now answer the student's question using only this context.`
           <button
             type="button"
             onClick={() => setIsChatOpen((prev) => !prev)}
-            className="pointer-events-auto flex items-center justify-center h-14 w-7 rounded-l-full bg-[#500000] text-white shadow-lg hover:bg-[#3d0000]"
-            aria-label="Toggle chat assistant"
+            className={`pointer-events-auto flex flex-col items-center justify-center h-24 w-24 rounded-full border-2 border-white text-white shadow-xl transition-all ${
+              isChatOpen ? 'bg-[#3d0000]' : 'bg-[#500000] hover:bg-[#3d0000]'
+            }`}
+            aria-label={isChatOpen ? 'Close chat assistant' : 'Open chat assistant'}
+            title={isChatOpen ? 'Close chat' : 'Open chat'}
           >
-            {isChatOpen ? '›' : '‹'}
+            {isChatOpen ? (
+              <>
+                <X className="h-7 w-7" />
+                <span className="mt-1 text-xs font-semibold leading-none">Close</span>
+              </>
+            ) : (
+              <>
+                <MessageCircle className="h-7 w-7" />
+                <span className="mt-1 text-xs font-semibold leading-none">Chat</span>
+              </>
+            )}
           </button>
         </div>
       )}

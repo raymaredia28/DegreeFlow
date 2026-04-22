@@ -2,6 +2,7 @@ import assert from 'assert';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { test } from 'node:test';
 import { evaluateRequirements, normalizeCode, EQUIVALENT_COURSE_GROUPS, getCanonicalCode, getEquivalentCodes } from '../src/requirements/evaluator.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -45,8 +46,11 @@ const makeTaggedCourse = (code, credits, categories, grade = 'A') => {
   };
 };
 
-const run = async () => {
-  const tests = [];
+const run = () => {
+  let __idx = 0;
+  const tests = {
+    push: (fn) => test(`evaluator case ${String(++__idx).padStart(2, '0')}`, fn)
+  };
 
   // Math Emphasis (should pass)
   tests.push(async () => {
@@ -1010,16 +1014,6 @@ const run = async () => {
     );
   });
 
-  // Run tests
-  let passed = 0;
-  for (const t of tests) {
-    await t();
-    passed += 1;
-  }
-  console.log(`✅ evaluator tests passed (${passed}/${tests.length})`);
 };
 
-run().catch((err) => {
-  console.error('❌ evaluator test failed:', err.message);
-  process.exit(1);
-});
+run();
