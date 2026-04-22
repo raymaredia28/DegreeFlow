@@ -223,7 +223,7 @@ const evaluateAnyOf = (anyOf, context, minGrade) => {
       const course = context.courseIndex.get(code);
       if (isCompleted(course, minGrade, context)) {
         const credits = Number(course.credits) || 0;
-        const candidate = { satisfied: true, credits, used: [code] };
+        const candidate = { satisfied: true, credits, used: [course.code || code] };
         if (anyOfPickIsBetter(candidate, best, context)) {
           best = candidate;
         }
