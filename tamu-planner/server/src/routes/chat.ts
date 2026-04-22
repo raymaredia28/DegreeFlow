@@ -19,17 +19,22 @@ const chatRequestSchema = z.object({
 chatRouter.post("/chat/completions", async (req, res) => {
   const parsed = chatRequestSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res.status(400).json({ 
-      error: "Invalid request", 
-      issues: parsed.error.issues 
+    return res.status(400).json({
+      error: "Invalid request",
+      issues: parsed.error.issues
     });
   }
 
   const { messages, model = "protected.gemini-2.0-flash-lite", stream = false } = parsed.data;
 
-  if (!env.tamuAiApiKey) {
-    return res.status(500).json({ 
-      error: "TAMU AI API key not configured" 
+  // Accept an optional user-supplied key via X-Api-Key header; fall back to env key.
+  // Never log this value.
+  const clientKey = (req.headers["x-api-key"] as string | undefined)?.trim();
+  const apiKey = (clientKey && clientKey.length >= 10) ? clientKey : env.tamuAiApiKey;
+
+  if (!apiKey) {
+    return res.status(500).json({
+      error: "TAMU AI API key not configured"
     });
   }
 
@@ -37,7 +42,7 @@ chatRouter.post("/chat/completions", async (req, res) => {
     const response = await fetch(`${env.tamuAiApiEndpoint}/api/v1/chat/completions`, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${env.tamuAiApiKey}`,
+        "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -68,10 +73,13 @@ chatRouter.post("/chat/completions", async (req, res) => {
   }
 });
 
-chatRouter.get("/chat/models", async (_req, res) => {
-  if (!env.tamuAiApiKey) {
-    return res.status(500).json({ 
-      error: "TAMU AI API key not configured" 
+chatRouter.get("/chat/models", async (req, res) => {
+  const clientKey = (req.headers["x-api-key"] as string | undefined)?.trim();
+  const apiKey = (clientKey && clientKey.length >= 10) ? clientKey : env.tamuAiApiKey;
+
+  if (!apiKey) {
+    return res.status(500).json({
+      error: "TAMU AI API key not configured"
     });
   }
 
@@ -79,7 +87,7 @@ chatRouter.get("/chat/models", async (_req, res) => {
     const response = await fetch(`${env.tamuAiApiEndpoint}/api/v1/models`, {
       method: "GET",
       headers: {
-        "Authorization": `Bearer ${env.tamuAiApiKey}`,
+        "Authorization": `Bearer ${apiKey}`,
       },
     });
 

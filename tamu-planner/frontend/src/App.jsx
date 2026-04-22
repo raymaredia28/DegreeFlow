@@ -24,12 +24,15 @@ import {
   RefreshCw,
   Info,
   Settings,
-  Trash2
+  Trash2,
+  Key
 } from 'lucide-react';
 
 import { computeEvaluationSignature } from './utils/evaluationFreshness.mjs';
 import { computeCreditProgressFromEvalResult } from './utils/evalCreditProgress.mjs';
 import { reconcileWorkNotApplied } from './utils/workNotApplied.mjs';
+import { ChatKeyModal } from './components/ChatKeyModal.jsx';
+import { hasSeenModal, hasStoredApiKey, retrieveApiKey } from './utils/keyVault.mjs';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4000';
 
@@ -1310,6 +1313,12 @@ function App() {
   const [transcriptLoading, setTranscriptLoading] = useState(false);
   const [transcriptLoadingMessage, setTranscriptLoadingMessage] = useState('');
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatReady, setChatReady] = useState(() => hasStoredApiKey());
+  const [showChatKeyModal, setShowChatKeyModal] = useState(false);
+  const [showEvalKeyModal, setShowEvalKeyModal] = useState(false);
+  const [evalKeyPendingFile, setEvalKeyPendingFile] = useState(null);
+  const [selectedChatModel, setSelectedChatModel] = useState('protected.gemini-2.0-flash-lite');
+  const [availableChatModels, setAvailableChatModels] = useState([]);
   const [chatWidth, setChatWidth] = useState(320);
   const [chatHeight, setChatHeight] = useState(400);
   const [isResizingChat, setIsResizingChat] = useState(false);
@@ -1447,6 +1456,29 @@ function App() {
     };
   }, [isResizingChat, handleChatResize]);
 
+  // Show API-key modal on first chat open per session; fetch available models after.
+  useEffect(() => {
+    if (!isChatOpen) return;
+    if (!hasSeenModal()) {
+      setShowChatKeyModal(true);
+      return;
+    }
+    // Fetch available models using the stored user key.
+    if (!hasStoredApiKey()) return;
+    const fetchModels = async () => {
+      try {
+        const headers = { 'Content-Type': 'application/json' };
+        const k = await retrieveApiKey();
+        if (k) headers['X-Api-Key'] = k;
+        const res = await fetch(`${API_BASE}/chat/models`, { headers });
+        if (!res.ok) return;
+        const data = await res.json();
+        const ids = (data.data || data.models || []).map((m) => m.id || m).filter(Boolean);
+        if (ids.length > 0) setAvailableChatModels(ids);
+      } catch { /* non-fatal — model selector will just show the default */ }
+    };
+    fetchModels();
+  }, [isChatOpen]);
 
   const saveTranscriptToStorage = useCallback(
     async (terms) => {
@@ -2710,9 +2742,14 @@ function App() {
           };
         }
         setTranscriptLoadingMessage('Extracting courses from degree evaluation…');
+        const evalHeaders = { 'Content-Type': 'application/json' };
+        if (hasStoredApiKey()) {
+          const k = await retrieveApiKey();
+          if (k) evalHeaders['X-Api-Key'] = k;
+        }
         const response = await fetch(`${API_BASE}/storage/parse-degree-evaluation`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: evalHeaders,
           body: JSON.stringify({ lines })
         });
         const payload = await response.json().catch(() => ({}));
@@ -3855,12 +3892,18 @@ Now answer the student's question using only this context.`
         { role: 'user', content: userMessage }
       ];
 
+      // Decrypt user key only here, immediately before attaching to the header.
+      const chatHeaders = { 'Content-Type': 'application/json' };
+      if (hasStoredApiKey()) {
+        const k = await retrieveApiKey(); // plaintext goes out of scope after this block
+        if (k) chatHeaders['X-Api-Key'] = k;
+      }
       const response = await fetch(`${API_BASE}/chat/completions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: chatHeaders,
         body: JSON.stringify({
           messages: apiMessages,
-          model: 'protected.gemini-2.0-flash-lite',
+          model: selectedChatModel,
           stream: false
         })
       });
@@ -7701,7 +7744,12 @@ Now answer the student's question using only this context.`
                 setConsentPendingFile(null);
                 if (uploadInputRef.current) uploadInputRef.current.value = '';
                 if (chatUploadInputRef.current) chatUploadInputRef.current.value = '';
-                handleTranscriptPdf(file);
+                if (hasStoredApiKey()) {
+                  handleTranscriptPdf(file);
+                } else {
+                  setEvalKeyPendingFile(file);
+                  setShowEvalKeyModal(true);
+                }
               }}
               className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
               style={{ backgroundColor: '#500000' }}
@@ -8000,6 +8048,49 @@ Now answer the student's question using only this context.`
 
       <TranscriptConsentModal />
       <ExportDecisionModal />
+      {showChatKeyModal && (
+        <ChatKeyModal
+          theme={theme}
+          onDismiss={() => setShowChatKeyModal(false)}
+          onClose={() => {
+            setShowChatKeyModal(false);
+            setChatReady(true);
+            // Fetch available models using the key that was just stored.
+            const fetchModels = async () => {
+              try {
+                const headers = { 'Content-Type': 'application/json' };
+                if (hasStoredApiKey()) {
+                  const k = await retrieveApiKey();
+                  if (k) headers['X-Api-Key'] = k;
+                }
+                const res = await fetch(`${API_BASE}/chat/models`, { headers });
+                if (!res.ok) return;
+                const data = await res.json();
+                const ids = (data.data || data.models || []).map((m) => m.id || m).filter(Boolean);
+                if (ids.length > 0) setAvailableChatModels(ids);
+              } catch { /* non-fatal */ }
+            };
+            fetchModels();
+          }}
+        />
+      )}
+
+      {showEvalKeyModal && (
+        <ChatKeyModal
+          theme={theme}
+          onDismiss={() => {
+            setShowEvalKeyModal(false);
+            setEvalKeyPendingFile(null);
+          }}
+          onClose={() => {
+            setShowEvalKeyModal(false);
+            setChatReady(true);
+            const file = evalKeyPendingFile;
+            setEvalKeyPendingFile(null);
+            if (file) handleTranscriptPdf(file);
+          }}
+        />
+      )}
 
       {!isFlowFullscreen && (
         <div className="fixed right-6 bottom-6 z-50 flex items-end pointer-events-none">
@@ -8027,36 +8118,65 @@ Now answer the student's question using only this context.`
                 </span>
               </div>
               <div className="flex-1 min-w-0 flex flex-col min-h-0">
-              <div className="flex items-center justify-between border-b px-4 py-3 flex-shrink-0">
-                <div>
-                  <p className="text-sm font-semibold text-gray-900">DegreeFlow Assistant</p>
-                  <p className="text-xs text-gray-500">Ask anything about your plan</p>
+              <div className="flex flex-col border-b px-4 py-2 flex-shrink-0 gap-1">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">DegreeFlow Assistant</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                      Ask anything about your plan
+                      {hasStoredApiKey() && (
+                        <span className="inline-flex items-center gap-0.5 text-green-600 dark:text-green-400">
+                          · <Key className="w-3 h-3" /> own key
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowChatKeyModal(true)}
+                      className="p-1.5 rounded text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      title="Change API key"
+                      aria-label="Change API key"
+                    >
+                      <Key className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                      setChatWidth((w) => (w <= 320 ? 420 : 320));
+                      setChatHeight((h) => (h <= 400 ? 500 : 400));
+                    }}
+                      className="p-1.5 rounded text-gray-500 hover:text-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      title={chatWidth <= 320 ? 'Expand chat' : 'Shrink chat'}
+                      aria-label={chatWidth <= 320 ? 'Expand chat' : 'Shrink chat'}
+                    >
+                      {chatWidth <= 320 ? (
+                        <PanelRightOpen className="w-4 h-4" />
+                      ) : (
+                        <PanelRightClose className="w-4 h-4" />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsChatOpen(false)}
+                      className="text-xs text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"
+                    >
+                      Close
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                    setChatWidth((w) => (w <= 320 ? 420 : 320));
-                    setChatHeight((h) => (h <= 400 ? 500 : 400));
-                  }}
-                    className="p-1.5 rounded text-gray-500 hover:text-gray-800 hover:bg-gray-100"
-                    title={chatWidth <= 320 ? 'Expand chat' : 'Shrink chat'}
-                    aria-label={chatWidth <= 320 ? 'Expand chat' : 'Shrink chat'}
+                {availableChatModels.length > 1 && (
+                  <select
+                    value={selectedChatModel}
+                    onChange={(e) => setSelectedChatModel(e.target.value)}
+                    className="text-xs rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-slate-700 text-gray-700 dark:text-gray-200 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#500000]/30"
                   >
-                    {chatWidth <= 320 ? (
-                      <PanelRightOpen className="w-4 h-4" />
-                    ) : (
-                      <PanelRightClose className="w-4 h-4" />
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsChatOpen(false)}
-                    className="text-xs text-gray-500 hover:text-gray-800"
-                  >
-                    Close
-                  </button>
-                </div>
+                    {availableChatModels.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                )}
               </div>
               <div className="flex-1 min-h-0 px-4 py-3 text-xs text-gray-600 space-y-2 overflow-y-auto">
                 {chatMessages.length === 0 ? (
@@ -8161,60 +8281,73 @@ Now answer the student's question using only this context.`
                 )}
               </div>
               <div className="border-t px-3 py-3 flex-shrink-0">
-                <div className="flex items-center gap-2">
-                  <input
-                    ref={chatUploadInputRef}
-                    type="file"
-                    accept="application/pdf"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        queueTranscriptUpload(file);
-                        setChatMessages((prev) => [
-                          ...prev,
-                          {
-                            id: `assistant-upload-${Date.now()}`,
-                            role: 'assistant',
-                            text: `I can parse ${file.name} after you confirm the consent dialog.`
-                          }
-                        ]);
-                      }
-                      e.target.value = '';
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => chatUploadInputRef.current?.click()}
-                    disabled={isChatLoading || transcriptLoading}
-                    className="rounded-lg border border-gray-200 dark:border-gray-600 px-2.5 py-2 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
-                    title="Upload transcript or degree evaluation PDF"
-                  >
-                    Upload
-                  </button>
-                  <input
-                    type="text"
-                    placeholder="Type your question..."
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !isChatLoading) {
-                        e.preventDefault();
-                        sendChatMessage(chatInput);
-                      }
-                    }}
-                    disabled={isChatLoading}
-                    className="flex-1 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-slate-700 dark:text-gray-100 dark:placeholder-gray-400 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#500000]/20 disabled:bg-gray-50 disabled:cursor-not-allowed"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => sendChatMessage(chatInput)}
-                    disabled={isChatLoading || !chatInput.trim()}
-                    className="rounded-full bg-[#500000] px-3 py-2 text-xs font-semibold text-white hover:bg-[#3d0000] disabled:bg-gray-300 disabled:cursor-not-allowed"
-                  >
-                    {isChatLoading ? '...' : 'Send'}
-                  </button>
-                </div>
+                {!chatReady ? (
+                  <div className="flex items-center justify-between gap-2 rounded-lg bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-gray-600 px-3 py-2.5">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Add an API key to start chatting.</p>
+                    <button
+                      type="button"
+                      onClick={() => setShowChatKeyModal(true)}
+                      className="flex-shrink-0 text-xs font-semibold text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500 rounded-lg px-2.5 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-500 transition-colors"
+                    >
+                      Add key
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={chatUploadInputRef}
+                      type="file"
+                      accept="application/pdf"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          queueTranscriptUpload(file);
+                          setChatMessages((prev) => [
+                            ...prev,
+                            {
+                              id: `assistant-upload-${Date.now()}`,
+                              role: 'assistant',
+                              text: `I can parse ${file.name} after you confirm the consent dialog.`
+                            }
+                          ]);
+                        }
+                        e.target.value = '';
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => chatUploadInputRef.current?.click()}
+                      disabled={isChatLoading || transcriptLoading}
+                      className="rounded-lg border border-gray-200 dark:border-gray-600 px-2.5 py-2 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+                      title="Upload transcript or degree evaluation PDF"
+                    >
+                      Upload
+                    </button>
+                    <input
+                      type="text"
+                      placeholder="Type your question..."
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !isChatLoading) {
+                          e.preventDefault();
+                          sendChatMessage(chatInput);
+                        }
+                      }}
+                      disabled={isChatLoading}
+                      className="flex-1 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-slate-700 dark:text-gray-100 dark:placeholder-gray-400 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#500000]/20 disabled:bg-gray-50 disabled:cursor-not-allowed"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => sendChatMessage(chatInput)}
+                      disabled={isChatLoading || !chatInput.trim()}
+                      className="rounded-full bg-[#500000] px-3 py-2 text-xs font-semibold text-white hover:bg-[#3d0000] disabled:bg-gray-300 disabled:cursor-not-allowed"
+                    >
+                      {isChatLoading ? '...' : 'Send'}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>

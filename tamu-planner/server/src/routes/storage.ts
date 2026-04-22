@@ -110,8 +110,11 @@ storageRouter.post("/storage/parse-degree-evaluation", async (req, res) => {
     return res.status(400).json({ error: "Invalid payload", issues: parsed.error.issues });
   }
 
-  if (!env.tamuAiApiKey) {
-    return res.status(500).json({ error: "TAMU AI API key not configured" });
+  const clientKey = (req.headers["x-api-key"] as string | undefined)?.trim();
+  const apiKey = (clientKey && clientKey.length >= 10) ? clientKey : null;
+
+  if (!apiKey) {
+    return res.status(401).json({ error: "A TAMU AI API key is required to parse degree evaluations. Add your key in the upload prompt." });
   }
 
   const callAi = async (attempt: number) => {
@@ -120,7 +123,7 @@ storageRouter.post("/storage/parse-degree-evaluation", async (req, res) => {
     const response = await fetch(`${env.tamuAiApiEndpoint}/api/v1/chat/completions`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${env.tamuAiApiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
